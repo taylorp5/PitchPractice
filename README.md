@@ -46,6 +46,8 @@ npm install
      - Seeds a default rubric: "General Pitch (3–5 min)"
    - Second: `supabase/migrations/002_add_timing_fields.sql`
      - Adds `word_count` and `words_per_minute` fields to `pitch_runs`
+   - Third: `supabase/migrations/002_add_duration_ms.sql`
+     - Adds `duration_ms` field to `pitch_runs` (source of truth for duration)
 
 ### 3. Create Storage Bucket
 
@@ -139,7 +141,8 @@ PitchPractice/
 - `created_at` (timestamptz): Creation timestamp
 - `title` (text, nullable): Optional title for the pitch
 - `audio_path` (text): Path to audio file in storage
-- `audio_seconds` (numeric, nullable): Duration of audio in seconds
+- `audio_seconds` (numeric, nullable): Duration of audio in seconds (backward compatibility)
+- `duration_ms` (integer, nullable): Duration in milliseconds (source of truth)
 - `transcript` (text, nullable): Transcribed text from audio
 - `word_count` (integer, nullable): Number of words in transcript
 - `words_per_minute` (numeric, nullable): Calculated WPM (word_count / duration * 60)

@@ -42,6 +42,7 @@
    - Go to your Supabase SQL Editor
    - Run `supabase/migrations/001_initial_schema.sql`
    - Run `supabase/migrations/002_add_timing_fields.sql`
+   - Run `supabase/migrations/002_add_duration_ms.sql`
 
 2. **Create Storage Bucket**
    - In Supabase dashboard → Storage

@@ -1496,9 +1496,9 @@ export default function TryPage() {
                     <div>Is Getting Feedback:</div>
                     <div>{isGettingFeedback ? 'yes' : 'no'}</div>
                     <div>Duration (ms):</div>
-                    <div>{durationMs !== null ? durationMs : run?.duration_ms !== null ? run.duration_ms : '—'}</div>
+                    <div>{durationMs !== null ? durationMs : (run && run.duration_ms !== null) ? run.duration_ms : '—'}</div>
                     <div>Duration (DB):</div>
-                    <div>{run?.duration_ms !== null ? `${run.duration_ms}ms (${(run.duration_ms / 1000).toFixed(2)}s)` : '—'}</div>
+                    <div>{(run && run.duration_ms !== null) ? `${run.duration_ms}ms (${(run.duration_ms / 1000).toFixed(2)}s)` : '—'}</div>
                     <div>Words (computed):</div>
                     <div>{run?.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : '—'}</div>
                     <div>WPM (computed):</div>

@@ -134,9 +134,9 @@ export default function RunPage() {
     setError(null)
     setTranscribeDebug('')
 
+    const url = `/api/runs/${runId}/transcribe`
+    
     try {
-      const url = `/api/runs/${runId}/transcribe`
-      
       // Log and display the exact URL
       const debugMsg = `Calling: ${url}`
       console.log('[Client] Transcribe request:', debugMsg)

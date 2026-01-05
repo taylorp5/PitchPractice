@@ -60,7 +60,7 @@ export function Navbar() {
           <div className="flex items-center gap-4 md:gap-6">
             <Link 
               href="/upgrade" 
-              className="text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0B0F14] rounded px-3 py-1.5"
+              className="text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 rounded px-2 py-1"
               style={{ 
                 color: colors.text.secondary,
               }}
@@ -70,6 +70,7 @@ export function Navbar() {
                 e.currentTarget.style.color = colors.text.primary
                 e.currentTarget.style.outline = `2px solid ${colors.accent.primary}`
                 e.currentTarget.style.outlineOffset = '2px'
+                e.currentTarget.style.borderRadius = '4px'
               }}
               onBlur={(e) => {
                 e.currentTarget.style.color = colors.text.secondary

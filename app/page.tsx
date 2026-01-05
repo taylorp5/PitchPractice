@@ -14,11 +14,13 @@ export default function LandingPage() {
   const isInView = useInView(demoRef, { once: true, margin: '-100px' })
 
   const testimonials = [
-    { quote: "Helped me land my first client pitch", author: "Sarah, Founder" },
-    { quote: "My presentation scores improved by 30%", author: "Marcus, Student" },
-    { quote: "Finally got feedback I could actually use", author: "Jamie, Sales" },
-    { quote: "Cut my pitch time without losing impact", author: "Alex, Educator" },
-    { quote: "The pause suggestions were game-changing", author: "Taylor, Business" },
+    { quote: "Helped me realize where I was rambling without noticing.", author: "Jamie, Sales" },
+    { quote: "I cut almost a minute from my presentation and it still felt complete.", author: "Aimee, Educator" },
+    { quote: "The pacing feedback was way more useful than I expected.", author: "Marcus, Student" },
+    { quote: "Finally practiced without having to bug someone for feedback.", author: "Taylor, Business" },
+    { quote: "I didn't realize how fast I was talking until I saw it written out.", author: "James, Founder" },
+    { quote: "Simple, but surprisingly effective before a big meeting.", author: "Chris, Product" },
+    { quote: "This caught things I wouldn't have thought to fix.", author: "Elena, Graduate Student" },
   ]
 
   const useCases = [
@@ -74,15 +76,21 @@ export default function LandingPage() {
     <div className="min-h-screen bg-[#0B0E14]">
       {/* Hero Section */}
       <section className="relative overflow-hidden py-32 px-4">
+        {/* Very subtle radial amber glow */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute w-[800px] h-[800px] bg-[#F3B34C] rounded-full blur-[200px] opacity-[0.08]"></div>
+        </div>
+        
         <div className="relative max-w-5xl mx-auto text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <h1 className="text-5xl md:text-6xl font-bold text-[#E5E7EB] mb-8 leading-tight">
-              Practice once.<br />
-              <span className="text-[#F59E0B]">Perform better everywhere.</span>
+            <h1 className="text-5xl md:text-6xl font-bold mb-8 leading-tight">
+              <span className="text-[#E5E7EB]">Practice once.</span>
+              <br />
+              <span className="text-[#F3B34C]">Perform better everywhere.</span>
             </h1>
             <p className="text-xl md:text-2xl text-[#9CA3AF] mb-12 max-w-3xl mx-auto leading-relaxed">
               Whether you're a student presenting, a founder pitching investors, or a sales professional closing deals—get instant, actionable feedback on your pitch.
@@ -91,12 +99,14 @@ export default function LandingPage() {
               <motion.div
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
+                className="group"
               >
                 <Button
                   variant="primary"
                   size="lg"
                   asChild
                   href="/app"
+                  className="shadow-none group-hover:shadow-lg group-hover:shadow-[#F59E0B]/30"
                 >
                   Start Recording <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
@@ -120,35 +130,40 @@ export default function LandingPage() {
       </section>
 
       {/* Moving Testimonial Banner */}
-      <section className="py-8 px-4 border-y border-[#181F2F] overflow-hidden">
+      <section className="py-10 px-4 border-y border-[#181F2F] overflow-hidden bg-[#0B0E14]">
         <div className="relative">
-          <motion.div
-            className="flex gap-12"
-            animate={{
-              x: [0, -50 * testimonials.length + '%'],
-            }}
-            transition={{
-              duration: 30,
-              repeat: Infinity,
-              ease: 'linear',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.animationPlayState = 'paused'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.animationPlayState = 'running'
-            }}
-          >
-            {[...testimonials, ...testimonials].map((testimonial, idx) => (
-              <div
-                key={idx}
-                className="flex-shrink-0 text-center opacity-60 hover:opacity-100 transition-opacity"
-              >
-                <p className="text-sm text-[#9CA3AF] italic">"{testimonial.quote}"</p>
-                <p className="text-xs text-[#64748B] mt-1">— {testimonial.author}</p>
-              </div>
-            ))}
-          </motion.div>
+          <p className="text-xs text-[#64748B] text-center mb-6 tracking-wide uppercase">
+            Trusted by students, professionals, and founders preparing for real moments.
+          </p>
+          <div className="relative overflow-hidden">
+            <motion.div
+              className="flex gap-16"
+              animate={{
+                x: [0, -50 * testimonials.length + '%'],
+              }}
+              transition={{
+                duration: 40,
+                repeat: Infinity,
+                ease: 'linear',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.animationPlayState = 'paused'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.animationPlayState = 'running'
+              }}
+            >
+              {[...testimonials, ...testimonials, ...testimonials].map((testimonial, idx) => (
+                <div
+                  key={idx}
+                  className="flex-shrink-0 text-center opacity-70 hover:opacity-100 transition-opacity min-w-[300px]"
+                >
+                  <p className="text-sm text-[#9CA3AF] italic">"{testimonial.quote}"</p>
+                  <p className="text-xs text-[#64748B] mt-2">— {testimonial.author}</p>
+                </div>
+              ))}
+            </motion.div>
+          </div>
         </div>
       </section>
 

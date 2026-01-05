@@ -1865,8 +1865,12 @@ export default function TryPage() {
                             )
                           : null
                         
+                        const lowestCriterionLabel = lowestScore 
+                          ? (lowestScore.criterion_label || lowestScore.criterion || 'this area')
+                          : null
+                        
                         const focusMessage = lowestScore 
-                          ? `Focus on ${lowestScore.criterion.toLowerCase()}. ${lowestScore.notes || 'This area needs the most improvement.'}`
+                          ? `Focus on ${lowestCriterionLabel ? lowestCriterionLabel.toLowerCase() : 'this area'}. ${lowestScore.notes || 'This area needs the most improvement.'}`
                           : feedbackData.summary?.top_improvements?.[0] 
                             ? feedbackData.summary.top_improvements[0]
                             : feedbackData.summary?.overall_notes || 'Review your pitch and try again.'

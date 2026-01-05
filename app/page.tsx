@@ -4,6 +4,24 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSessionId } from '@/lib/session'
 
+// Helper function to log fetch errors with full details
+async function logFetchError(url: string, response: Response, error?: any) {
+  let responseText = ''
+  try {
+    responseText = await response.clone().text()
+  } catch (e) {
+    responseText = 'Could not read response text'
+  }
+  
+  console.error('[Fetch Error]', {
+    url,
+    status: response.status,
+    statusText: response.statusText,
+    responseText: responseText.substring(0, 500), // Limit to first 500 chars
+    error,
+  })
+}
+
 interface Rubric {
   id: string
   name: string
@@ -38,8 +56,14 @@ export default function HomePage() {
 
   useEffect(() => {
     // Fetch rubrics
-    fetch('/api/rubrics')
-      .then(res => res.json())
+    const url = '/api/rubrics'
+    fetch(url)
+      .then(async res => {
+        if (!res.ok) {
+          await logFetchError(url, res)
+        }
+        return res.json()
+      })
       .then(data => {
         setRubrics(data)
         if (data.length > 0) {
@@ -49,7 +73,10 @@ export default function HomePage() {
         }
       })
       .catch(err => {
-        console.error('Failed to fetch rubrics:', err)
+        console.error('[Fetch Error] Failed to fetch rubrics:', {
+          url,
+          error: err,
+        })
         setError('Failed to load rubrics')
       })
 
@@ -397,10 +424,16 @@ export default function HomePage() {
         formData.append('title', title.trim())
       }
 
-      const response = await fetch('/api/runs/create', {
+      const url = '/api/runs/create'
+      const response = await fetch(url, {
         method: 'POST',
         body: formData,
       })
+
+      // Log error if non-2xx
+      if (!response.ok) {
+        await logFetchError(url, response)
+      }
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -418,7 +451,10 @@ export default function HomePage() {
       const { id } = await response.json()
       router.push(`/runs/${id}`)
     } catch (err) {
-      console.error('Error submitting:', err)
+      console.error('[Fetch Error] Error submitting:', {
+        url: '/api/runs/create',
+        error: err,
+      })
       setError(err instanceof Error ? err.message : 'Failed to submit pitch')
       setIsUploading(false)
     }

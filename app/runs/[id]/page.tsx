@@ -4,6 +4,24 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 
+// Helper function to log fetch errors with full details
+async function logFetchError(url: string, response: Response, error?: any) {
+  let responseText = ''
+  try {
+    responseText = await response.clone().text()
+  } catch (e) {
+    responseText = 'Could not read response text'
+  }
+  
+  console.error('[Fetch Error]', {
+    url,
+    status: response.status,
+    statusText: response.statusText,
+    responseText: responseText.substring(0, 500), // Limit to first 500 chars
+    error,
+  })
+}
+
 interface Run {
   id: string
   session_id: string
@@ -45,11 +63,13 @@ export default function RunPage() {
   const fetchRun = async () => {
     if (!runId) return
 
+    const url = `/api/runs/${runId}`
     try {
-      const res = await fetch(`/api/runs/${runId}`, {
+      const res = await fetch(url, {
         cache: 'no-store',
       })
       if (!res.ok) {
+        await logFetchError(url, res)
         throw new Error('Failed to fetch run')
       }
       const data = await res.json()
@@ -57,20 +77,29 @@ export default function RunPage() {
       
       // Fetch fresh audio URL
       if (data.audio_path) {
+        const audioUrl = `/api/runs/${runId}/audio-url`
         try {
-          const audioRes = await fetch(`/api/runs/${runId}/audio-url`)
-          if (audioRes.ok) {
+          const audioRes = await fetch(audioUrl)
+          if (!audioRes.ok) {
+            await logFetchError(audioUrl, audioRes)
+          } else {
             const audioData = await audioRes.json()
             setAudioUrl(audioData.url)
           }
         } catch (err) {
-          console.error('Failed to fetch audio URL:', err)
+          console.error('[Fetch Error] Failed to fetch audio URL:', {
+            url: audioUrl,
+            error: err,
+          })
         }
       }
       
       setLoading(false)
     } catch (err) {
-      console.error('Error fetching run:', err)
+      console.error('[Fetch Error] Error fetching run:', {
+        url,
+        error: err,
+      })
       setError('Failed to load run details')
       setLoading(false)
     }
@@ -117,6 +146,11 @@ export default function RunPage() {
         method: 'POST',
       })
 
+      // Log error if non-2xx
+      if (!response.ok) {
+        await logFetchError(url, response)
+      }
+
       const responseData = await response.json()
       
       // Log full JSON response
@@ -150,7 +184,10 @@ export default function RunPage() {
       // Refresh run data to get updated transcript and timing
       await fetchRun()
     } catch (err) {
-      console.error('Transcription error:', err)
+      console.error('[Fetch Error] Transcription error:', {
+        url,
+        error: err,
+      })
       // Show exact error message from API response
       setError(err instanceof Error ? err.message : 'Failed to transcribe audio')
       // Refresh to get updated error status
@@ -177,6 +214,11 @@ export default function RunPage() {
         method: 'POST',
       })
 
+      // Log error if non-2xx
+      if (!response.ok) {
+        await logFetchError(url, response)
+      }
+
       const responseData = await response.json()
       
       const responseDebug = `Response: ${JSON.stringify(responseData, null, 2)}`
@@ -191,7 +233,10 @@ export default function RunPage() {
       // Refresh run data
       await fetchRun()
     } catch (err) {
-      console.error('Reset error:', err)
+      console.error('[Fetch Error] Reset error:', {
+        url,
+        error: err,
+      })
       setError(err instanceof Error ? err.message : 'Failed to reset')
       await fetchRun()
     } finally {

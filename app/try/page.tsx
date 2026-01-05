@@ -61,6 +61,12 @@ const PROMPTS = [
       'Who is it for?',
       'Why does it matter?',
     ],
+    rubric: [
+      { id: 'what', label: 'What are you working on?', weight: 1.0 },
+      { id: 'who', label: 'Who is it for?', weight: 1.0 },
+      { id: 'why', label: 'Why does it matter?', weight: 1.5 },
+      { id: 'cta', label: 'Call to action', weight: 0.5, optional: true },
+    ],
   },
   {
     id: 'class',
@@ -71,6 +77,11 @@ const PROMPTS = [
       'State your main point',
       'Preview what\'s coming',
     ],
+    rubric: [
+      { id: 'hook', label: 'Hook your audience', weight: 1.5 },
+      { id: 'main_point', label: 'State your main point', weight: 1.5 },
+      { id: 'preview', label: 'Preview what\'s coming', weight: 1.0 },
+    ],
   },
   {
     id: 'sales',
@@ -80,6 +91,11 @@ const PROMPTS = [
       'Identify the problem',
       'Present your solution',
       'Show the value',
+    ],
+    rubric: [
+      { id: 'problem', label: 'Identify the problem', weight: 1.5 },
+      { id: 'solution', label: 'Present your solution', weight: 1.5 },
+      { id: 'value', label: 'Show the value', weight: 1.0 },
     ],
   },
 ]
@@ -97,6 +113,7 @@ export default function TryPage() {
   const [run, setRun] = useState<Run | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isGettingFeedback, setIsGettingFeedback] = useState(false) // UI shows "Get feedback" / "Generating feedback..."
+  const [expandedChunks, setExpandedChunks] = useState<Set<number>>(new Set())
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null)
   const [pausedTotalMs, setPausedTotalMs] = useState(0)
   const [pauseStartTime, setPauseStartTime] = useState<number | null>(null)
@@ -901,6 +918,11 @@ export default function TryPage() {
       return
     }
 
+    // Get prompt rubric if a prompt is selected
+    const promptRubric = selectedPrompt 
+      ? PROMPTS.find(p => p.id === selectedPrompt)?.rubric || null
+      : null
+
     if (!selectedRubricId) {
       setError('Cannot get feedback: no rubric selected')
       setIsGettingFeedback(false)
@@ -919,6 +941,7 @@ export default function TryPage() {
         },
         body: JSON.stringify({
           rubric_id: selectedRubricId,
+          prompt_rubric: promptRubric,
         }),
       })
 
@@ -1557,85 +1580,154 @@ export default function TryPage() {
                   </Card>
                 )}
 
-                {/* Annotated Transcript */}
-                {run.transcript && run.transcript.trim().length > 0 && (
-                  <Card className="p-6 bg-[#121826] border-[#22283A]">
-                    <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Annotated Transcript</h3>
-                    <div className="space-y-2 max-h-96 overflow-y-auto">
-                      {run.transcript.split(/\n+/).filter(l => l.trim()).map((line, idx) => {
-                        const feedbackData = feedback || run.analysis_json
-                        const lineByLine = feedbackData?.line_by_line || []
-                        
-                        // Find matching line_by_line items for this transcript line
-                        const matchingItems = lineByLine.filter((item: any) => {
-                          const quoteLower = item.quote?.toLowerCase().trim() || ''
-                          const lineLower = line.toLowerCase().trim()
-                          return lineLower.includes(quoteLower) || quoteLower.includes(lineLower)
+                {/* Chunked Transcript */}
+                {run.transcript && run.transcript.trim().length > 0 && (() => {
+                  const feedbackData = feedback || run.analysis_json
+                  const serverChunks = feedbackData?.chunks || []
+                  
+                  // Client-side fallback chunking if server chunks not available
+                  const chunks = serverChunks.length > 0 ? serverChunks : (() => {
+                    const sentences = run.transcript.split(/[.!?]+/).filter(s => s.trim().length > 0)
+                    const fallbackChunks: any[] = []
+                    let currentChunk: string[] = []
+                    
+                    for (let i = 0; i < sentences.length; i++) {
+                      currentChunk.push(sentences[i].trim())
+                      // Merge short sentences into chunks of 1-2 sentences
+                      if (currentChunk.length >= 2 || (currentChunk.length === 1 && sentences[i].trim().length > 100)) {
+                        fallbackChunks.push({
+                          text: currentChunk.join('. ') + '.',
+                          purpose: 'other',
+                          purpose_label: 'Content',
+                          score: null,
+                          status: 'needs_work' as const,
+                          feedback: '',
+                          rewrite_suggestion: null,
                         })
-                        
-                        // Determine badge label and color based on type
-                        const getBadgeInfo = (item: any) => {
-                          if (item.type === 'praise') {
-                            return {
-                              label: 'Clear value',
-                              color: 'bg-[#22C55E]/20 text-[#22C55E] border-[#22C55E]/30',
-                              icon: CheckCircle2,
-                            }
-                          } else if (item.type === 'issue') {
-                            return {
-                              label: item.priority === 'high' ? 'Missing key point' : 'Needs work',
-                              color: 'bg-[#F97316]/20 text-[#F97316] border-[#F97316]/30',
-                              icon: AlertCircle,
-                            }
-                          } else if (item.type === 'suggestion') {
-                            return {
-                              label: 'Consider cutting',
-                              color: 'bg-[#EF4444]/20 text-[#EF4444] border-[#EF4444]/30',
-                              icon: Scissors,
+                        currentChunk = []
+                      }
+                    }
+                    if (currentChunk.length > 0) {
+                      fallbackChunks.push({
+                        text: currentChunk.join('. ') + '.',
+                        purpose: 'other',
+                        purpose_label: 'Content',
+                        score: null,
+                        status: 'needs_work' as const,
+                        feedback: '',
+                        rewrite_suggestion: null,
+                      })
+                    }
+                    return fallbackChunks
+                  })()
+                  
+                  return (
+                    <Card className="p-6 bg-[#121826] border-[#22283A]">
+                      <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Annotated Transcript</h3>
+                      <div className="space-y-3 max-h-96 overflow-y-auto">
+                        {chunks.map((chunk: any, idx: number) => {
+                          const [isExpanded, setIsExpanded] = useState(false)
+                          
+                          const getStatusInfo = (status: string) => {
+                            if (status === 'strong') {
+                              return {
+                                label: 'Strong',
+                                color: 'bg-[#22C55E]/20 text-[#22C55E] border-[#22C55E]/30',
+                                icon: CheckCircle2,
+                              }
+                            } else if (status === 'needs_work') {
+                              return {
+                                label: 'Needs work',
+                                color: 'bg-[#F97316]/20 text-[#F97316] border-[#F97316]/30',
+                                icon: AlertCircle,
+                              }
+                            } else {
+                              return {
+                                label: 'Missing',
+                                color: 'bg-[#EF4444]/20 text-[#EF4444] border-[#EF4444]/30',
+                                icon: X,
+                              }
                             }
                           }
-                          return null
-                        }
-                        
-                        const primaryItem = matchingItems[0]
-                        const badgeInfo = primaryItem ? getBadgeInfo(primaryItem) : null
-                        const BadgeIcon = badgeInfo?.icon
-
-                        return (
-                          <div
-                            key={idx}
-                            className={`p-3 rounded-lg border relative group ${
-                              badgeInfo
-                                ? badgeInfo.color
-                                : 'bg-[#0B0F14] border-[#22283A] text-[#E6E8EB]'
-                            }`}
-                          >
-                            <div className="flex items-start gap-2">
-                              <span className="flex-1 text-sm">{line}</span>
-                              {badgeInfo && BadgeIcon && (
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  <BadgeIcon className="h-3 w-3" />
-                                  <span className="text-xs font-medium px-1.5 py-0.5 rounded border">
-                                    {badgeInfo.label}
-                                  </span>
+                          
+                          const statusInfo = getStatusInfo(chunk.status || 'needs_work')
+                          const StatusIcon = statusInfo.icon
+                          
+                          return (
+                            <div
+                              key={idx}
+                              className={`p-4 rounded-lg border cursor-pointer transition-colors ${
+                                statusInfo.color
+                              }`}
+                              onClick={() => {
+                                setExpandedChunks(prev => {
+                                  const next = new Set(prev)
+                                  if (next.has(idx)) {
+                                    next.delete(idx)
+                                  } else {
+                                    next.add(idx)
+                                  }
+                                  return next
+                                })
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs font-medium px-2 py-1 rounded border bg-[#0B0F14]/50">
+                                      {chunk.purpose_label || chunk.purpose || 'Content'}
+                                    </span>
+                                    <StatusIcon className="h-4 w-4" />
+                                    <span className="text-xs font-medium">{statusInfo.label}</span>
+                                    {chunk.score !== null && (
+                                      <span className="text-xs text-[#9AA4B2]">
+                                        {chunk.score}/10
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-[#E6E8EB]">{chunk.text}</p>
+                                </div>
+                                <button className="flex-shrink-0 text-[#9AA4B2] hover:text-[#E6E8EB] transition-colors">
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4" />
+                                  )}
+                                </button>
+                              </div>
+                              {isExpanded && (
+                                <div className="mt-3 pt-3 border-t border-[#22283A] space-y-2">
+                                  <div>
+                                    <p className="text-xs font-medium text-[#9AA4B2] mb-1">Purpose</p>
+                                    <p className="text-sm text-[#E6E8EB]">{chunk.purpose_label || chunk.purpose}</p>
+                                  </div>
+                                  {chunk.score !== null && (
+                                    <div>
+                                      <p className="text-xs font-medium text-[#9AA4B2] mb-1">Score</p>
+                                      <p className="text-sm text-[#E6E8EB]">{chunk.score} / 10</p>
+                                    </div>
+                                  )}
+                                  {chunk.feedback && (
+                                    <div>
+                                      <p className="text-xs font-medium text-[#9AA4B2] mb-1">Feedback</p>
+                                      <p className="text-sm text-[#E6E8EB]">{chunk.feedback}</p>
+                                    </div>
+                                  )}
+                                  {chunk.rewrite_suggestion && (
+                                    <div>
+                                      <p className="text-xs font-medium text-[#9AA4B2] mb-1">Rewrite suggestion</p>
+                                      <p className="text-sm text-[#E6E8EB] italic">{chunk.rewrite_suggestion}</p>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
-                            {/* Tooltip on hover */}
-                            {primaryItem && (
-                              <div className="absolute left-0 right-0 top-full mt-1 p-2 bg-[#0B0F14] border border-[#22283A] rounded-lg text-xs text-[#E6E8EB] opacity-0 group-hover:opacity-100 pointer-events-none z-10 transition-opacity">
-                                <p className="font-medium mb-1">{primaryItem.comment}</p>
-                                {primaryItem.action && (
-                                  <p className="text-[#9AA4B2]">{primaryItem.action}</p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </Card>
-                )}
+                          )
+                        })}
+                      </div>
+                    </Card>
+                  )
+                })()}
 
                 {/* Your Evaluation - Rubric Breakdown */}
                 {(() => {
@@ -1698,6 +1790,7 @@ export default function TryPage() {
                               const score = rubricScore.score || 0
                               const maxScore = 10
                               const scorePercent = (score / maxScore) * 100
+                              const criterionLabel = rubricScore.criterion_label || rubricScore.criterion || `Criterion ${idx + 1}`
                               
                               // Determine status
                               let statusIcon: any = null
@@ -1726,7 +1819,7 @@ export default function TryPage() {
                                       <div className="flex-1">
                                         <div className="flex items-center justify-between mb-1">
                                           <span className="text-sm font-medium text-[#E6E8EB]">
-                                            {rubricScore.criterion}
+                                            {criterionLabel}
                                           </span>
                                           <span className="text-sm font-bold text-[#E6E8EB]">
                                             {score} / {maxScore}

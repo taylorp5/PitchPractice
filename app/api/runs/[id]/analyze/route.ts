@@ -33,9 +33,21 @@ interface AnalysisOutput {
     notes: string
   }
   rubric_scores: Array<{
-    criterion: string
+    criterion_id: string
+    criterion_label: string
     score: number
     notes: string
+    evidence_quotes: string[]
+    missing: boolean
+  }>
+  chunks: Array<{
+    text: string
+    purpose: string
+    purpose_label: string
+    score: number | null
+    status: 'strong' | 'needs_work' | 'missing'
+    feedback: string
+    rewrite_suggestion: string | null
   }>
   line_by_line: Array<{
     quote: string
@@ -56,17 +68,43 @@ interface AnalysisOutput {
   }>
 }
 
+interface PromptRubricItem {
+  id: string
+  label: string
+  weight: number
+  optional?: boolean
+}
+
 function buildAnalysisPrompt(
   transcript: string,
   criteria: RubricCriterion[],
+  promptRubric: PromptRubricItem[] | null,
   targetDurationSeconds: number | null,
   maxDurationSeconds: number | null,
   audioSeconds: number | null,
   wpm: number | null
 ): string {
-  const criteriaList = criteria
-    .map((c, i) => `${i + 1}. ${c.name}: ${c.description}`)
+  // Use prompt-specific rubric if provided, otherwise use generic criteria
+  const rubricItems: PromptRubricItem[] = promptRubric || criteria.map((c, i) => ({
+    id: `criterion_${i}`,
+    label: c.name,
+    weight: 1.0,
+    optional: false,
+  }))
+  
+  const criteriaList = rubricItems
+    .map((item, i) => {
+      const weightNote = item.weight !== 1.0 ? ` (weight: ${item.weight})` : ''
+      const optionalNote = item.optional ? ' (optional)' : ''
+      return `${i + 1}. ${item.label}${weightNote}${optionalNote}`
+    })
     .join('\n')
+
+  const rubricWeights = rubricItems.map(item => ({
+    id: item.id,
+    label: item.label,
+    weight: item.weight,
+  }))
 
   return `You are an expert pitch coach providing detailed, actionable feedback on a pitch presentation.
 
@@ -80,8 +118,11 @@ CRITICAL RULES (STRICTLY ENFORCED):
 TRANSCRIPT:
 ${transcript}
 
-RUBRIC CRITERIA:
+RUBRIC CRITERIA (Evaluate how well the pitch addresses each):
 ${criteriaList}
+
+RUBRIC WEIGHTS (for overall score calculation):
+${JSON.stringify(rubricWeights, null, 2)}
 
 TIMING INFO:
 ${targetDurationSeconds ? `Target duration: ${targetDurationSeconds}s (${Math.floor(targetDurationSeconds / 60)} min)` : 'No target duration specified'}
@@ -94,7 +135,7 @@ Return a JSON object with this exact structure:
 
 {
   "summary": {
-    "overall_score": <0-10 integer>,
+    "overall_score": <0-10 integer, calculated from weighted rubric scores>,
     "overall_notes": "<2-3 sentences summarizing the pitch>",
     "top_strengths": ["<specific strength with quote>", ...],
     "top_improvements": ["<specific improvement with quote>", ...]
@@ -108,11 +149,26 @@ Return a JSON object with this exact structure:
   },
   "rubric_scores": [
     {
-      "criterion": "<criterion name>",
+      "criterion_id": "<criterion id from rubric>",
+      "criterion_label": "<criterion label>",
       "score": <0-10 integer>,
-      "notes": "<specific feedback with quote citation>"
+      "notes": "<specific feedback with quote citation>",
+      "evidence_quotes": ["<verbatim quote 1>", "<verbatim quote 2>"],
+      "missing": <boolean, true if this criterion is not addressed at all>
     },
-    ... (one for each criterion)
+    ... (one for each criterion in rubric)
+  ],
+  "chunks": [
+    {
+      "text": "<verbatim excerpt from transcript, 1-3 sentences forming one idea unit>",
+      "purpose": "<criterion_id this chunk addresses>",
+      "purpose_label": "<human-readable label like 'Hook', 'What', 'Who', 'Why'>",
+      "score": <0-10 integer or null if not applicable>,
+      "status": "<strong|needs_work|missing>",
+      "feedback": "<why this needs work / what's good about it>",
+      "rewrite_suggestion": "<improved version of this chunk or null>"
+    },
+    ... (break transcript into 3-8 idea units/chunks)
   ],
   "line_by_line": [
     {
@@ -142,11 +198,20 @@ Return a JSON object with this exact structure:
   ]
 }
 
+CHUNKING INSTRUCTIONS:
+- Break the transcript into 3-8 idea units (chunks)
+- Each chunk should be 1-3 sentences that form one coherent idea
+- Map each chunk to a rubric criterion (purpose field)
+- If a chunk doesn't clearly map to any criterion, use purpose "other" or "transition"
+- Chunks should cover the entire transcript with minimal overlap
+
 REMEMBER (STRICT ENFORCEMENT):
 - Every claim must have a quote. No exceptions. If you cannot cite a quote, do not include that feedback.
 - Quotes must be exact verbatim excerpts from the transcript (≤20 words).
 - Be specific and actionable. Generic advice will be rejected.
 - Focus on the most impactful feedback first.
+- For chunks: Break transcript naturally by idea, not just by sentence count.
+- For rubric_scores: Calculate overall_score as weighted average: sum(score * weight) / sum(weight) for non-optional items.
 - For line_by_line: Each item MUST have a quote that appears exactly in the transcript.
 - For pause_suggestions: The "after_quote" must be an exact excerpt from the transcript.
 - For cut_suggestions: The "quote" must be an exact excerpt from the transcript.
@@ -165,11 +230,16 @@ export async function POST(
     // Note: We'll use the run's rubric_id from the database, but this allows
     // the client to specify a different rubric_id if needed
     let requestRubricId: string | null = null
+    let promptRubric: PromptRubricItem[] | null = null
     try {
       const body = await request.json().catch(() => ({}))
       requestRubricId = body.rubric_id || null
+      promptRubric = body.prompt_rubric || null
       if (requestRubricId) {
         console.log('[Analyze] Request specified rubric_id:', requestRubricId)
+      }
+      if (promptRubric) {
+        console.log('[Analyze] Using prompt-specific rubric:', promptRubric)
       }
     } catch (e) {
       // Request body is optional, continue with run's rubric_id
@@ -291,9 +361,11 @@ export async function POST(
     const audioSeconds = run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds
 
     // Build the analysis prompt
+    // Use prompt-specific rubric if provided, otherwise use generic criteria
     const prompt = buildAnalysisPrompt(
       run.transcript,
       criteria,
+      promptRubric,
       rubric.target_duration_seconds,
       rubric.max_duration_seconds,
       audioSeconds,

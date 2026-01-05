@@ -287,25 +287,51 @@ export default function TryPage() {
       }
 
       const data = await response.json()
-      
-      if (!data.run || !data.run.id) {
-        throw new Error('Run creation failed: no run ID returned')
+
+      if (DEBUG) {
+        console.log('[Try] Create run response:', data)
+      }
+
+      // Handle different response formats
+      let runId: string | null = null
+      let runData: any = null
+
+      if (data.ok === false) {
+        throw new Error(data.error || 'Run creation failed')
+      }
+
+      if (data.runId) {
+        runId = data.runId
+        runData = data.run || { id: data.runId }
+      } else if (data.run?.id) {
+        runId = data.run.id
+        runData = data.run
+      } else if (data.id) {
+        // Fallback for old format
+        runId = data.id
+        runData = { id: data.id }
+      } else {
+        throw new Error(`Run creation failed: no run ID returned. Response: ${JSON.stringify(data)}`)
+      }
+
+      if (!runId) {
+        throw new Error(`Run creation failed: invalid response format. Response: ${JSON.stringify(data)}`)
       }
 
       if (DEBUG) {
         console.log('[Try] Run created:', { 
-          runId: data.run.id, 
-          status: data.run.status,
-          audioPath: data.run.audio_path,
+          runId, 
+          status: runData.status,
+          audioPath: runData.audio_path,
         })
       }
 
-      setRun({ ...data.run, audio_url: null })
+      setRun({ ...runData, audio_url: null })
       setIsUploading(false)
       
       // Auto-start transcription
       setIsTranscribing(true)
-      await transcribeRun(data.run.id)
+      await transcribeRun(runId)
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to upload audio'
       setError(errorMessage)
@@ -909,6 +935,54 @@ export default function TryPage() {
                   Try again
                 </Button>
               </>
+            )}
+
+            {/* Debug panel (temporary) */}
+            {DEBUG && (
+              <Card className="p-4 bg-[#0B0F14] border-[#22283A] mt-6">
+                <h4 className="text-sm font-bold text-[#E6E8EB] mb-2">Debug Panel</h4>
+                <div className="space-y-2 text-xs text-[#9AA4B2]">
+                  <div>Run ID: {run?.id || 'none'}</div>
+                  <div>Status: {run?.status || 'none'}</div>
+                  <div>Is Recording: {isRecording ? 'yes' : 'no'}</div>
+                  <div>Is Uploading: {isUploading ? 'yes' : 'no'}</div>
+                  <div>Is Transcribing: {isTranscribing ? 'yes' : 'no'}</div>
+                  <div>Is Analyzing: {isAnalyzing ? 'yes' : 'no'}</div>
+                  <div>Selected Rubric: {selectedRubricId || 'none'}</div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const sessionId = getSessionId()
+                        const formData = new FormData()
+                        // Create a dummy audio blob for testing
+                        const dummyBlob = new Blob(['test'], { type: 'audio/webm' })
+                        formData.append('audio', dummyBlob, 'test.webm')
+                        formData.append('session_id', sessionId)
+                        formData.append('rubric_id', selectedRubricId || '')
+                        formData.append('title', 'Test Run')
+
+                        const response = await fetch('/api/runs/create', {
+                          method: 'POST',
+                          body: formData,
+                        })
+
+                        const data = await response.json()
+                        console.log('[Try] Test run creation response:', data)
+                        alert(`Response: ${JSON.stringify(data, null, 2)}`)
+                      } catch (err: any) {
+                        console.error('[Try] Test run creation failed:', err)
+                        alert(`Error: ${err.message}`)
+                      }
+                    }}
+                    className="mt-2"
+                    disabled={!selectedRubricId}
+                  >
+                    Test run creation
+                  </Button>
+                </div>
+              </Card>
             )}
           </div>
         </div>

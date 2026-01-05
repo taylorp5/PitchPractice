@@ -5,6 +5,12 @@ import { v4 as uuidv4 } from 'uuid'
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
+  const DEBUG = true
+  
+  if (DEBUG) {
+    console.log('[Create Run] Request received')
+  }
+
   try {
     const formData = await request.formData()
     const audioFile = formData.get('audio') as File
@@ -12,23 +18,34 @@ export async function POST(request: NextRequest) {
     const sessionId = formData.get('session_id') as string
     const title = formData.get('title') as string | null
 
+    if (DEBUG) {
+      console.log('[Create Run] Request data:', {
+        hasAudioFile: !!audioFile,
+        audioFileName: audioFile?.name,
+        audioFileSize: audioFile?.size,
+        rubricId,
+        sessionId,
+        title,
+      })
+    }
+
     if (!audioFile) {
       return NextResponse.json(
-        { error: 'Audio file is required' },
+        { ok: false, error: 'Audio file is required' },
         { status: 400 }
       )
     }
 
     if (!sessionId) {
       return NextResponse.json(
-        { error: 'Session ID is required' },
+        { ok: false, error: 'Session ID is required' },
         { status: 400 }
       )
     }
 
     if (!rubricId) {
       return NextResponse.json(
-        { error: 'Rubric ID is required' },
+        { ok: false, error: 'Rubric ID is required' },
         { status: 400 }
       )
     }
@@ -40,7 +57,17 @@ export async function POST(request: NextRequest) {
     const fileExt = audioFile.name.split('.').pop() || 'webm'
     const audioPath = `${sessionId}/${runId}.${fileExt}`
 
-    // Create pitch run record
+    if (DEBUG) {
+      console.log('[Create Run] Creating database record:', {
+        runId,
+        sessionId,
+        rubricId,
+        audioPath,
+        title,
+      })
+    }
+
+    // Create pitch run record - use .select('*') to get all fields back
     const { data: run, error: dbError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .insert({
@@ -51,11 +78,11 @@ export async function POST(request: NextRequest) {
         status: 'uploaded',
         rubric_id: rubricId,
       })
-      .select()
+      .select('id, session_id, created_at, title, audio_path, audio_seconds, transcript, analysis_json, status, error_message, rubric_id, word_count, words_per_minute')
       .single()
 
     if (dbError) {
-      console.error('[Database] Failed to create run record:', {
+      console.error('[Create Run] Database error:', {
         error: dbError,
         message: dbError.message,
         code: dbError.code,
@@ -67,12 +94,40 @@ export async function POST(request: NextRequest) {
       })
       return NextResponse.json(
         { 
+          ok: false,
           error: 'Failed to create run record',
           details: dbError.message,
           fix: 'Check database connection and ensure tables exist. Run migrations if needed.',
         },
         { status: 500 }
       )
+    }
+
+    // Validate that run was created with an id
+    if (!run || !run.id) {
+      console.error('[Create Run] Run created but missing id:', {
+        run,
+        runId,
+        hasRun: !!run,
+        hasId: !!run?.id,
+      })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Run creation failed: database returned incomplete data',
+          details: 'The run was created but the response did not include an id',
+          fix: 'Check database connection and table schema.',
+        },
+        { status: 500 }
+      )
+    }
+
+    if (DEBUG) {
+      console.log('[Create Run] Run created successfully:', {
+        runId: run.id,
+        status: run.status,
+        audioPath: run.audio_path,
+      })
     }
 
     // Convert File to ArrayBuffer
@@ -259,9 +314,28 @@ export async function POST(request: NextRequest) {
         .eq('id', runId)
     }
 
-    return NextResponse.json({ id: runId })
+    // Return the full run object with ok: true
+    return NextResponse.json({
+      ok: true,
+      run: {
+        id: run.id,
+        session_id: run.session_id,
+        created_at: run.created_at,
+        title: run.title,
+        audio_path: run.audio_path,
+        audio_seconds: run.audio_seconds,
+        transcript: run.transcript,
+        analysis_json: run.analysis_json,
+        status: run.status,
+        error_message: run.error_message,
+        rubric_id: run.rubric_id,
+        word_count: run.word_count || null,
+        words_per_minute: run.words_per_minute || null,
+      },
+      runId: run.id, // Also include runId for backwards compatibility
+    })
   } catch (error: any) {
-    console.error('[Unexpected Error] Upload failed:', {
+    console.error('[Create Run] Unexpected error:', {
       error,
       message: error?.message,
       stack: error?.stack,
@@ -269,6 +343,7 @@ export async function POST(request: NextRequest) {
     })
     return NextResponse.json(
       { 
+        ok: false,
         error: 'Internal server error',
         details: error?.message || 'An unexpected error occurred',
         fix: 'Please try again. If the problem persists, check server logs.',

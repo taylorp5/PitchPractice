@@ -43,38 +43,12 @@ export async function POST(
 ) {
   const startTime = Date.now()
   const { id } = params
-  
-  // Check for force parameter - use request.nextUrl if available, otherwise construct URL
-  let forceUsed = false
-  try {
-    if (request.nextUrl) {
-      forceUsed = request.nextUrl.searchParams.get('force') === '1'
-    } else {
-      const url = new URL(request.url)
-      forceUsed = url.searchParams.get('force') === '1'
-    }
-  } catch (err) {
-    console.warn('[Transcribe] Could not parse force parameter:', err)
-  }
-
-  console.log('TRANSCRIBE', { 
-    id, 
-    forceUsed, 
-    url: request.url,
-    nextUrl: request.nextUrl?.toString(),
-  })
 
   try {
-    console.log('[Transcribe] Starting transcription:', {
-      runId: id,
-      forceUsed,
-      timestamp: new Date().toISOString(),
-    })
-
-    // Fetch the run to get audio_path, status, and transcript
+    // Fetch the run to get current status and transcript length BEFORE doing any work
     const { data: run, error: fetchError } = await supabaseAdmin
       .from('pitch_runs')
-      .select('audio_path, status, transcript')
+      .select('id, audio_path, status, transcript')
       .eq('id', id)
       .single()
 
@@ -84,73 +58,28 @@ export async function POST(
         error: fetchError,
       })
       return NextResponse.json(
-        { ok: false, error: 'Run not found' },
+        { 
+          ok: false,
+          started: false,
+          error: 'Run not found' 
+        },
         { status: 404 }
       )
     }
 
-    const transcriptLen = run.transcript?.length || 0
+    // Log and return current state BEFORE doing any work
+    const transcriptLenBefore = run.transcript?.length || 0
     const statusBefore = run.status
     
-    console.log('TRANSCRIBE', { 
-      id, 
-      forceUsed, 
-      transcriptLen, 
-      status: statusBefore,
-      hasTranscript: !!run.transcript,
-      transcriptTrimmed: run.transcript?.trim().length || 0,
-    })
-
-    console.log('[Transcribe] Run details:', {
+    console.log('[Transcribe] Starting transcription - current state:', {
       runId: id,
-      status: statusBefore,
-      transcriptLength: transcriptLen,
-      audioPath: run.audio_path,
+      statusBefore,
+      transcriptLenBefore,
+      willOverwrite: transcriptLenBefore > 0,
     })
 
-    // Guard logic: if (!forceUsed && transcript && transcript.trim().length > 0) => block
-    // If forceUsed is true, NEVER block. Even if transcript exists.
-    const hasValidTranscript = run.transcript && run.transcript.trim().length > 0
-    const blocked = !forceUsed && hasValidTranscript
-    
-    if (blocked) {
-      console.log('[Transcribe] Already transcribed, blocking:', {
-        runId: id,
-        transcriptLength: run.transcript.length,
-        forceUsed,
-      })
-      return NextResponse.json(
-        { 
-          ok: false,
-          forceUsed: false,
-          blocked: true,
-          transcriptLen,
-          statusBefore,
-          statusAfter: statusBefore,
-          error: 'Run is already transcribed. Use ?force=1 to re-transcribe.',
-        },
-        { status: 400 }
-      )
-    }
-
-    console.log('[Transcribe] Proceeding with transcription:', {
-      runId: id,
-      forceUsed,
-      hasValidTranscript,
-      willOverwrite: hasValidTranscript && forceUsed,
-    })
-
-    // If status is not 'uploaded', reset it (allows retry)
-    if (run.status !== 'uploaded') {
-      console.log('[Transcribe] Resetting status to uploaded:', {
-        runId: id,
-        oldStatus: run.status,
-      })
-      await supabaseAdmin
-        .from('pitch_runs')
-        .update({ status: 'uploaded' })
-        .eq('id', id)
-    }
+    // Always proceed - no blocking behavior
+    // We will overwrite transcript, status, and clear error_message on success
 
     // Download audio from Supabase Storage using service role key
     console.log('[Transcribe] Downloading audio from storage:', {
@@ -183,8 +112,14 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
-          error: 'Failed to download audio file',
-          details: downloadError?.message || 'Unknown storage error',
+          started: true,
+          run: {
+            id,
+            statusBefore,
+            transcriptLenBefore,
+          },
+          forceUsed: false,
+          message: `Failed to download audio file: ${downloadError?.message || 'Unknown storage error'}`,
         },
         { status: 500 }
       )
@@ -283,12 +218,13 @@ export async function POST(
         return NextResponse.json(
           { 
             ok: false,
-            forceUsed,
-            blocked: false,
-            transcriptLen: 0,
-            statusBefore: run.status,
-            statusAfter: 'error',
-            error: 'Empty transcript returned',
+            started: true,
+            run: {
+              id,
+              statusBefore,
+              transcriptLenBefore,
+            },
+            forceUsed: false,
             message: 'OpenAI returned an empty transcript. The audio file may be corrupted or silent.',
           },
           { status: 500 }
@@ -319,15 +255,14 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
-          forceUsed,
-          blocked: false,
-          transcriptLen: run.transcript?.length || 0,
-          statusBefore: run.status,
-          statusAfter: 'error',
-          error: 'Transcription failed',
-          message: errorMessage,
-          statusCode,
-          details: errorDetails,
+          started: true,
+          run: {
+            id,
+            statusBefore,
+            transcriptLenBefore,
+          },
+          forceUsed: false,
+          message: `Transcription failed: ${errorMessage}`,
         },
         { status: statusCode >= 400 && statusCode < 600 ? statusCode : 500 }
       )
@@ -368,8 +303,14 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
-          error: 'Failed to update run with transcript',
-          details: updateError.message,
+          started: true,
+          run: {
+            id,
+            statusBefore,
+            transcriptLenBefore,
+          },
+          forceUsed: false,
+          message: `Failed to update run with transcript: ${updateError.message}`,
         },
         { status: 500 }
       )
@@ -378,36 +319,26 @@ export async function POST(
     const statusAfter = 'transcribed'
     const duration = Date.now() - startTime
     
-    console.log('TRANSCRIBE', { 
-      id, 
-      forceUsed, 
-      blocked: false,
-      transcriptLen: transcript.length, 
-      statusBefore,
-      statusAfter,
-    })
-    
     console.log('[Transcribe] Success:', {
       runId: id,
       transcriptLength: transcript.length,
       wordCount,
       wpm,
       durationMs: duration,
-      forceUsed,
+      statusBefore,
+      statusAfter,
     })
 
     return NextResponse.json({
       ok: true,
-      forceUsed,
-      blocked: false,
-      transcriptLen: transcript.length,
-      statusBefore,
-      statusAfter,
-      bytes,
-      mime: mimeType,
-      word_count: wordCount,
-      wpm,
-      audio_seconds: audioSeconds,
+      started: true,
+      run: {
+        id,
+        statusBefore,
+        transcriptLenBefore,
+      },
+      forceUsed: false,
+      message: 'Transcription completed successfully',
     })
   } catch (error: any) {
     const duration = Date.now() - startTime

@@ -73,36 +73,6 @@ export default function RunPage() {
     }
   }
   
-  const handleResetTranscription = async () => {
-    if (!runId || isTranscribing) return
-
-    setIsTranscribing(true)
-    setError(null)
-
-    try {
-      // Reset transcription
-      const resetRes = await fetch(`/api/runs/${runId}/reset-transcription`, {
-        method: 'POST',
-      })
-
-      if (!resetRes.ok) {
-        const errorData = await resetRes.json()
-        throw new Error(errorData.error || 'Failed to reset transcription')
-      }
-
-      // Refresh run data
-      await fetchRun()
-      
-      // Auto-start transcription
-      await handleTranscribe()
-    } catch (err) {
-      console.error('Reset transcription error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to reset transcription')
-      await fetchRun()
-    } finally {
-      setIsTranscribing(false)
-    }
-  }
 
   useEffect(() => {
     fetchRun()
@@ -111,8 +81,8 @@ export default function RunPage() {
   // Auto-start transcription if status is 'uploaded' and no transcript exists
   useEffect(() => {
     if (run && run.status === 'uploaded' && !run.transcript && !isTranscribing) {
-      // Use force=1 for auto-transcribe to bypass any guards
-      handleTranscribe(true)
+      // Auto-transcribe (will overwrite if already transcribed)
+      handleTranscribe()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run?.status, run?.transcript, runId])
@@ -125,7 +95,7 @@ export default function RunPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run?.status, runId])
 
-  const handleTranscribe = async (force: boolean = false) => {
+  const handleTranscribe = async () => {
     if (!runId || isTranscribing) return
 
     setIsTranscribing(true)
@@ -133,10 +103,7 @@ export default function RunPage() {
     setTranscribeDebug('')
 
     try {
-      // Build exact URL - ensure force parameter is included
-      const url = force 
-        ? `/api/runs/${runId}/transcribe?force=1`
-        : `/api/runs/${runId}/transcribe`
+      const url = `/api/runs/${runId}/transcribe`
       
       // Log and display the exact URL
       const debugMsg = `Calling: ${url}`
@@ -157,20 +124,12 @@ export default function RunPage() {
       if (!response.ok) {
         // Show exact error message from API
         const errorMsg = responseData.error || responseData.message || 'Transcription failed'
-        const details = responseData.details ? `: ${responseData.details}` : ''
-        const statusCode = responseData.statusCode ? ` (Status: ${responseData.statusCode})` : ''
-        
-        // If error is about already transcribed and we didn't use force, suggest force option
-        if (errorMsg.includes('already transcribed') && !force) {
-          throw new Error(`${errorMsg}${details}${statusCode}\n\n💡 Tip: Use "Force Transcribe" button to re-transcribe.`)
-        }
-        
-        throw new Error(`${errorMsg}${details}${statusCode}`)
+        throw new Error(errorMsg)
       }
 
       // Check response format
       if (!responseData.ok) {
-        throw new Error(responseData.error || responseData.message || 'Transcription failed')
+        throw new Error(responseData.message || responseData.error || 'Transcription failed')
       }
 
       // Refresh run data to get updated transcript and timing
@@ -186,7 +145,7 @@ export default function RunPage() {
     }
   }
   
-  const handleResetAndTranscribe = async () => {
+  const handleReset = async () => {
     if (!runId || isTranscribing) return
 
     setIsTranscribing(true)
@@ -194,22 +153,31 @@ export default function RunPage() {
     setTranscribeDebug('')
 
     try {
-      // First reset
-      setTranscribeDebug('Calling: POST /api/runs/' + runId + '/reset-transcription')
-      const resetRes = await fetch(`/api/runs/${runId}/reset-transcription`, {
+      const url = `/api/runs/${runId}/reset`
+      const debugMsg = `Calling: ${url}`
+      console.log('[Client] Reset request:', debugMsg)
+      setTranscribeDebug(debugMsg)
+
+      const response = await fetch(url, {
         method: 'POST',
       })
 
-      if (!resetRes.ok) {
-        const errorData = await resetRes.json()
-        throw new Error(errorData.error || 'Failed to reset transcription')
+      const responseData = await response.json()
+      
+      const responseDebug = `Response: ${JSON.stringify(responseData, null, 2)}`
+      console.log('[Client] Reset response:', responseData)
+      setTranscribeDebug(prev => prev + '\n\n' + responseDebug)
+
+      if (!response.ok) {
+        const errorMsg = responseData.error || responseData.message || 'Reset failed'
+        throw new Error(errorMsg)
       }
 
-      // Then transcribe with force
-      await handleTranscribe(true)
+      // Refresh run data
+      await fetchRun()
     } catch (err) {
-      console.error('Reset & Transcribe error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to reset and transcribe')
+      console.error('Reset error:', err)
+      setError(err instanceof Error ? err.message : 'Failed to reset')
       await fetchRun()
     } finally {
       setIsTranscribing(false)
@@ -695,7 +663,7 @@ export default function RunPage() {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleTranscribe(false)}
+                    onClick={handleTranscribe}
                     disabled={isTranscribing}
                     className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                   >
@@ -705,21 +673,21 @@ export default function RunPage() {
                         Transcribing...
                       </>
                     ) : (
-                      '🎤 Transcribe'
+                      '🎤 Transcribe (overwrite)'
                     )}
                   </button>
                   <button
-                    onClick={() => handleTranscribe(true)}
+                    onClick={handleReset}
                     disabled={isTranscribing}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     {isTranscribing ? (
                       <>
                         <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Transcribing...
+                        Resetting...
                       </>
                     ) : (
-                      '⚡ Force'
+                      '🔄 Reset'
                     )}
                   </button>
                 </div>
@@ -743,7 +711,7 @@ export default function RunPage() {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleTranscribe(true)}
+                    onClick={handleTranscribe}
                     disabled={isTranscribing}
                     className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                   >
@@ -753,13 +721,13 @@ export default function RunPage() {
                         Transcribing...
                       </>
                     ) : (
-                      '⚡ Force Transcribe'
+                      '🎤 Transcribe (overwrite)'
                     )}
                   </button>
                   <button
-                    onClick={handleResetAndTranscribe}
+                    onClick={handleReset}
                     disabled={isTranscribing}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     {isTranscribing ? (
                       <>
@@ -767,7 +735,7 @@ export default function RunPage() {
                         Resetting...
                       </>
                     ) : (
-                      '🔄 Reset & Transcribe'
+                      '🔄 Reset'
                     )}
                   </button>
                 </div>
@@ -797,7 +765,7 @@ export default function RunPage() {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => handleTranscribe(true)}
+                    onClick={handleTranscribe}
                     disabled={isTranscribing}
                     className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                   >
@@ -807,13 +775,13 @@ export default function RunPage() {
                         Transcribing...
                       </>
                     ) : (
-                      '⚡ Force Transcribe'
+                      '🎤 Transcribe (overwrite)'
                     )}
                   </button>
                   <button
-                    onClick={handleResetAndTranscribe}
+                    onClick={handleReset}
                     disabled={isTranscribing}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     {isTranscribing ? (
                       <>
@@ -821,21 +789,7 @@ export default function RunPage() {
                         Resetting...
                       </>
                     ) : (
-                      '🔄 Reset & Transcribe'
-                    )}
-                  </button>
-                  <button
-                    onClick={handleResetTranscription}
-                    disabled={isTranscribing}
-                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {isTranscribing ? (
-                      <>
-                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Resetting...
-                      </>
-                    ) : (
-                      '🔄 Reset Only'
+                      '🔄 Reset'
                     )}
                   </button>
                 </div>

@@ -36,6 +36,7 @@ interface Run {
   analysis_json: any
   audio_url: string | null
   audio_seconds: number | null
+  duration_ms: number | null
   word_count: number | null
   words_per_minute: number | null
 }
@@ -85,7 +86,11 @@ export default function TryPage() {
   const [error, setError] = useState<string | null>(null)
   const [run, setRun] = useState<Run | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isGettingFeedback, setIsGettingFeedback] = useState(false) // UI shows "Get feedback" / "Generating feedback..."
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null)
+  const [pausedTotalMs, setPausedTotalMs] = useState(0)
+  const [pauseStartTime, setPauseStartTime] = useState<number | null>(null)
+  const [durationMs, setDurationMs] = useState<number | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [rubrics, setRubrics] = useState<any[]>([])
@@ -116,7 +121,7 @@ export default function TryPage() {
     // Reset any stale state on mount
     setRun(null)
     setIsTranscribing(false)
-    setIsAnalyzing(false)
+    setIsGettingFeedback(false)
     setError(null)
 
     fetch('/api/rubrics')
@@ -319,11 +324,33 @@ export default function TryPage() {
     }
   }
 
-  // Format time as MM:SS
+  // Format time as MM:SS or SS (if < 60 seconds)
   const formatTime = (seconds: number) => {
+    if (seconds < 60) {
+      return `0:${Math.floor(seconds).toString().padStart(2, '0')}`
+    }
     const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
+    const secs = Math.floor(seconds % 60)
     return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // Calculate WPM from transcript and duration
+  const calculateWPM = (transcript: string | null, durationSeconds: number | null): number | null => {
+    if (!transcript || !durationSeconds || durationSeconds < 3) {
+      return null // Too short to estimate
+    }
+    const words = transcript.trim().split(/\s+/).filter(w => w.length > 0).length
+    const wpm = Math.round(words / (durationSeconds / 60))
+    return wpm
+  }
+
+  // Get WPM interpretation
+  const getWPMInterpretation = (wpm: number | null): string => {
+    if (wpm === null) return 'Too short to estimate'
+    if (wpm < 110) return 'Slow/clear'
+    if (wpm <= 160) return 'Normal'
+    if (wpm <= 190) return 'Fast'
+    return 'Very fast'
   }
 
   // Start recording (using working /app implementation)
@@ -414,6 +441,32 @@ export default function TryPage() {
       mediaRecorder.onstop = async () => {
         stopMicLevelMeter()
         
+        // Calculate accurate duration_ms
+        const stopTime = Date.now()
+        let finalPausedTotal = pausedTotalMs
+        if (pauseStartTime) {
+          // If still paused, add the current pause duration
+          finalPausedTotal += stopTime - pauseStartTime
+        }
+        const calculatedDurationMs = recordingStartedAt 
+          ? stopTime - recordingStartedAt - finalPausedTotal
+          : null
+        
+        if (DEBUG) {
+          console.log('[Try] Recording stopped - duration calculation:', {
+            recordingStartedAt,
+            stopTime,
+            pausedTotalMs: finalPausedTotal,
+            calculatedDurationMs,
+            calculatedDurationSeconds: calculatedDurationMs ? (calculatedDurationMs / 1000).toFixed(2) : null,
+          })
+        }
+        
+        // Store duration_ms in state immediately
+        if (calculatedDurationMs !== null && calculatedDurationMs > 0) {
+          setDurationMs(calculatedDurationMs)
+        }
+        
         const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
         const actualMimeType = mediaRecorder.mimeType || mimeType
         
@@ -423,6 +476,7 @@ export default function TryPage() {
             totalSizeKB: (totalSize / 1024).toFixed(2),
             chunkSizes: chunkSizesRef.current,
             mimeType: actualMimeType,
+            durationMs: calculatedDurationMs,
           })
         }
 
@@ -445,8 +499,11 @@ export default function TryPage() {
           type: actualMimeType
         })
         
-        // Store mimeType for upload
+        // Store mimeType and duration_ms for upload
         ;(audioBlob as any).__mimeType = actualMimeType
+        if (calculatedDurationMs !== null) {
+          ;(audioBlob as any).__durationMs = calculatedDurationMs
+        }
         
         // Upload audio
         await uploadAudio(audioBlob, 'recording.webm')
@@ -468,6 +525,12 @@ export default function TryPage() {
       setIsSilent(false)
       silenceStartRef.current = null
       setRecordingTime(0)
+      
+      // Track recording start time for accurate duration calculation
+      const startTime = Date.now()
+      setRecordingStartedAt(startTime)
+      setPausedTotalMs(0)
+      setPauseStartTime(null)
 
       // Start timer
       timerIntervalRef.current = setInterval(() => {
@@ -485,26 +548,31 @@ export default function TryPage() {
     if (mediaRecorderRef.current && isRecording && !isPaused) {
       mediaRecorderRef.current.pause()
       setIsPaused(true)
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current)
-      }
+      setPauseStartTime(Date.now())
     }
   }
 
   // Resume recording
   const resumeRecording = () => {
-    if (mediaRecorderRef.current && isPaused) {
+    if (mediaRecorderRef.current && isPaused && pauseStartTime) {
       mediaRecorderRef.current.resume()
+      const pauseDuration = Date.now() - pauseStartTime
+      setPausedTotalMs(prev => prev + pauseDuration)
+      setPauseStartTime(null)
       setIsPaused(false)
-      timerIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1)
-      }, 1000)
     }
   }
 
   // Stop recording (from working /app implementation)
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
+      // If paused, add current pause duration before stopping
+      if (isPaused && pauseStartTime) {
+        const pauseDuration = Date.now() - pauseStartTime
+        setPausedTotalMs(prev => prev + pauseDuration)
+        setPauseStartTime(null)
+      }
+      
       mediaRecorderRef.current.stop()
       setIsRecording(false)
       setIsPaused(false)
@@ -512,14 +580,59 @@ export default function TryPage() {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
       }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop())
-      }
+      // Note: Don't stop stream here - let onstop callback handle it after duration calculation
     }
+  }
+
+  // Get duration from audio file using HTMLAudioElement
+  const getAudioDuration = (file: File): Promise<number | null> => {
+    return new Promise((resolve) => {
+      const audio = document.createElement('audio')
+      const url = URL.createObjectURL(file)
+      audio.src = url
+      
+      audio.addEventListener('loadedmetadata', () => {
+        const duration = audio.duration
+        URL.revokeObjectURL(url)
+        if (isFinite(duration) && duration > 0) {
+          resolve(Math.round(duration * 1000)) // Return in milliseconds
+        } else {
+          resolve(null)
+        }
+      })
+      
+      audio.addEventListener('error', () => {
+        URL.revokeObjectURL(url)
+        resolve(null)
+      })
+      
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        URL.revokeObjectURL(url)
+        resolve(null)
+      }, 5000)
+    })
   }
 
   // Handle file upload
   const handleFileUpload = async (file: File) => {
+    // Try to get duration from file metadata
+    const fileDurationMs = await getAudioDuration(file)
+    if (fileDurationMs !== null && fileDurationMs > 0) {
+      setDurationMs(fileDurationMs)
+      if (DEBUG) {
+        console.log('[Try] File duration from metadata:', {
+          fileName: file.name,
+          durationMs: fileDurationMs,
+          durationSeconds: (fileDurationMs / 1000).toFixed(2),
+        })
+      }
+    } else {
+      if (DEBUG) {
+        console.warn('[Try] Could not get duration from file metadata:', file.name)
+      }
+    }
+    
     await uploadAudio(file, file.name)
   }
 
@@ -536,11 +649,20 @@ export default function TryPage() {
         return
       }
 
+      // Get duration_ms from blob if available (from recording)
+      const blobDurationMs = (audioBlob as any).__durationMs || null
+      const uploadDurationMs = blobDurationMs || durationMs || null
+      const durationSeconds = uploadDurationMs ? uploadDurationMs / 1000 : null
+
       if (DEBUG) {
         console.log('[Try] Uploading audio:', {
           fileName,
           size: audioBlob.size,
           type: audioBlob.type,
+          durationMs: uploadDurationMs,
+          durationSeconds,
+          fromBlob: !!blobDurationMs,
+          fromState: !!durationMs,
         })
       }
 
@@ -550,6 +672,9 @@ export default function TryPage() {
       formData.append('rubric_id', selectedRubricId)
       if (selectedPrompt) {
         formData.append('title', PROMPTS.find(p => p.id === selectedPrompt)?.title || '')
+      }
+      if (uploadDurationMs !== null && uploadDurationMs > 0) {
+        formData.append('duration_ms', uploadDurationMs.toString())
       }
 
       const response = await fetch('/api/runs/create', {
@@ -654,11 +779,11 @@ export default function TryPage() {
       // Fetch updated run data
       await fetchRun(runId)
       
-      // Auto-start analysis if transcript exists
+      // Auto-start feedback generation if transcript exists
       if (data.transcript && data.transcript.length > 0) {
         setIsTranscribing(false)
-        setIsAnalyzing(true)
-        await analyzeRun(runId)
+        setIsGettingFeedback(true) // UI will show "Generating feedback..."
+        await getFeedback(runId)
       } else {
         setIsTranscribing(false)
       }
@@ -668,28 +793,40 @@ export default function TryPage() {
     }
   }
 
-  // Analyze run
-  const analyzeRun = async (runId: string) => {
+  // Get feedback (analysis)
+  const getFeedback = async (runId: string) => {
     if (!runId) {
-      setError('Cannot analyze: no run ID')
-      setIsAnalyzing(false)
+      setError('Cannot get feedback: no run ID')
+      setIsGettingFeedback(false)
+      return
+    }
+
+    if (!selectedRubricId) {
+      setError('Cannot get feedback: no rubric selected')
+      setIsGettingFeedback(false)
       return
     }
 
     try {
       if (DEBUG) {
-        console.log('[Try] Starting analysis:', { runId })
+        console.log('[Try] Starting feedback generation:', { runId, rubricId: selectedRubricId })
       }
 
       const response = await fetch(`/api/runs/${runId}/analyze`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          rubric_id: selectedRubricId,
+        }),
       })
 
       if (!response.ok) {
         const errorData = await response.json()
         
         if (DEBUG) {
-          console.error('[Try] Analysis failed:', {
+          console.error('[Try] Feedback generation failed:', {
             status: response.status,
             statusText: response.statusText,
             errorData,
@@ -698,21 +835,21 @@ export default function TryPage() {
         }
         
         // Show detailed error message
-        const errorMsg = errorData.error || errorData.message || 'Analysis failed'
+        const errorMsg = errorData.error || errorData.message || 'Feedback generation failed'
         const details = errorData.details ? ` Details: ${errorData.details}` : ''
         const fieldsChecked = errorData.fieldsChecked ? ` Fields checked: ${errorData.fieldsChecked.join(', ')}` : ''
         throw new Error(`${errorMsg}${details}${fieldsChecked}`)
       }
 
       if (DEBUG) {
-        console.log('[Try] Analysis complete:', { runId })
+        console.log('[Try] Feedback generation complete:', { runId })
       }
 
       await fetchRun(runId)
-      setIsAnalyzing(false)
+      setIsGettingFeedback(false)
     } catch (err: any) {
-      setError(err.message || 'Analysis failed')
-      setIsAnalyzing(false)
+      setError(err.message || 'Feedback generation failed')
+      setIsGettingFeedback(false)
     }
   }
 
@@ -745,9 +882,9 @@ export default function TryPage() {
     }
   }
 
-  // Poll for run updates during transcription/analysis
+  // Poll for run updates during transcription/feedback generation
   useEffect(() => {
-    if (!run?.id || (!isTranscribing && !isAnalyzing)) return
+    if (!run?.id || (!isTranscribing && !isGettingFeedback)) return
 
     const runId = run.id // Capture run.id to avoid stale closure
     const interval = setInterval(() => {
@@ -757,7 +894,7 @@ export default function TryPage() {
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [run?.id, isTranscribing, isAnalyzing])
+  }, [run?.id, isTranscribing, isGettingFeedback])
 
   // Handle drag and drop
   const handleDrop = (e: React.DragEvent) => {
@@ -781,7 +918,7 @@ export default function TryPage() {
     setIsPaused(false)
     setIsUploading(false)
     setIsTranscribing(false)
-    setIsAnalyzing(false)
+    setIsGettingFeedback(false)
     setError(null)
     setMicLevel(0)
     audioChunksRef.current = []
@@ -1089,10 +1226,28 @@ export default function TryPage() {
                       </div>
                     )}
 
-                    {isAnalyzing && (
+                    {isGettingFeedback && (
                       <div className="text-center py-4">
-                        <LoadingSpinner size="md" text="Analyzing..." />
+                        <LoadingSpinner size="md" text="Generating feedback..." />
                       </div>
+                    )}
+
+                    {/* Get feedback button (shown when transcript exists but no feedback yet) */}
+                    {run && run.transcript && !run.analysis_json && !isTranscribing && !isGettingFeedback && (
+                      <Button
+                        variant="primary"
+                        size="lg"
+                        onClick={() => {
+                          if (run.id) {
+                            setIsGettingFeedback(true)
+                            getFeedback(run.id)
+                          }
+                        }}
+                        className="w-full"
+                        disabled={!selectedRubricId}
+                      >
+                        Get feedback
+                      </Button>
                     )}
                   </div>
                 ) : (
@@ -1164,35 +1319,53 @@ export default function TryPage() {
             ) : (
               <>
                 {/* Metrics */}
-                {run.word_count && (
+                {run.transcript && (
                   <Card className="p-4 bg-[#121826] border-[#22283A]">
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div>
                         <p className="text-xs text-[#6B7280] mb-1">Duration</p>
                         <p className="text-lg font-bold text-[#E6E8EB]">
-                          {run.audio_seconds ? formatTime(run.audio_seconds) : '—'}
+                          {(() => {
+                            // Use duration_ms as source of truth, fallback to audio_seconds, then state
+                            const durationSec = run.duration_ms 
+                              ? run.duration_ms / 1000 
+                              : (run.audio_seconds || (durationMs ? durationMs / 1000 : null))
+                            return durationSec ? formatTime(durationSec) : '—'
+                          })()}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#6B7280] mb-1">Words</p>
-                        <p className="text-lg font-bold text-[#E6E8EB]">{run.word_count}</p>
+                        <p className="text-lg font-bold text-[#E6E8EB]">
+                          {run.word_count || (run.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : null) || '—'}
+                        </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#6B7280] mb-1">WPM</p>
                         <p className="text-lg font-bold text-[#E6E8EB]">
-                          {run.words_per_minute || '—'}
+                          {(() => {
+                            // Use duration_ms as source of truth for WPM calculation
+                            const durationSec = run.duration_ms 
+                              ? run.duration_ms / 1000 
+                              : (run.audio_seconds || (durationMs ? durationMs / 1000 : null))
+                            const wpm = run.words_per_minute || calculateWPM(run.transcript, durationSec)
+                            return wpm !== null ? wpm : '—'
+                          })()}
                         </p>
                       </div>
                     </div>
-                    {run.words_per_minute && (
-                      <p className="text-xs text-[#9AA4B2] text-center mt-3">
-                        {run.words_per_minute < 150
-                          ? 'Good pacing for clarity'
-                          : run.words_per_minute < 180
-                          ? 'Slightly fast, consider slowing down'
-                          : 'Too fast, slow down for better comprehension'}
-                      </p>
-                    )}
+                    {(() => {
+                      // Use duration_ms as source of truth for WPM interpretation
+                      const durationSec = run.duration_ms 
+                        ? run.duration_ms / 1000 
+                        : (run.audio_seconds || (durationMs ? durationMs / 1000 : null))
+                      const wpm = run.words_per_minute || calculateWPM(run.transcript, durationSec)
+                      return wpm !== null ? (
+                        <p className="text-xs text-[#9AA4B2] text-center mt-3">
+                          {getWPMInterpretation(wpm)}
+                        </p>
+                      ) : null
+                    })()}
                   </Card>
                 )}
 
@@ -1251,10 +1424,10 @@ export default function TryPage() {
                   </Card>
                 )}
 
-                {/* Analysis Summary */}
+                {/* Feedback Summary */}
                 {run.analysis_json && (
                   <Card className="p-6 bg-[#121826] border-[#22283A]">
-                    <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Analysis Summary</h3>
+                    <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Feedback Summary</h3>
                     <div className="space-y-4">
                       {run.analysis_json.summary?.top_strengths && run.analysis_json.summary.top_strengths.length > 0 && (
                         <div className="p-4 rounded-lg border bg-[#0B0F14] border-[#22C55E]/30">
@@ -1313,15 +1486,33 @@ export default function TryPage() {
                     <div>DB Status:</div>
                     <div>{run?.status || 'none'}</div>
                     <div>UI Status:</div>
-                    <div>{isRecording ? 'recording' : isUploading ? 'uploading' : isTranscribing ? 'transcribing' : isAnalyzing ? 'analyzing' : run ? 'ready' : 'idle'}</div>
+                    <div>{isRecording ? 'recording' : isUploading ? 'uploading' : isTranscribing ? 'transcribing' : isGettingFeedback ? 'getting feedback' : run ? 'ready' : 'idle'}</div>
                     <div>Is Recording:</div>
                     <div>{isRecording ? 'yes' : 'no'}</div>
                     <div>Is Uploading:</div>
                     <div>{isUploading ? 'yes' : 'no'}</div>
                     <div>Is Transcribing:</div>
                     <div>{isTranscribing ? 'yes' : 'no'}</div>
-                    <div>Is Analyzing:</div>
-                    <div>{isAnalyzing ? 'yes' : 'no'}</div>
+                    <div>Is Getting Feedback:</div>
+                    <div>{isGettingFeedback ? 'yes' : 'no'}</div>
+                    <div>Duration (ms):</div>
+                    <div>{durationMs !== null ? durationMs : run?.duration_ms !== null ? run.duration_ms : '—'}</div>
+                    <div>Duration (DB):</div>
+                    <div>{run?.duration_ms !== null ? `${run.duration_ms}ms (${(run.duration_ms / 1000).toFixed(2)}s)` : '—'}</div>
+                    <div>Words (computed):</div>
+                    <div>{run?.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : '—'}</div>
+                    <div>WPM (computed):</div>
+                    <div>{(() => {
+                      const durationSec = run?.duration_ms ? run.duration_ms / 1000 : (run?.audio_seconds || null)
+                      const wpm = calculateWPM(run?.transcript || null, durationSec)
+                      return wpm !== null ? `${wpm} (${getWPMInterpretation(wpm)})` : '—'
+                    })()}</div>
+                    <div>Feedback Status:</div>
+                    <div>{run?.analysis_json ? 'ready' : isGettingFeedback ? 'generating' : run?.transcript ? 'pending' : 'none'}</div>
+                    <div>Transcription Start:</div>
+                    <div>{isTranscribing ? 'in progress' : run?.transcript ? 'completed' : 'not started'}</div>
+                    <div>Transcription End:</div>
+                    <div>{run?.transcript ? 'completed' : 'not completed'}</div>
                     <div>Has Stream:</div>
                     <div>{streamRef.current ? 'yes' : 'no'}</div>
                     <div>Meter Visible:</div>

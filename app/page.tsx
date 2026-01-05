@@ -420,7 +420,7 @@ export default function LandingPage() {
             transition={{ duration: 0.6 }}
             className="mb-12 text-center"
           >
-            <h2 className="text-4xl font-bold text-[#E6E8EB] mb-4">Here's what we analyze for every pitch</h2>
+            <h2 className="text-4xl font-bold text-[#E6E8EB] mb-4">Here's what feedback you'll get for every pitch</h2>
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-6">

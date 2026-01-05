@@ -37,6 +37,7 @@ interface Run {
   title: string | null
   audio_path: string
   audio_seconds: number | null
+  duration_ms: number | null
   transcript: string | null
   analysis_json: any
   status: string
@@ -62,7 +63,7 @@ export default function RunPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isGettingFeedback, setIsGettingFeedback] = useState(false)
   const [copied, setCopied] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [showDebug, setShowDebug] = useState(false)
@@ -228,10 +229,10 @@ export default function RunPage() {
     }
   }
 
-  const handleAnalyze = async () => {
+  const handleGetFeedback = async () => {
     if (!routeRunId) return
 
-    setIsAnalyzing(true)
+    setIsGettingFeedback(true)
     setError(null)
     setLastAction(null)
 
@@ -239,33 +240,39 @@ export default function RunPage() {
     try {
       const res = await fetch(url, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          rubric_id: run?.rubrics?.id || null,
+        }),
         cache: 'no-store',
       })
 
       if (!res.ok) {
         await logFetchError(url, res)
         const errorData = await res.json()
-        const errorMsg = errorData.message || errorData.error || 'Analysis failed'
+        const errorMsg = errorData.message || errorData.error || 'Feedback generation failed'
         setError(errorMsg)
-        setLastAction(`Analysis failed: ${errorMsg}`)
+        setLastAction(`Feedback generation failed: ${errorMsg}`)
         return
       }
 
       const responseData = await res.json()
       if (responseData.ok && responseData.run) {
         setRun(responseData.run)
-        setLastAction('Analysis completed successfully')
+        setLastAction('Feedback generated successfully')
       } else {
-        setError(responseData.message || 'Analysis failed')
-        setLastAction(`Analysis failed: ${responseData.message || 'Unknown error'}`)
+        setError(responseData.message || 'Feedback generation failed')
+        setLastAction(`Feedback generation failed: ${responseData.message || 'Unknown error'}`)
       }
     } catch (err: any) {
-      console.error('Analysis error:', err)
-      const errorMsg = err.message || 'Failed to analyze pitch'
+      console.error('Feedback generation error:', err)
+      const errorMsg = err.message || 'Failed to generate feedback'
       setError(errorMsg)
-      setLastAction(`Analysis failed: ${errorMsg}`)
+      setLastAction(`Feedback generation failed: ${errorMsg}`)
     } finally {
-      setIsAnalyzing(false)
+      setIsGettingFeedback(false)
       await fetchRun()
     }
   }
@@ -273,8 +280,9 @@ export default function RunPage() {
   const copyShareSummary = () => {
     if (!run) return
 
-    const duration = run.audio_seconds
-      ? `${Math.floor(run.audio_seconds / 60)}:${String(Math.floor(run.audio_seconds % 60)).padStart(2, '0')}`
+    const durationSeconds = run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds
+    const duration = durationSeconds
+      ? `${Math.floor(durationSeconds / 60)}:${String(Math.floor(durationSeconds % 60)).padStart(2, '0')}`
       : 'N/A'
     const wpm = run.words_per_minute ? `${run.words_per_minute} WPM` : 'N/A'
 
@@ -319,6 +327,9 @@ export default function RunPage() {
 
   const formatDuration = (seconds: number | null): string => {
     if (seconds === null || seconds === undefined) return '—'
+    if (seconds < 60) {
+      return `0:${Math.floor(seconds).toString().padStart(2, '0')}`
+    }
     return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
   }
 
@@ -636,6 +647,27 @@ export default function RunPage() {
                   </p>
                 </div>
                 <div className="space-y-2 pt-4 border-t border-[#22283A]">
+                  {run.transcript && !run.analysis_json && (
+                    <Button
+                      onClick={handleGetFeedback}
+                      variant="primary"
+                      size="sm"
+                      className="w-full"
+                      disabled={isGettingFeedback || !run.rubrics}
+                      isLoading={isGettingFeedback}
+                    >
+                      {isGettingFeedback ? (
+                        <>
+                          <LoadingSpinner size="sm" />
+                          Generating feedback...
+                        </>
+                      ) : (
+                        <>
+                          Get feedback
+                        </>
+                      )}
+                    </Button>
+                  )}
                   <Button
                     onClick={handleTranscribe}
                     variant="primary"
@@ -679,7 +711,7 @@ export default function RunPage() {
               <Card>
                 <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Metrics</h3>
                 <div className="flex flex-wrap gap-3">
-                  <StatPill label="Duration" value={formatDuration(run.audio_seconds)} />
+                  <StatPill label="Duration" value={formatDuration(run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds)} />
                   <StatPill label="Word Count" value={run.word_count !== null && run.word_count !== undefined ? run.word_count.toLocaleString() : null} />
                   <StatPill label="WPM" value={run.words_per_minute !== null && run.words_per_minute !== undefined ? run.words_per_minute : null} />
                   {run.rubrics?.target_duration_seconds && (

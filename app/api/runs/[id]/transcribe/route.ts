@@ -48,10 +48,10 @@ export async function POST(
   const { id } = params
 
   try {
-    // Fetch the run to get current status and transcript length BEFORE doing any work
+    // Fetch the run to get current status, transcript length, and duration_ms BEFORE doing any work
     const { data: run, error: fetchError } = await getSupabaseAdmin()
       .from('pitch_runs')
-      .select('id, audio_path, status, transcript')
+      .select('id, audio_path, status, transcript, duration_ms, audio_seconds')
       .eq('id', id)
       .single()
 
@@ -167,14 +167,37 @@ export async function POST(
       bytes,
     })
 
-    // Get audio duration estimate
+    // Use duration_ms from database as source of truth, fallback to audio_seconds, then estimate
     let audioSeconds: number | null = null
-    try {
-      const fileSizeKB = bytes / 1024
-      // Rough estimate: ~1KB per second for compressed speech audio
-      audioSeconds = Math.round(fileSizeKB / 1.0)
-    } catch (error) {
-      console.warn('[Transcribe] Could not estimate audio duration:', error)
+    if (run.duration_ms !== null && run.duration_ms > 0) {
+      // Use duration_ms as source of truth
+      audioSeconds = run.duration_ms / 1000
+      console.log('[Transcribe] Using duration_ms from database:', {
+        runId: id,
+        durationMs: run.duration_ms,
+        audioSeconds,
+      })
+    } else if (run.audio_seconds !== null && run.audio_seconds > 0) {
+      // Fallback to audio_seconds if duration_ms not available
+      audioSeconds = run.audio_seconds
+      console.log('[Transcribe] Using audio_seconds from database:', {
+        runId: id,
+        audioSeconds,
+      })
+    } else {
+      // Last resort: estimate from file size (not reliable)
+      try {
+        const fileSizeKB = bytes / 1024
+        // Rough estimate: ~1KB per second for compressed speech audio
+        audioSeconds = Math.round(fileSizeKB / 1.0)
+        console.warn('[Transcribe] Estimating duration from file size (unreliable):', {
+          runId: id,
+          fileSizeKB,
+          estimatedSeconds: audioSeconds,
+        })
+      } catch (error) {
+        console.warn('[Transcribe] Could not estimate audio duration:', error)
+      }
     }
 
     // Transcribe with OpenAI Whisper
@@ -287,7 +310,8 @@ export async function POST(
       .from('pitch_runs')
       .update({
         transcript,
-        audio_seconds: audioSeconds,
+        audio_seconds: audioSeconds, // Keep for backward compatibility
+        // Preserve duration_ms if it exists (don't overwrite with calculated value)
         word_count: wordCount,
         words_per_minute: wpm,
         status: 'transcribed', // Status changes ONLY after successful save

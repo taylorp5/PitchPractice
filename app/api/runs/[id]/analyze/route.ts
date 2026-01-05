@@ -161,13 +161,27 @@ export async function POST(
   try {
     const { id } = params
 
+    // Parse request body for rubric_id (if provided)
+    // Note: We'll use the run's rubric_id from the database, but this allows
+    // the client to specify a different rubric_id if needed
+    let requestRubricId: string | null = null
+    try {
+      const body = await request.json().catch(() => ({}))
+      requestRubricId = body.rubric_id || null
+      if (requestRubricId && DEBUG) {
+        console.log('[Analyze] Request specified rubric_id:', requestRubricId)
+      }
+    } catch (e) {
+      // Request body is optional, continue with run's rubric_id
+    }
+
     // Set status to 'analyzing' immediately
     await getSupabaseAdmin()
       .from('pitch_runs')
       .update({ status: 'analyzing' })
       .eq('id', id)
 
-    // Fetch the run with rubric
+    // Fetch the run with rubric (include duration_ms)
     const { data: run, error: fetchError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .select('*, rubrics(*)')
@@ -273,13 +287,16 @@ export async function POST(
       )
     }
 
+    // Use duration_ms as source of truth, fallback to audio_seconds
+    const audioSeconds = run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds
+
     // Build the analysis prompt
     const prompt = buildAnalysisPrompt(
       run.transcript,
       criteria,
       rubric.target_duration_seconds,
       rubric.max_duration_seconds,
-      run.audio_seconds,
+      audioSeconds,
       run.words_per_minute
     )
 

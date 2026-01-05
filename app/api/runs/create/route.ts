@@ -17,6 +17,9 @@ export async function POST(request: NextRequest) {
     const rubricId = formData.get('rubric_id') as string
     const sessionId = formData.get('session_id') as string
     const title = formData.get('title') as string | null
+    const durationMsStr = formData.get('duration_ms') as string | null
+    const durationMs = durationMsStr ? parseInt(durationMsStr, 10) : null
+    const audioSeconds = durationMs ? durationMs / 1000 : null
 
     if (DEBUG) {
       console.log('[Create Run] Request data:', {
@@ -77,8 +80,10 @@ export async function POST(request: NextRequest) {
         audio_path: audioPath,
         status: 'uploaded',
         rubric_id: rubricId,
+        audio_seconds: audioSeconds, // Set from duration_ms if provided
+        duration_ms: durationMs, // Store duration_ms as source of truth
       })
-      .select('id, session_id, created_at, title, audio_path, audio_seconds, transcript, analysis_json, status, error_message, rubric_id, word_count, words_per_minute')
+      .select('id, session_id, created_at, title, audio_path, audio_seconds, duration_ms, transcript, analysis_json, status, error_message, rubric_id, word_count, words_per_minute')
       .single()
 
     if (dbError) {

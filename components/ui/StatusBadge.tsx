@@ -10,8 +10,8 @@ export function StatusBadge({ status, className = '' }: StatusBadgeProps) {
     uploaded: { text: 'Uploaded', variant: 'warning' },
     transcribing: { text: 'Transcribing', variant: 'primary' },
     transcribed: { text: 'Transcribed', variant: 'primary' },
-    analyzing: { text: 'Analyzing', variant: 'primary' },
-    analyzed: { text: 'Analyzed', variant: 'primary' },
+    analyzing: { text: 'Generating feedback...', variant: 'primary' },
+    analyzed: { text: 'Feedback ready', variant: 'primary' },
     error: { text: 'Error', variant: 'danger' },
   }
 

@@ -652,7 +652,7 @@ export default function HomePage() {
             </div>
           </Card>
 
-          {/* Step 3: Analyze (auto) */}
+          {/* Step 3: Get Feedback (auto) */}
           <Card>
             <div className="flex items-center mb-6">
               <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-600 to-green-700 text-white rounded-xl flex items-center justify-center font-bold text-lg shadow-md mr-4">
@@ -660,7 +660,7 @@ export default function HomePage() {
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Get Feedback</h2>
-                <p className="text-sm text-gray-600 mt-0.5">AI-powered analysis</p>
+                <p className="text-sm text-gray-600 mt-0.5">AI-powered feedback</p>
               </div>
             </div>
             <div className="ml-14">

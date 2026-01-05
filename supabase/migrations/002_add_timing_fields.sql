@@ -5,3 +5,4 @@ ADD COLUMN IF NOT EXISTS words_per_minute numeric;
 
 
 
+

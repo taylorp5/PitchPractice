@@ -307,18 +307,6 @@ export async function POST(request: NextRequest) {
       contentType,
     })
 
-    // Get audio duration if possible (basic estimation)
-    // For now, we'll leave it null and can be updated later
-    const audioSeconds = null
-
-    // Update run with audio_seconds if we have it
-    if (audioSeconds) {
-      await getSupabaseAdmin()
-        .from('pitch_runs')
-        .update({ audio_seconds: audioSeconds })
-        .eq('id', runId)
-    }
-
     // Return the full run object with ok: true
     return NextResponse.json({
       ok: true,
@@ -329,6 +317,7 @@ export async function POST(request: NextRequest) {
         title: run.title,
         audio_path: run.audio_path,
         audio_seconds: run.audio_seconds,
+        duration_ms: run.duration_ms,
         transcript: run.transcript,
         analysis_json: run.analysis_json,
         status: run.status,

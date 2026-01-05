@@ -1256,18 +1256,6 @@ export default function TryPage() {
     setIsPlaying(!isPlaying)
   }
 
-  // Parse transcript for highlights (if analysis exists)
-  const getTranscriptHighlights = (): Array<{ quote: string; type: 'strength' | 'improve' | 'cut' }> => {
-    const feedbackData = feedback || run?.analysis_json
-    if (!feedbackData?.line_by_line) return []
-    return feedbackData.line_by_line.map((item: any) => ({
-      quote: item.quote,
-      type: item.type === 'praise' ? 'strength' : item.type === 'issue' ? 'improve' : 'cut',
-    }))
-  }
-
-  const highlights = getTranscriptHighlights()
-
   return (
     <div className="min-h-screen bg-[#0B0F14]">
       {/* Header with Navbar */}

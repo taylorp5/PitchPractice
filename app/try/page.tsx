@@ -90,6 +90,10 @@ export default function TryPage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [rubrics, setRubrics] = useState<any[]>([])
   const [selectedRubricId, setSelectedRubricId] = useState<string>('')
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
+  const [currentTrackInfo, setCurrentTrackInfo] = useState<any>(null)
+  const [chunkInfo, setChunkInfo] = useState<{ count: number; sizes: number[]; totalSize: number } | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -100,8 +104,9 @@ export default function TryPage() {
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const chunkSizesRef = useRef<number[]>([])
 
-  // Fetch rubrics on mount
+  // Fetch rubrics and enumerate audio devices on mount
   useEffect(() => {
     fetch('/api/rubrics')
       .then(res => res.json())
@@ -112,7 +117,28 @@ export default function TryPage() {
         }
       })
       .catch(err => console.error('Failed to fetch rubrics:', err))
+
+    // Enumerate audio devices
+    enumerateAudioDevices()
   }, [])
+
+  // Enumerate audio input devices
+  const enumerateAudioDevices = async () => {
+    try {
+      // Request permission first
+      await navigator.mediaDevices.getUserMedia({ audio: true })
+      
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const audioInputs = devices.filter(device => device.kind === 'audioinput')
+      setAudioDevices(audioInputs)
+      
+      if (DEBUG) {
+        console.log('[Try] Audio devices:', audioInputs.map(d => ({ id: d.deviceId, label: d.label })))
+      }
+    } catch (err) {
+      console.error('[Try] Failed to enumerate devices:', err)
+    }
+  }
 
   // Format time as MM:SS
   const formatTime = (seconds: number) => {
@@ -125,13 +151,47 @@ export default function TryPage() {
   const startRecording = async () => {
     try {
       if (DEBUG) {
-        console.log('[Try] Starting recording...')
+        console.log('[Try] Starting recording...', { selectedDeviceId })
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Request stream with selected device
+      const constraints: MediaStreamConstraints = selectedDeviceId
+        ? { audio: { deviceId: { exact: selectedDeviceId } } }
+        : { audio: true }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
       streamRef.current = stream
 
-      // Set up audio analysis for mic level
+      // Verify track health before proceeding
+      const tracks = stream.getAudioTracks()
+      if (!tracks || tracks.length === 0) {
+        setError('Microphone not available. Check permissions/input device.')
+        stream.getTracks().forEach(track => track.stop())
+        return
+      }
+
+      const primaryTrack = tracks[0]
+      if (primaryTrack.readyState !== 'live' || !primaryTrack.enabled) {
+        setError('Microphone not available. Check permissions/input device.')
+        stream.getTracks().forEach(track => track.stop())
+        return
+      }
+
+      // Log track info
+      const trackInfo = {
+        label: primaryTrack.label,
+        enabled: primaryTrack.enabled,
+        muted: primaryTrack.muted,
+        readyState: primaryTrack.readyState,
+        settings: primaryTrack.getSettings(),
+      }
+      setCurrentTrackInfo(trackInfo)
+
+      if (DEBUG) {
+        console.log('[Try] Stream track info:', trackInfo)
+      }
+
+      // Set up audio analysis for mic level (using the SAME stream)
       const audioContext = new AudioContext()
       const analyser = audioContext.createAnalyser()
       const source = audioContext.createMediaStreamSource(stream)
@@ -151,26 +211,110 @@ export default function TryPage() {
       }
       updateMicLevel()
 
-      // Set up MediaRecorder
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus',
-      })
+      // Determine best supported mimeType
+      let mimeType = 'audio/webm'
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus'
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/webm'
+      }
+
+      if (DEBUG) {
+        console.log('[Try] Using mimeType:', mimeType)
+      }
+
+      // Set up MediaRecorder (using the SAME stream)
+      const mediaRecorder = new MediaRecorder(stream, { mimeType })
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
+      chunkSizesRef.current = []
 
+      // Collect ALL chunks with detailed logging
       mediaRecorder.ondataavailable = (event) => {
+        if (DEBUG && event.data.size > 0) {
+          console.log('[Try] Chunk received:', {
+            size: event.data.size,
+            type: event.data.type,
+            totalChunks: audioChunksRef.current.length + 1,
+          })
+        }
+        // Collect all chunks, even if size is 0 (for debugging)
+        audioChunksRef.current.push(event.data)
         if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data)
+          chunkSizesRef.current.push(event.data.size)
         }
       }
 
-      mediaRecorder.start()
+      // Set up onstop BEFORE starting (to avoid race condition)
+      mediaRecorder.onstop = async () => {
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current)
+        }
+
+        const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
+        const actualMimeType = mediaRecorder.mimeType || mimeType
+
+        if (DEBUG) {
+          console.log('[Try] Recording stopped:', {
+            totalSize,
+            totalSizeKB: (totalSize / 1024).toFixed(2),
+            chunkCount: audioChunksRef.current.length,
+            chunkSizes: chunkSizesRef.current,
+            mimeType: actualMimeType,
+          })
+        }
+
+        setChunkInfo({
+          count: audioChunksRef.current.length,
+          sizes: chunkSizesRef.current,
+          totalSize,
+        })
+
+        // Validate recording is not empty (client-side check)
+        if (totalSize < 8000) { // Less than 8KB
+          setError('No audio captured. Try selecting a different mic input.')
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop())
+          }
+          if (audioContextRef.current) {
+            audioContextRef.current.close()
+          }
+          return
+        }
+
+        // Filter out empty chunks and build blob
+        const validChunks = audioChunksRef.current.filter(chunk => chunk.size > 0)
+        const audioBlob = new Blob(validChunks, { type: actualMimeType })
+
+        if (DEBUG) {
+          console.log('[Try] Blob created:', {
+            blobSize: audioBlob.size,
+            blobSizeKB: (audioBlob.size / 1024).toFixed(2),
+            validChunks: validChunks.length,
+            totalChunks: audioChunksRef.current.length,
+          })
+        }
+
+        // Clean up stream
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop())
+        }
+        if (audioContextRef.current) {
+          audioContextRef.current.close()
+        }
+
+        // Upload audio
+        await uploadAudio(audioBlob, 'recording.webm')
+      }
+
+      // Start with timeslice to ensure we receive data chunks
+      mediaRecorder.start(250) // 250ms timeslice
       setIsRecording(true)
       setIsPaused(false)
       setRecordingTime(0)
 
       if (DEBUG) {
-        console.log('[Try] Recording started')
+        console.log('[Try] Recording started with timeslice')
       }
 
       // Start timer
@@ -205,10 +349,11 @@ export default function TryPage() {
     }
   }
 
-  // Stop recording and upload
-  const stopRecording = async () => {
+  // Stop recording (onstop callback handles upload)
+  const stopRecording = () => {
     if (!mediaRecorderRef.current || !isRecording) return
 
+    // Stop the recorder - onstop callback will handle cleanup and upload
     mediaRecorderRef.current.stop()
     setIsRecording(false)
     setIsPaused(false)
@@ -217,29 +362,8 @@ export default function TryPage() {
       clearInterval(timerIntervalRef.current)
     }
 
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-    }
-
-    if (audioContextRef.current) {
-      audioContextRef.current.close()
-    }
-
-    mediaRecorderRef.current.onstop = async () => {
-      if (DEBUG) {
-        console.log('[Try] Recording stopped, preparing upload...', {
-          chunks: audioChunksRef.current.length,
-          totalSize: audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0),
-        })
-      }
-
-      const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-      await uploadAudio(audioBlob, 'recording.webm')
-    }
+    // Note: Don't stop stream or close audioContext here - let onstop handle it
+    // This ensures chunks are fully collected before cleanup
   }
 
   // Handle file upload
@@ -642,6 +766,28 @@ export default function TryPage() {
 
                     {isRecording && (
                       <div className="space-y-4">
+                        {/* Device selection (desktop only) */}
+                        {audioDevices.length > 1 && (
+                          <div className="text-sm">
+                            <label className="block text-[#9AA4B2] mb-1">Mic input</label>
+                            <select
+                              value={selectedDeviceId}
+                              onChange={(e) => {
+                                setSelectedDeviceId(e.target.value)
+                                // Note: Changing device requires stopping and restarting recording
+                              }}
+                              className="w-full px-3 py-2 bg-[#0B0F14] border border-[#22283A] rounded-lg text-[#E6E8EB] text-sm"
+                              disabled={isRecording}
+                            >
+                              {audioDevices.map((device) => (
+                                <option key={device.deviceId} value={device.deviceId}>
+                                  {device.label || `Device ${device.deviceId.substring(0, 8)}`}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
                         {/* Timer and mic level */}
                         <div className="text-center">
                           <div className="text-3xl font-bold text-[#E6E8EB] mb-2">
@@ -949,6 +1095,31 @@ export default function TryPage() {
                   <div>Is Transcribing: {isTranscribing ? 'yes' : 'no'}</div>
                   <div>Is Analyzing: {isAnalyzing ? 'yes' : 'no'}</div>
                   <div>Selected Rubric: {selectedRubricId || 'none'}</div>
+                  {currentTrackInfo && (
+                    <div className="mt-2 pt-2 border-t border-[#22283A]">
+                      <div className="font-semibold text-[#E6E8EB] mb-1">Current Track:</div>
+                      <div>Label: {currentTrackInfo.label || 'unknown'}</div>
+                      <div>ReadyState: {currentTrackInfo.readyState}</div>
+                      <div>Enabled: {currentTrackInfo.enabled ? 'yes' : 'no'}</div>
+                      <div>Device ID: {currentTrackInfo.settings?.deviceId?.substring(0, 20) || 'none'}</div>
+                    </div>
+                  )}
+                  {chunkInfo && (
+                    <div className="mt-2 pt-2 border-t border-[#22283A]">
+                      <div className="font-semibold text-[#E6E8EB] mb-1">Last Recording:</div>
+                      <div>Chunks: {chunkInfo.count}</div>
+                      <div>Total Size: {(chunkInfo.totalSize / 1024).toFixed(2)} KB</div>
+                      <div>Chunk Sizes: {chunkInfo.sizes.map(s => `${(s / 1024).toFixed(1)}KB`).join(', ')}</div>
+                    </div>
+                  )}
+                  <div className="mt-2 pt-2 border-t border-[#22283A]">
+                    <div className="font-semibold text-[#E6E8EB] mb-1">Available Devices:</div>
+                    {audioDevices.map((device, idx) => (
+                      <div key={device.deviceId} className="text-xs">
+                        {idx + 1}. {device.label || device.deviceId.substring(0, 20)}
+                      </div>
+                    ))}
+                  </div>
                   <Button
                     variant="secondary"
                     size="sm"

@@ -158,6 +158,12 @@ export async function POST(
   try {
     const { id } = params
 
+    // Set status to 'analyzing' immediately
+    await supabaseAdmin
+      .from('pitch_runs')
+      .update({ status: 'analyzing' })
+      .eq('id', id)
+
     // Fetch the run with rubric
     const { data: run, error: fetchError } = await supabaseAdmin
       .from('pitch_runs')

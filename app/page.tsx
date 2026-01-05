@@ -109,7 +109,7 @@ export default function LandingPage() {
                   variant="primary"
                   size="lg"
                   asChild
-                  href="/app"
+                  href="/try"
                 >
                   Try it free
                 </Button>
@@ -511,7 +511,7 @@ export default function LandingPage() {
                     variant="primary"
                     size="lg"
                     asChild
-                    href="/app"
+                    href="/try"
                     className="w-full"
                   >
                     Try it free
@@ -540,7 +540,7 @@ export default function LandingPage() {
               <p className="text-sm text-[#6B7280]">Practice your pitch. Get precise feedback.</p>
             </div>
             <div className="flex flex-wrap gap-6 text-sm">
-              <Link href="/app" className="hover:text-[#F59E0B] transition-colors">
+              <Link href="/try" className="hover:text-[#F59E0B] transition-colors">
                 Try Free
               </Link>
             </div>

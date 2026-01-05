@@ -545,16 +545,34 @@ export default function RunPage() {
               </details>
               
               {/* Raw Run JSON Panel (dev-only) */}
-              {process.env.NODE_ENV === 'development' && run && (
+              {process.env.NODE_ENV === 'development' && (
                 <details className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded">
-                  <summary className="cursor-pointer font-semibold text-purple-800 mb-2">Raw Run JSON</summary>
+                  <summary className="cursor-pointer font-semibold text-purple-800 mb-2">Raw Run JSON & GET Response</summary>
                   <div className="mt-2 space-y-2">
-                    <div className="p-2 bg-purple-100 rounded text-xs">
-                      <strong>transcriptPreview:</strong> {run.transcript?.slice(0, 200) ?? 'null'}
-                    </div>
-                    <pre className="p-3 bg-white border border-purple-200 rounded text-xs overflow-auto max-h-60 font-mono">
-                      {JSON.stringify(run, null, 2)}
-                    </pre>
+                    {run && (
+                      <div className="p-2 bg-purple-100 rounded text-xs">
+                        <strong>run state transcriptPreview:</strong> {run.transcript?.slice(0, 200) ?? 'null'}
+                      </div>
+                    )}
+                    {run && (
+                      <div>
+                        <strong className="text-xs">run state:</strong>
+                        <pre className="p-3 bg-white border border-purple-200 rounded text-xs overflow-auto max-h-60 font-mono">
+                          {JSON.stringify(run, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                    {lastGetResponse && (
+                      <div>
+                        <strong className="text-xs">GET /api/runs/[id] response:</strong>
+                        <pre className="p-3 bg-white border border-purple-200 rounded text-xs overflow-auto max-h-60 font-mono">
+                          {JSON.stringify(lastGetResponse, null, 2)}
+                        </pre>
+                        <div className="p-2 bg-purple-100 rounded text-xs mt-2">
+                          <strong>GET response transcriptPreview:</strong> {lastGetResponse.run?.transcript?.slice(0, 200) ?? lastGetResponse.transcript?.slice(0, 200) ?? 'null'}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </details>
               )}

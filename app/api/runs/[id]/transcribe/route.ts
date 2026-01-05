@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import OpenAI from 'openai'
-import { getAudioDurationInSeconds } from 'get-audio-duration'
 
 if (!process.env.OPENAI_API_KEY) {
   throw new Error('OPENAI_API_KEY environment variable is not set')
@@ -12,26 +11,15 @@ const openai = new OpenAI({
 })
 
 async function getAudioDuration(audioBuffer: Buffer, mimeType: string): Promise<number | null> {
+  // In serverless environments, we can't easily extract audio duration
+  // We'll try to estimate from file size or leave it null
+  // Duration will be calculated from transcript timing if available
+  // For now, return null and let OpenAI transcription provide timing info
   try {
-    // get-audio-duration works with file paths, so we'll write to a temp file
-    const fs = await import('fs/promises')
-    const path = await import('path')
-    const os = await import('os')
-    
-    const tempDir = os.tmpdir()
-    const fileExt = mimeType.split('/')[1] || 'webm'
-    const tempFile = path.join(tempDir, `audio-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`)
-    
-    try {
-      await fs.writeFile(tempFile, audioBuffer)
-      const duration = await getAudioDurationInSeconds(tempFile)
-      return duration
-    } finally {
-      // Always clean up temp file
-      await fs.unlink(tempFile).catch(() => {
-        // Ignore cleanup errors
-      })
-    }
+    // Try to create an AudioContext to get duration (browser API, won't work in Node)
+    // For serverless, we'll estimate or leave null
+    // The duration can be updated later from the audio element on the client side
+    return null
   } catch (error) {
     console.warn('Could not extract audio duration:', error)
     return null
@@ -112,12 +100,20 @@ export async function POST(
     }
     const mimeType = mimeTypeMap[fileExt] || 'audio/webm'
 
-    // Get audio duration
+    // Get audio duration - in serverless, we can't easily extract this
+    // Duration will be null initially and can be updated from client-side audio element
+    // or we can estimate from file size (rough approximation)
     let audioSeconds: number | null = null
+    
+    // Rough estimation: webm files are typically ~1KB per second for speech
+    // This is very approximate and should be replaced with client-side measurement
     try {
-      audioSeconds = await getAudioDuration(audioBuffer, mimeType)
+      const fileSizeKB = audioBuffer.length / 1024
+      // Very rough estimate: ~1KB per second for compressed speech audio
+      // This is just a fallback - actual duration should come from client
+      audioSeconds = Math.round(fileSizeKB / 1.0) // Will be updated by client
     } catch (error) {
-      console.warn('Could not determine audio duration:', error)
+      console.warn('Could not estimate audio duration:', error)
     }
 
     // Transcribe with OpenAI Whisper

@@ -33,7 +33,6 @@ export default function LandingPage() {
     { text: "It was a rainy Tuesday in 2019 when our founder had this idea.", type: 'cut' },
     { text: "So we decided to build a platform that solves this problem.", type: null },
     { text: "Our solution is simple, powerful, and easy to use.", type: 'pacing' },
-    { text: "Would you like to see a demo?", type: null },
   ]
 
   // "From first take to ready" section animation
@@ -53,14 +52,23 @@ export default function LandingPage() {
                 // Move to improve stage after 1.5 seconds
                 setTimeout(() => {
                   setCurrentStage('improve')
-                  // Show highlights sequentially
-                  narrativeTranscript.forEach((line, lineIdx) => {
-                    if (line.type) {
-                      setTimeout(() => {
-                        setShowHighlights(prev => [...prev, { type: line.type!, lineIdx }])
-                      }, lineIdx * 400)
-                    }
-                  })
+                  // Show only 2 highlights at a time, rotating
+                  const highlights = narrativeTranscript
+                    .map((line, lineIdx) => line.type ? { type: line.type, lineIdx } : null)
+                    .filter((h): h is { type: string; lineIdx: number } => h !== null)
+                  
+                  // Show first 2 highlights: Strength + Cut
+                  setShowHighlights([highlights[0], highlights[1]])
+                  
+                  // After 2.5 seconds, rotate to show Cut + Pacing
+                  setTimeout(() => {
+                    setShowHighlights([highlights[1], highlights[2]])
+                  }, 2500)
+                  
+                  // After another 2.5 seconds, rotate to show Strength + Pacing
+                  setTimeout(() => {
+                    setShowHighlights([highlights[0], highlights[2]])
+                  }, 5000)
                 }, 1500)
               }, 500)
             }, 1000)
@@ -166,7 +174,7 @@ export default function LandingPage() {
       </section>
 
       {/* From first take to ready */}
-      <section ref={howItWorksRef} className="py-32 px-4 bg-[#121826]">
+      <section id="from-first-take" ref={howItWorksRef} className="py-32 px-4 bg-[#121826]">
         <div className="max-w-6xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -195,6 +203,15 @@ export default function LandingPage() {
               )}
 
               <div className="space-y-3 pl-8">
+                {/* Example label */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: currentStage ? 1 : 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="text-xs text-[#64748B] uppercase tracking-wide mb-2"
+                >
+                  Example: Elevator pitch (45 seconds)
+                </motion.div>
                 {narrativeTranscript.map((line, idx) => {
                   const isVisible = visibleLines.includes(idx)
                   const highlight = showHighlights.find(h => h.lineIdx === idx)
@@ -261,14 +278,20 @@ export default function LandingPage() {
                     <motion.div
                       animate={{
                         color: currentStage === 'record' ? '#F59E0B' : '#64748B',
+                        opacity: currentStage === 'record' ? 1 : currentStage ? 0.4 : 1,
                       }}
-                      className="text-sm font-medium mb-2 uppercase tracking-wide"
+                      className="text-sm font-medium mb-2 uppercase tracking-wide transition-opacity"
                     >
                       {currentStage === 'record' ? 'Recording your pitch…' : 'Record'}
                     </motion.div>
-                    <p className="text-lg text-[#9CA3AF] leading-relaxed">
+                    <motion.p
+                      animate={{
+                        opacity: currentStage === 'record' ? 1 : currentStage ? 0.4 : 1,
+                      }}
+                      className="text-lg text-[#9CA3AF] leading-relaxed transition-opacity"
+                    >
                       Say it out loud. No scripts. No pressure.
-                    </p>
+                    </motion.p>
                   </div>
                 </div>
               </motion.div>
@@ -289,14 +312,20 @@ export default function LandingPage() {
                     <motion.div
                       animate={{
                         color: currentStage === 'transcript' ? '#F59E0B' : '#64748B',
+                        opacity: currentStage === 'transcript' ? 1 : currentStage === 'improve' ? 0.4 : currentStage === 'record' ? 0.4 : 1,
                       }}
-                      className="text-sm font-medium mb-2 uppercase tracking-wide"
+                      className="text-sm font-medium mb-2 uppercase tracking-wide transition-opacity"
                     >
                       {currentStage === 'transcript' ? 'Transcript generated' : 'Transcript'}
                     </motion.div>
-                    <p className="text-lg text-[#9CA3AF] leading-relaxed">
+                    <motion.p
+                      animate={{
+                        opacity: currentStage === 'transcript' ? 1 : currentStage === 'improve' ? 0.4 : currentStage === 'record' ? 0.4 : 1,
+                      }}
+                      className="text-lg text-[#9CA3AF] leading-relaxed transition-opacity"
+                    >
                       See exactly what you said — and how long it took.
-                    </p>
+                    </motion.p>
                   </div>
                 </div>
               </motion.div>
@@ -317,14 +346,20 @@ export default function LandingPage() {
                     <motion.div
                       animate={{
                         color: currentStage === 'improve' ? '#F59E0B' : '#64748B',
+                        opacity: currentStage === 'improve' ? 1 : currentStage ? 0.4 : 1,
                       }}
-                      className="text-sm font-medium mb-2 uppercase tracking-wide"
+                      className="text-sm font-medium mb-2 uppercase tracking-wide transition-opacity"
                     >
                       {currentStage === 'improve' ? 'Actionable feedback' : 'Improve'}
                     </motion.div>
-                    <p className="text-lg text-[#9CA3AF] leading-relaxed">
+                    <motion.p
+                      animate={{
+                        opacity: currentStage === 'improve' ? 1 : currentStage ? 0.4 : 1,
+                      }}
+                      className="text-lg text-[#9CA3AF] leading-relaxed transition-opacity"
+                    >
                       Clear suggestions on pacing, clarity, and cuts.
-                    </p>
+                    </motion.p>
                   </div>
                 </div>
               </motion.div>
@@ -452,10 +487,7 @@ export default function LandingPage() {
               <Link href="/app" className="hover:text-[#F59E0B] transition-colors">
                 Try Free
               </Link>
-              <Link href="/example" className="hover:text-[#F59E0B] transition-colors">
-                Example
-              </Link>
-              <Link href="/#try-it" className="hover:text-[#F59E0B] transition-colors">
+              <Link href="/#from-first-take" className="hover:text-[#F59E0B] transition-colors">
                 How it Works
               </Link>
             </div>

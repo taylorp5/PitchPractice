@@ -25,16 +25,10 @@ export function Navbar() {
           {/* Navigation Links - Hidden on mobile, shown on desktop */}
           <div className="hidden md:flex items-center gap-8">
             <Link 
-              href="/#try-it" 
+              href="/#from-first-take" 
               className="text-sm font-medium text-[#9CA3AF] hover:text-[#F59E0B] transition-colors"
             >
               How it Works
-            </Link>
-            <Link 
-              href="/example" 
-              className="text-sm font-medium text-[#9CA3AF] hover:text-[#F59E0B] transition-colors"
-            >
-              Example
             </Link>
             <Link 
               href="/app" 
@@ -46,9 +40,6 @@ export function Navbar() {
 
           {/* CTA Buttons */}
           <div className="hidden md:flex items-center gap-3">
-            <Button variant="secondary" size="sm" href="/example" asChild>
-              See Example
-            </Button>
             <Button variant="primary" size="sm" href="/app" asChild>
               Try Free
             </Button>

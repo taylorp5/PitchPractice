@@ -24,9 +24,24 @@ export async function GET(
 
     // Generate signed URL for audio
     if (run.audio_path) {
-      const { data: signedUrlData } = await supabaseAdmin.storage
+      const { data: signedUrlData, error: urlError } = await supabaseAdmin.storage
         .from('pitchpractice-audio')
         .createSignedUrl(run.audio_path, 3600) // 1 hour expiry
+
+      if (urlError) {
+        console.error('[Audio URL] Failed to generate signed URL:', {
+          path: run.audio_path,
+          error: urlError,
+          message: urlError.message,
+        })
+      }
+
+      if (!signedUrlData?.signedUrl) {
+        console.error('[Audio URL] No signed URL returned:', {
+          path: run.audio_path,
+          signedUrlData,
+        })
+      }
 
       return NextResponse.json({
         ...run,

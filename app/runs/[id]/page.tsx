@@ -60,13 +60,13 @@ export default function RunPage() {
     fetchRun()
   }, [runId])
 
-  // Auto-start transcription if status is 'uploaded'
+  // Auto-start transcription if status is 'uploaded' and no transcript exists
   useEffect(() => {
-    if (run && run.status === 'uploaded' && !isTranscribing) {
+    if (run && run.status === 'uploaded' && !run.transcript && !isTranscribing) {
       handleTranscribe()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run?.status, runId])
+  }, [run?.status, run?.transcript, runId])
 
   // Auto-start analysis if status is 'transcribed'
   useEffect(() => {
@@ -282,14 +282,38 @@ export default function RunPage() {
             </div>
           )}
 
-          {run.audio_url && (
+          {run.audio_path && (
             <div className="mb-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-3">Audio</h2>
-              <audio controls className="w-full">
-                <source src={run.audio_url} type="audio/webm" />
-                <source src={run.audio_url} type="audio/mp3" />
-                Your browser does not support the audio element.
-              </audio>
+              {run.audio_url ? (
+                <div>
+                  <audio 
+                    controls 
+                    className="w-full"
+                    preload="metadata"
+                    onError={(e) => {
+                      console.error('Audio playback error:', e)
+                      setError('Failed to load audio. The file may be corrupted or the URL expired.')
+                    }}
+                  >
+                    <source src={run.audio_url} type="audio/webm" />
+                    <source src={run.audio_url} type="audio/webm;codecs=opus" />
+                    <source src={run.audio_url} type="audio/mpeg" />
+                    <source src={run.audio_url} type="audio/wav" />
+                    <source src={run.audio_url} type="audio/ogg" />
+                    Your browser does not support the audio element.
+                  </audio>
+                  <p className="mt-2 text-xs text-gray-500">
+                    If audio doesn't play, try refreshing the page to get a new signed URL.
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-yellow-800 text-sm">
+                    ⚠️ Audio URL could not be generated. This may be a temporary issue. Please refresh the page.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -555,8 +579,38 @@ export default function RunPage() {
             </div>
           )}
 
+          {/* Transcription Retry - if status is transcribed but no transcript */}
+          {run.status === 'transcribed' && !run.transcript && (
+            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-yellow-800 font-medium mb-1">
+                    Transcription Missing
+                  </p>
+                  <p className="text-sm text-yellow-700">
+                    The run is marked as transcribed but no transcript was found. Click to retry transcription.
+                  </p>
+                </div>
+                <button
+                  onClick={handleTranscribe}
+                  disabled={isTranscribing}
+                  className="px-6 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isTranscribing ? (
+                    <>
+                      <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Transcribing...
+                    </>
+                  ) : (
+                    '🔄 Retry Transcription'
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Analysis Action */}
-          {run.status === 'transcribed' && !run.analysis_json && (
+          {run.status === 'transcribed' && run.transcript && !run.analysis_json && (
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-center justify-between">
                 <div>

@@ -58,11 +58,33 @@ export async function POST(
       )
     }
 
-    if (run.status !== 'uploaded') {
+    // Allow transcription if status is 'uploaded' OR if status is 'transcribed' but transcript is missing (retry case)
+    if (run.status !== 'uploaded' && run.status !== 'transcribed') {
       return NextResponse.json(
-        { error: `Run is already ${run.status}. Only runs with status 'uploaded' can be transcribed.` },
+        { error: `Cannot transcribe run with status '${run.status}'. Only runs with status 'uploaded' or 'transcribed' (for retry) can be transcribed.` },
         { status: 400 }
       )
+    }
+
+    // If already transcribed, check if we have a transcript
+    if (run.status === 'transcribed') {
+      const { data: existingRun } = await supabaseAdmin
+        .from('pitch_runs')
+        .select('transcript')
+        .eq('id', id)
+        .single()
+      
+      if (existingRun?.transcript) {
+        return NextResponse.json(
+          { error: 'Run is already transcribed. Delete and recreate if you want to re-transcribe.' },
+          { status: 400 }
+        )
+      }
+      // If no transcript exists, allow retry by resetting status
+      await supabaseAdmin
+        .from('pitch_runs')
+        .update({ status: 'uploaded' })
+        .eq('id', id)
     }
 
     // Download audio from Supabase Storage

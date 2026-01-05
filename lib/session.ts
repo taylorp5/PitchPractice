@@ -19,3 +19,5 @@ export function getSessionId(): string {
   return sessionId
 }
 
+
+

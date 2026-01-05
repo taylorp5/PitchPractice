@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase/server'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const { data: rubrics, error } = await supabaseAdmin
+    const { data: rubrics, error } = await getSupabaseAdmin()
       .from('rubrics')
       .select('*')
       .order('created_at', { ascending: false })

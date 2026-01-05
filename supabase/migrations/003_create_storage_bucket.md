@@ -43,3 +43,5 @@ After creating the bucket, verify it exists:
 - **Must be Private**: Public buckets have different access patterns
 - **Service role key required**: The app uses service role key to bypass RLS
 
+
+

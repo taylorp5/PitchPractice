@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase/server'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error('OPENAI_API_KEY environment variable is not set')
-}
+export const dynamic = 'force-dynamic'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY environment variable is not set')
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
 
 async function getAudioDuration(audioBuffer: Buffer, mimeType: string): Promise<number | null> {
   // In serverless environments, we can't easily extract audio duration
@@ -46,7 +49,7 @@ export async function POST(
 
   try {
     // Fetch the run to get current status and transcript length BEFORE doing any work
-    const { data: run, error: fetchError } = await supabaseAdmin
+    const { data: run, error: fetchError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .select('id, audio_path, status, transcript')
       .eq('id', id)
@@ -81,7 +84,7 @@ export async function POST(
     })
 
     // Set status to 'transcribing' immediately
-    await supabaseAdmin
+    await getSupabaseAdmin()
       .from('pitch_runs')
       .update({ status: 'transcribing' })
       .eq('id', id)
@@ -96,7 +99,7 @@ export async function POST(
       bucket: 'pitchpractice-audio',
     })
 
-    const { data: audioData, error: downloadError } = await supabaseAdmin.storage
+    const { data: audioData, error: downloadError } = await getSupabaseAdmin().storage
       .from('pitchpractice-audio')
       .download(run.audio_path)
 
@@ -109,7 +112,7 @@ export async function POST(
         errorStatus: (downloadError as any)?.statusCode,
       })
       
-      await supabaseAdmin
+      await getSupabaseAdmin()
         .from('pitch_runs')
         .update({
           status: 'error',
@@ -191,6 +194,7 @@ export async function POST(
         model: 'whisper-1',
       })
 
+      const openai = getOpenAIClient()
       const transcription = await openai.audio.transcriptions.create({
         file: audioFile,
         model: 'whisper-1',
@@ -211,7 +215,7 @@ export async function POST(
           runId: id,
         })
         
-        await supabaseAdmin
+        await getSupabaseAdmin()
           .from('pitch_runs')
           .update({
             status: 'error',
@@ -244,7 +248,7 @@ export async function POST(
         error: JSON.stringify(error, null, 2),
       })
       
-      await supabaseAdmin
+      await getSupabaseAdmin()
         .from('pitch_runs')
         .update({
           status: 'error',
@@ -278,8 +282,8 @@ export async function POST(
 
     // Update the run with transcript and timing data
     // IMPORTANT: Only update status to 'transcribed' AFTER successful transcription is saved
-    // Use service role client (supabaseAdmin) which bypasses RLS
-    const { data: updatedRun, error: updateError } = await supabaseAdmin
+    // Use service role client (getSupabaseAdmin()) which bypasses RLS
+    const { data: updatedRun, error: updateError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .update({
         transcript,
@@ -380,7 +384,7 @@ export async function POST(
 
     // Try to update status to error
     try {
-      await supabaseAdmin
+      await getSupabaseAdmin()
         .from('pitch_runs')
         .update({
           status: 'error',

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase/server'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(
   request: NextRequest,
@@ -9,7 +11,7 @@ export async function POST(
     const { id } = params
 
     // Reset transcription data
-    const { data: updatedRun, error: updateError } = await supabaseAdmin
+    const { data: updatedRun, error: updateError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .update({
         transcript: null,

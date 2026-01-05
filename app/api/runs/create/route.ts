@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase/server'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 import { v4 as uuidv4 } from 'uuid'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +41,7 @@ export async function POST(request: NextRequest) {
     const audioPath = `${sessionId}/${runId}.${fileExt}`
 
     // Create pitch run record
-    const { data: run, error: dbError } = await supabaseAdmin
+    const { data: run, error: dbError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .insert({
         id: runId,
@@ -118,7 +120,7 @@ export async function POST(request: NextRequest) {
 
     // Check if bucket exists, create if missing
     const bucketName = 'pitchpractice-audio'
-    const { data: buckets, error: listError } = await supabaseAdmin.storage.listBuckets()
+    const { data: buckets, error: listError } = await getSupabaseAdmin().storage.listBuckets()
     
     if (listError) {
       console.error('[Storage] Error listing buckets:', {
@@ -137,7 +139,7 @@ export async function POST(request: NextRequest) {
       })
       
       // Try to create the bucket
-      const { data: newBucket, error: createError } = await supabaseAdmin.storage.createBucket(bucketName, {
+      const { data: newBucket, error: createError } = await getSupabaseAdmin().storage.createBucket(bucketName, {
         public: false,
         fileSizeLimit: 52428800, // 50MB
         allowedMimeTypes: ['audio/webm', 'audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/ogg'],
@@ -152,7 +154,7 @@ export async function POST(request: NextRequest) {
         })
         
         // Clean up database record
-        await supabaseAdmin
+        await getSupabaseAdmin()
           .from('pitch_runs')
           .delete()
           .eq('id', runId)
@@ -180,7 +182,7 @@ export async function POST(request: NextRequest) {
       runId,
     })
 
-    const { data: uploadData, error: storageError } = await supabaseAdmin.storage
+    const { data: uploadData, error: storageError } = await getSupabaseAdmin().storage
       .from(bucketName)
       .upload(audioPath, buffer, {
         contentType,
@@ -204,7 +206,7 @@ export async function POST(request: NextRequest) {
       })
       
       // Clean up database record on storage failure
-      await supabaseAdmin
+      await getSupabaseAdmin()
         .from('pitch_runs')
         .delete()
         .eq('id', runId)
@@ -251,7 +253,7 @@ export async function POST(request: NextRequest) {
 
     // Update run with audio_seconds if we have it
     if (audioSeconds) {
-      await supabaseAdmin
+      await getSupabaseAdmin()
         .from('pitch_runs')
         .update({ audio_seconds: audioSeconds })
         .eq('id', runId)

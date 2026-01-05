@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase/server'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET(
   request: NextRequest,
@@ -9,7 +11,7 @@ export async function GET(
     const { id } = params
 
     // Fetch the run to get audio_path
-    const { data: run, error: fetchError } = await supabaseAdmin
+    const { data: run, error: fetchError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .select('audio_path')
       .eq('id', id)
@@ -23,7 +25,7 @@ export async function GET(
     }
 
     // Generate fresh signed URL (60 minutes expiry)
-    const { data: signedUrlData, error: urlError } = await supabaseAdmin.storage
+    const { data: signedUrlData, error: urlError } = await getSupabaseAdmin().storage
       .from('pitchpractice-audio')
       .createSignedUrl(run.audio_path, 3600)
 

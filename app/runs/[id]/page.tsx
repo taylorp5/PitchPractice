@@ -3,6 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { SectionHeader } from '@/components/ui/SectionHeader'
+import { StatPill } from '@/components/ui/StatPill'
+import { Divider } from '@/components/ui/Divider'
+import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 
 // Helper function to log fetch errors with full details
 async function logFetchError(url: string, response: Response, error?: any) {
@@ -385,11 +392,8 @@ export default function RunPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-2 text-gray-600">Loading...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center py-20">
+        <LoadingSpinner size="lg" text="Loading pitch run..." />
       </div>
     )
   }
@@ -397,42 +401,31 @@ export default function RunPage() {
   if (error || !run) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full bg-white rounded-lg shadow-lg p-8 text-center">
+        <Card className="max-w-2xl w-full text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Error</h1>
           <p className="text-gray-600 mb-6">{error || 'Run not found'}</p>
-          <Link
-            href="/"
-            className="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-          >
-            Back to Home
+          <Link href="/app">
+            <Button variant="primary">
+              Back to Home
+            </Button>
           </Link>
-        </div>
+        </Card>
       </div>
     )
   }
 
-  const statusColors: Record<string, string> = {
-    uploaded: 'bg-yellow-100 text-yellow-800',
-    transcribing: 'bg-blue-100 text-blue-800',
-    transcribed: 'bg-blue-100 text-blue-800',
-    analyzing: 'bg-indigo-100 text-indigo-800',
-    analyzed: 'bg-green-100 text-green-800',
-    error: 'bg-red-100 text-red-800',
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 py-8 px-4">
+      <div className="max-w-5xl mx-auto">
         <div className="mb-6">
-          <Link
-            href="/"
-            className="text-blue-600 hover:text-blue-700 font-medium"
-          >
-            ← Back to Home
+          <Link href="/">
+            <Button variant="ghost" size="sm">
+              ← Back to Home
+            </Button>
           </Link>
         </div>
 
-        <div className="bg-white rounded-lg shadow-lg p-8">
+        <Card padding="lg" className="mb-6">
           <div className="flex items-start justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -442,69 +435,19 @@ export default function RunPage() {
                 Created {new Date(run.created_at).toLocaleString()}
               </p>
             </div>
-            <span
-              className={`px-3 py-1 rounded-full text-sm font-medium ${
-                statusColors[run.status] || 'bg-gray-100 text-gray-800'
-              }`}
-            >
-              {run.status}
-            </span>
+            <StatusBadge status={run.status} />
           </div>
 
-          {run.error_message && (
-            <div className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg">
-              <div className="flex items-start gap-2">
-                <span className="text-red-600 text-xl">⚠️</span>
-                <div className="flex-1">
-                  <strong className="text-red-800 text-lg block mb-1">Error</strong>
-                  <p className="text-red-700">{run.error_message}</p>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Show API error message prominently if transcribe failed */}
-          {lastTranscribeResponse && !lastTranscribeResponse.ok && lastTranscribeResponse.message && (
-            <div className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg">
-              <div className="flex items-start gap-2">
-                <span className="text-red-600 text-xl">⚠️</span>
-                <div className="flex-1">
-                  <strong className="text-red-800 text-lg block mb-1">Transcription Failed</strong>
-                  <p className="text-red-700">{lastTranscribeResponse.message}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Last Action Log */}
-          {lastAction && (
-            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-              <div className="flex items-center justify-between">
-                <p className="text-green-800 text-sm font-medium">{lastAction}</p>
-                {lastTranscribeResponse && (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-green-600 hover:text-green-700">
-                      View response JSON
-                    </summary>
-                    <pre className="mt-2 p-2 bg-white border border-green-200 rounded text-xs overflow-auto max-h-40 font-mono">
-                      {JSON.stringify(lastTranscribeResponse, null, 2)}
-                    </pre>
-                  </details>
-                )}
-              </div>
-            </div>
-          )}
-
           {run.rubrics && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="mb-4 p-4 border border-blue-200 bg-blue-50 rounded-lg">
               <h3 className="font-semibold text-blue-900 mb-2">
                 Rubric: {run.rubrics.name}
               </h3>
               {run.rubrics.description && (
-                <p className="text-sm text-blue-700 mb-2">{run.rubrics.description}</p>
+                <p className="text-sm text-blue-800 mb-2">{run.rubrics.description}</p>
               )}
               {run.rubrics.target_duration_seconds && (
-                <p className="text-sm text-blue-700">
+                <p className="text-sm text-blue-800">
                   Target Duration: {Math.floor(run.rubrics.target_duration_seconds / 60)} min
                   {run.rubrics.max_duration_seconds && (
                     <span> (Max: {Math.floor(run.rubrics.max_duration_seconds / 60)} min)</span>
@@ -513,10 +456,55 @@ export default function RunPage() {
               )}
             </div>
           )}
+        </Card>
 
-          {run.audio_path && (
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-3">Audio</h2>
+        {run.error_message && (
+          <div className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg">
+            <div className="flex items-start gap-2">
+              <span className="text-red-600 text-xl">⚠️</span>
+              <div className="flex-1">
+                <strong className="text-red-800 text-lg block mb-1">Error</strong>
+                <p className="text-red-700">{run.error_message}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Show API error message prominently if transcribe failed */}
+        {lastTranscribeResponse && !lastTranscribeResponse.ok && lastTranscribeResponse.message && (
+          <div className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg">
+            <div className="flex items-start gap-2">
+              <span className="text-red-600 text-xl">⚠️</span>
+              <div className="flex-1">
+                <strong className="text-red-800 text-lg block mb-1">Transcription Failed</strong>
+                <p className="text-red-700">{lastTranscribeResponse.message}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Last Action Log */}
+        {lastAction && (
+          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center justify-between">
+              <p className="text-green-800 text-sm font-medium">{lastAction}</p>
+              {lastTranscribeResponse && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-green-600 hover:text-green-700">
+                    View response JSON
+                  </summary>
+                  <pre className="mt-2 p-2 bg-white border border-green-200 rounded text-xs overflow-auto max-h-40 font-mono">
+                    {JSON.stringify(lastTranscribeResponse, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+          </div>
+        )}
+
+        {run.audio_path && (
+          <Card className="mb-6">
+            <SectionHeader title="Audio" />
               {audioUrl ? (
                 <div>
                   <audio 
@@ -610,75 +598,76 @@ export default function RunPage() {
                   </pre>
                 </details>
               )}
-            </div>
+            </Card>
           )}
 
           {/* Metrics Card - Always visible */}
           {run && (
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900 mb-3">Metrics</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Duration</p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    {run.audio_seconds !== null && run.audio_seconds !== undefined
-                      ? `${Math.floor(run.audio_seconds / 60)}:${String(Math.floor(run.audio_seconds % 60)).padStart(2, '0')}`
-                      : '—'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Word Count</p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    {run.word_count !== null && run.word_count !== undefined
-                      ? run.word_count.toLocaleString()
-                      : '—'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">WPM</p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    {run.words_per_minute !== null && run.words_per_minute !== undefined
-                      ? `${run.words_per_minute}`
-                      : '—'}
-                  </p>
-                </div>
+            <Card className="mb-6">
+              <SectionHeader title="Metrics" />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <StatPill
+                  label="Duration"
+                  value={run.audio_seconds !== null && run.audio_seconds !== undefined
+                    ? `${Math.floor(run.audio_seconds / 60)}:${String(Math.floor(run.audio_seconds % 60)).padStart(2, '0')}`
+                    : '—'}
+                />
+                <StatPill
+                  label="Word Count"
+                  value={run.word_count !== null && run.word_count !== undefined
+                    ? run.word_count.toLocaleString()
+                    : '—'}
+                />
+                <StatPill
+                  label="WPM"
+                  value={run.words_per_minute !== null && run.words_per_minute !== undefined
+                    ? `${run.words_per_minute}`
+                    : '—'}
+                />
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Transcript Section */}
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-3">Transcript</h2>
+          <Card className="mb-6">
+            <SectionHeader title="Transcript" />
             {(() => {
               const t = run?.transcript ?? lastTranscript ?? ""
               return t.trim().length > 0 ? (
-                <pre className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-gray-700 whitespace-pre-wrap font-sans text-sm">{t}</pre>
+                <div className="p-6 bg-gray-50 rounded-lg border border-gray-200">
+                  <pre className="text-gray-700 whitespace-pre-wrap font-sans text-sm leading-relaxed">{t}</pre>
+                </div>
               ) : (
-                <p className="p-4 bg-yellow-50 rounded-lg border border-yellow-200 text-yellow-800 text-sm">No transcript yet</p>
+                <div className="p-6 bg-yellow-50 rounded-lg border border-yellow-200 text-center">
+                  <p className="text-yellow-800 text-sm">No transcript yet</p>
+                </div>
               )
             })()}
-          </div>
+          </Card>
 
           {/* Analysis Section */}
           {run.analysis_json && (
             <div className="mb-6 space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900">Feedback & Analysis</h2>
+              <SectionHeader 
+                title="Feedback & Analysis"
+              >
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     onClick={copyShareSummary}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    variant="primary"
+                    size="sm"
                   >
                     {copied ? '✓ Copied!' : '📋 Copy Share Summary'}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={downloadJSON}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    variant="secondary"
+                    size="sm"
                   >
                     💾 Download JSON
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </SectionHeader>
 
               {/* Scorecard */}
               {run.analysis_json.summary && (
@@ -850,93 +839,70 @@ export default function RunPage() {
 
           {/* Transcription Action */}
           {run.status === 'uploaded' && (
-            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <div className="flex items-center justify-between">
+            <Card className="mb-6 border-yellow-200 bg-yellow-50">
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <p className="text-yellow-800 font-medium mb-1">
+                  <p className="text-yellow-900 font-semibold mb-1">
                     Ready for Transcription
                   </p>
-                  <p className="text-sm text-yellow-700">
+                  <p className="text-sm text-yellow-800">
                     Click "Transcribe" to transcribe your audio and get timing metrics.
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     onClick={handleTranscribe}
                     disabled={isTranscribing}
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                    isLoading={isTranscribing}
+                    variant="primary"
                   >
-                    {isTranscribing ? (
-                      <>
-                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Transcribing...
-                      </>
-                    ) : (
-                      '🎤 Transcribe (overwrite)'
-                    )}
-                  </button>
-                  <button
+                    🎤 Transcribe (overwrite)
+                  </Button>
+                  <Button
                     onClick={handleReset}
                     disabled={isTranscribing}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                    variant="secondary"
+                    size="sm"
                   >
-                    {isTranscribing ? (
-                      <>
-                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Resetting...
-                      </>
-                    ) : (
-                      '🔄 Reset'
-                    )}
-                  </button>
+                    🔄 Reset
+                  </Button>
                 </div>
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Transcription Action - if status is transcribed but no transcript, or if error */}
           {(run.status === 'transcribed' && !run.transcript) || run.status === 'error' ? (
-            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <div className="flex items-center justify-between">
+            <Card className="mb-6 border-yellow-200 bg-yellow-50">
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <p className="text-yellow-800 font-medium mb-1">
+                  <p className="text-yellow-900 font-semibold mb-1">
                     {run.status === 'error' ? 'Transcription Failed' : 'Transcription Missing'}
                   </p>
-                  <p className="text-sm text-yellow-700">
+                  <p className="text-sm text-yellow-800">
                     {run.status === 'error' 
                       ? run.error_message || 'Transcription encountered an error.'
                       : 'The run is marked as transcribed but no transcript was found.'}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     onClick={handleTranscribe}
                     disabled={isTranscribing}
-                    className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                    isLoading={isTranscribing}
+                    variant="primary"
+                    size="sm"
                   >
-                    {isTranscribing ? (
-                      <>
-                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Transcribing...
-                      </>
-                    ) : (
-                      '🎤 Transcribe (overwrite)'
-                    )}
-                  </button>
-                  <button
+                    🎤 Transcribe (overwrite)
+                  </Button>
+                  <Button
                     onClick={handleReset}
                     disabled={isTranscribing}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                    variant="secondary"
+                    size="sm"
                   >
-                    {isTranscribing ? (
-                      <>
-                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Resetting...
-                      </>
-                    ) : (
-                      '🔄 Reset'
-                    )}
-                  </button>
+                    🔄 Reset
+                  </Button>
                 </div>
               </div>
               
@@ -947,7 +913,7 @@ export default function RunPage() {
                   <pre className="mt-2 text-gray-600 whitespace-pre-wrap break-all">{transcribeDebug}</pre>
                 </details>
               )}
-            </div>
+            </Card>
           ) : null}
 
           {/* Reset & Re-transcribe button - if already transcribed */}
@@ -1006,32 +972,26 @@ export default function RunPage() {
 
           {/* Analysis Action */}
           {run.status === 'transcribed' && run.transcript && !run.analysis_json && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center justify-between">
+            <Card className="mb-6 border-blue-200 bg-blue-50">
+              <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <p className="text-blue-800 font-medium mb-1">
+                  <p className="text-blue-900 font-semibold mb-1">
                     Ready for Analysis
                   </p>
-                  <p className="text-sm text-blue-700">
+                  <p className="text-sm text-blue-800">
                     Get detailed rubric-based feedback on your pitch.
                   </p>
                 </div>
-                <button
+                <Button
                   onClick={handleAnalyze}
                   disabled={isAnalyzing}
-                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  isLoading={isAnalyzing}
+                  variant="primary"
                 >
-                  {isAnalyzing ? (
-                    <>
-                      <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Analyzing...
-                    </>
-                  ) : (
-                    '✨ Analyze'
-                  )}
-                </button>
+                  ✨ Analyze
+                </Button>
               </div>
-            </div>
+            </Card>
           )}
 
           {isTranscribing && run.status !== 'uploaded' && (
@@ -1051,7 +1011,6 @@ export default function RunPage() {
               </div>
             </div>
           )}
-        </div>
       </div>
     </div>
   )

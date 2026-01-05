@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase/server'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 import OpenAI from 'openai'
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error('OPENAI_API_KEY environment variable is not set')
-}
+export const dynamic = 'force-dynamic'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+function getOpenAIClient() {
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY environment variable is not set')
+  }
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  })
+}
 
 interface RubricCriterion {
   name: string
@@ -159,13 +162,13 @@ export async function POST(
     const { id } = params
 
     // Set status to 'analyzing' immediately
-    await supabaseAdmin
+    await getSupabaseAdmin()
       .from('pitch_runs')
       .update({ status: 'analyzing' })
       .eq('id', id)
 
     // Fetch the run with rubric
-    const { data: run, error: fetchError } = await supabaseAdmin
+    const { data: run, error: fetchError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .select('*, rubrics(*)')
       .eq('id', id)
@@ -222,6 +225,7 @@ export async function POST(
     // Call OpenAI for analysis
     let analysisJson: AnalysisOutput
     try {
+      const openai = getOpenAIClient()
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [
@@ -252,7 +256,7 @@ export async function POST(
     } catch (error: any) {
       console.error('OpenAI analysis error:', error)
       
-      await supabaseAdmin
+      await getSupabaseAdmin()
         .from('pitch_runs')
         .update({
           status: 'error',
@@ -267,7 +271,7 @@ export async function POST(
     }
 
     // Update the run with analysis
-    const { data: updatedRun, error: updateError } = await supabaseAdmin
+    const { data: updatedRun, error: updateError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .update({
         analysis_json: analysisJson,
@@ -297,7 +301,7 @@ export async function POST(
 
     // Try to update status to error
     try {
-      await supabaseAdmin
+      await getSupabaseAdmin()
         .from('pitch_runs')
         .update({
           status: 'error',

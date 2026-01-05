@@ -59,3 +59,5 @@
 - **API errors**: Verify Supabase credentials and OpenAI API key
 - **Storage errors**: Ensure bucket exists and is named `pitchpractice-audio`
 
+
+

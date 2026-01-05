@@ -49,10 +49,30 @@ npm install
 
 ### 3. Create Storage Bucket
 
+**IMPORTANT**: The bucket must exist before uploading files.
+
+**Option A: Via Dashboard (Recommended)**
 1. In Supabase dashboard, go to **Storage**
-2. Create a new bucket named: `pitchpractice-audio`
-3. Set it to **Private** (not public)
-4. No need to set up policies for now (service role key bypasses RLS)
+2. Click **"New bucket"** or **"Create bucket"**
+3. Configure:
+   - **Name**: `pitchpractice-audio` (exact match, case-sensitive)
+   - **Public**: `false` (must be Private)
+   - **File size limit**: `52428800` (50 MB) - optional
+4. Click **"Create bucket"**
+
+**Option B: Via Script**
+```bash
+# Set environment variables first
+export NEXT_PUBLIC_SUPABASE_URL="your-url"
+export SUPABASE_SERVICE_ROLE_KEY="your-key"
+
+# Run the setup script
+npx tsx scripts/create-bucket.ts
+```
+
+**Verification**: Go to Storage → You should see `pitchpractice-audio` listed as Private.
+
+> **Note**: The app will attempt to auto-create the bucket if missing, but manual creation is more reliable.
 
 ### 4. Configure Environment Variables
 

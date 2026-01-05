@@ -46,7 +46,9 @@ export default function RunPage() {
     if (!runId) return
 
     try {
-      const res = await fetch(`/api/runs/${runId}`)
+      const res = await fetch(`/api/runs/${runId}`, {
+        cache: 'no-store',
+      })
       if (!res.ok) {
         throw new Error('Failed to fetch run')
       }

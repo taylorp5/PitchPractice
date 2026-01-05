@@ -18,7 +18,12 @@ export async function GET(
       console.error('Database error:', error)
       return NextResponse.json(
         { error: 'Run not found' },
-        { status: 404 }
+        { 
+          status: 404,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
       )
     }
 
@@ -43,18 +48,37 @@ export async function GET(
         })
       }
 
-      return NextResponse.json({
-        ...run,
-        audio_url: signedUrlData?.signedUrl || null,
-      })
+      return NextResponse.json(
+        {
+          ...run,
+          audio_url: signedUrlData?.signedUrl || null,
+        },
+        {
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
+      )
     }
 
-    return NextResponse.json(run)
+    return NextResponse.json(
+      run,
+      {
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
+    )
   } catch (error) {
     console.error('Unexpected error:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
     )
   }
 }

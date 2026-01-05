@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 // Helper function to log fetch errors with full details
@@ -48,7 +48,8 @@ interface Run {
 
 export default function RunPage() {
   const params = useParams()
-  const runId = params.id as string
+  const router = useRouter()
+  const routeRunId = params.id as string
   const [run, setRun] = useState<Run | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -61,9 +62,9 @@ export default function RunPage() {
   const [lastTranscribeResponse, setLastTranscribeResponse] = useState<any>(null)
 
   const fetchRun = async () => {
-    if (!runId) return
+    if (!routeRunId) return
 
-    const url = `/api/runs/${runId}`
+    const url = `/api/runs/${routeRunId}`
     try {
       const res = await fetch(url, {
         cache: 'no-store',
@@ -89,7 +90,7 @@ export default function RunPage() {
       
       // Fetch fresh audio URL
       if (runData && runData.audio_path) {
-        const audioUrl = `/api/runs/${runId}/audio-url`
+        const audioUrl = `/api/runs/${routeRunId}/audio-url`
         try {
           const audioRes = await fetch(audioUrl)
           if (!audioRes.ok) {
@@ -120,7 +121,7 @@ export default function RunPage() {
 
   useEffect(() => {
     fetchRun()
-  }, [runId])
+  }, [routeRunId])
 
   // Auto-start transcription if status is 'uploaded' and no transcript exists
   useEffect(() => {
@@ -129,7 +130,7 @@ export default function RunPage() {
       handleTranscribe()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run?.status, run?.transcript, runId])
+  }, [run?.status, run?.transcript, routeRunId])
 
   // Auto-start analysis if status is 'transcribed'
   useEffect(() => {
@@ -137,16 +138,16 @@ export default function RunPage() {
       handleAnalyze()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run?.status, runId])
+  }, [run?.status, routeRunId])
 
   const handleTranscribe = async () => {
-    if (!runId || isTranscribing) return
+    if (!routeRunId || isTranscribing) return
 
     setIsTranscribing(true)
     setError(null)
     setTranscribeDebug('')
 
-    const url = `/api/runs/${runId}/transcribe`
+    const url = `/api/runs/${routeRunId}/transcribe`
     
     try {
       // Log and display the exact URL
@@ -167,6 +168,18 @@ export default function RunPage() {
       
       // Log full JSON response
       console.log('[Client] Transcribe response (full JSON):', JSON.stringify(responseData, null, 2))
+      
+      // Check ID consistency
+      const responseRunId = responseData.runId
+      console.log({ routeRunId, responseRunId: responseRunId })
+      
+      // If response.runId exists and differs from routeRunId, redirect
+      if (responseRunId && responseRunId !== routeRunId) {
+        console.log(`[ID Mismatch] Redirecting from ${routeRunId} to ${responseRunId}`)
+        router.replace(`/runs/${responseRunId}`)
+        // Don't fetch here - the route change will trigger useEffect to fetch
+        return
+      }
       
       // Store last transcribe response for debug panel
       setLastTranscribeResponse(responseData)
@@ -210,13 +223,13 @@ export default function RunPage() {
   }
   
   const handleReset = async () => {
-    if (!runId || isTranscribing) return
+    if (!routeRunId || isTranscribing) return
 
     setIsTranscribing(true)
     setError(null)
     setTranscribeDebug('')
 
-    const url = `/api/runs/${runId}/reset`
+    const url = `/api/runs/${routeRunId}/reset`
     
     try {
       const debugMsg = `Calling: ${url}`
@@ -258,13 +271,13 @@ export default function RunPage() {
   }
 
   const handleAnalyze = async () => {
-    if (!runId || isAnalyzing) return
+    if (!routeRunId || isAnalyzing) return
 
     setIsAnalyzing(true)
     setError(null)
 
     try {
-      const url = `/api/runs/${runId}/analyze`
+      const url = `/api/runs/${routeRunId}/analyze`
       const response = await fetch(url, {
         method: 'POST',
       })
@@ -283,7 +296,7 @@ export default function RunPage() {
       await fetchRun()
     } catch (err) {
       console.error('[Fetch Error] Analysis error:', {
-        url: `/api/runs/${runId}/analyze`,
+        url: `/api/runs/${routeRunId}/analyze`,
         error: err,
       })
       setError(err instanceof Error ? err.message : 'Failed to analyze pitch')
@@ -506,6 +519,8 @@ export default function RunPage() {
               <details className="mt-4 p-3 bg-gray-100 rounded text-xs">
                 <summary className="cursor-pointer font-semibold text-gray-700">Debug Info</summary>
                 <div className="mt-2 space-y-2 text-gray-600">
+                  <div><strong>routeRunId:</strong> {routeRunId}</div>
+                  <div><strong>run.id:</strong> {run.id || 'null'}</div>
                   <div><strong>status:</strong> {run.status}</div>
                   <div><strong>transcript length:</strong> {run.transcript ? `${run.transcript.length} chars` : 'null'}</div>
                   <div><strong>audio_path:</strong> {run.audio_path || 'null'}</div>

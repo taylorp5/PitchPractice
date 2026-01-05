@@ -9,6 +9,8 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { CheckCircle2, Clock, Scissors, Mic, Upload, Play, Pause, Square } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
+const DEBUG = true
+
 // Helper function to log fetch errors
 async function logFetchError(url: string, response: Response, error?: any) {
   let responseText = ''
@@ -122,6 +124,10 @@ export default function TryPage() {
   // Start recording
   const startRecording = async () => {
     try {
+      if (DEBUG) {
+        console.log('[Try] Starting recording...')
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
@@ -134,7 +140,7 @@ export default function TryPage() {
       audioContextRef.current = audioContext
       analyserRef.current = analyser
 
-      // Monitor mic level
+      // Monitor mic level (works independently of run state)
       const updateMicLevel = () => {
         if (!analyserRef.current) return
         const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
@@ -163,13 +169,17 @@ export default function TryPage() {
       setIsPaused(false)
       setRecordingTime(0)
 
+      if (DEBUG) {
+        console.log('[Try] Recording started')
+      }
+
       // Start timer
       timerIntervalRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1)
       }, 1000)
     } catch (err: any) {
       setError('Failed to start recording. Please check microphone permissions.')
-      console.error('Recording error:', err)
+      console.error('[Try] Recording error:', err)
     }
   }
 
@@ -220,6 +230,13 @@ export default function TryPage() {
     }
 
     mediaRecorderRef.current.onstop = async () => {
+      if (DEBUG) {
+        console.log('[Try] Recording stopped, preparing upload...', {
+          chunks: audioChunksRef.current.length,
+          totalSize: audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0),
+        })
+      }
+
       const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
       await uploadAudio(audioBlob, 'recording.webm')
     }
@@ -243,6 +260,14 @@ export default function TryPage() {
         return
       }
 
+      if (DEBUG) {
+        console.log('[Try] Uploading audio:', {
+          fileName,
+          size: audioBlob.size,
+          type: audioBlob.type,
+        })
+      }
+
       const formData = new FormData()
       formData.append('audio', audioBlob, fileName)
       formData.append('session_id', sessionId)
@@ -262,20 +287,50 @@ export default function TryPage() {
       }
 
       const data = await response.json()
+      
+      if (!data.run || !data.run.id) {
+        throw new Error('Run creation failed: no run ID returned')
+      }
+
+      if (DEBUG) {
+        console.log('[Try] Run created:', { 
+          runId: data.run.id, 
+          status: data.run.status,
+          audioPath: data.run.audio_path,
+        })
+      }
+
       setRun({ ...data.run, audio_url: null })
+      setIsUploading(false)
       
       // Auto-start transcription
       setIsTranscribing(true)
       await transcribeRun(data.run.id)
     } catch (err: any) {
-      setError(err.message || 'Failed to upload audio')
+      const errorMessage = err.message || 'Failed to upload audio'
+      setError(errorMessage)
       setIsUploading(false)
+      setIsTranscribing(false)
+      
+      if (DEBUG) {
+        console.error('[Try] Upload failed:', err)
+      }
     }
   }
 
   // Transcribe run
   const transcribeRun = async (runId: string) => {
+    if (!runId) {
+      setError('Cannot transcribe: no run ID')
+      setIsTranscribing(false)
+      return
+    }
+
     try {
+      if (DEBUG) {
+        console.log('[Try] Starting transcription:', { runId })
+      }
+
       const response = await fetch(`/api/runs/${runId}/transcribe`, {
         method: 'POST',
       })
@@ -286,6 +341,13 @@ export default function TryPage() {
       }
 
       const data = await response.json()
+      
+      if (DEBUG) {
+        console.log('[Try] Transcription complete:', { 
+          runId, 
+          transcriptLen: data.transcript?.length || 0 
+        })
+      }
       
       // Fetch updated run data
       await fetchRun(runId)
@@ -306,7 +368,17 @@ export default function TryPage() {
 
   // Analyze run
   const analyzeRun = async (runId: string) => {
+    if (!runId) {
+      setError('Cannot analyze: no run ID')
+      setIsAnalyzing(false)
+      return
+    }
+
     try {
+      if (DEBUG) {
+        console.log('[Try] Starting analysis:', { runId })
+      }
+
       const response = await fetch(`/api/runs/${runId}/analyze`, {
         method: 'POST',
       })
@@ -314,6 +386,10 @@ export default function TryPage() {
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.message || 'Analysis failed')
+      }
+
+      if (DEBUG) {
+        console.log('[Try] Analysis complete:', { runId })
       }
 
       await fetchRun(runId)
@@ -326,6 +402,13 @@ export default function TryPage() {
 
   // Fetch run data
   const fetchRun = async (runId: string) => {
+    if (!runId) {
+      if (DEBUG) {
+        console.warn('[Try] fetchRun called without runId')
+      }
+      return
+    }
+
     try {
       const response = await fetch(`/api/runs/${runId}`, {
         cache: 'no-store',
@@ -341,16 +424,20 @@ export default function TryPage() {
         setAudioUrl(data.run.audio_url)
       }
     } catch (err: any) {
-      console.error('Failed to fetch run:', err)
+      console.error('[Try] Failed to fetch run:', err)
+      setError('Failed to load run data. Please try again.')
     }
   }
 
   // Poll for run updates during transcription/analysis
   useEffect(() => {
-    if (!run || (!isTranscribing && !isAnalyzing)) return
+    if (!run?.id || (!isTranscribing && !isAnalyzing)) return
 
+    const runId = run.id // Capture run.id to avoid stale closure
     const interval = setInterval(() => {
-      fetchRun(run.id)
+      if (runId) {
+        fetchRun(runId)
+      }
     }, 2000)
 
     return () => clearInterval(interval)
@@ -655,8 +742,18 @@ export default function TryPage() {
                 )}
 
                 {error && (
-                  <div className="p-4 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg text-sm text-[#EF4444]">
-                    {error}
+                  <div className="p-4 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
+                    <p className="text-sm text-[#EF4444] mb-3">{error}</p>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setError(null)
+                        handleNewTake()
+                      }}
+                    >
+                      Try again
+                    </Button>
                   </div>
                 )}
 

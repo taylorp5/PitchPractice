@@ -831,20 +831,34 @@ export default function TryPage() {
       if (DEBUG) {
         console.log('[Try] Transcription complete:', { 
           runId, 
-          transcriptLen: data.transcript?.length || 0 
+          transcriptLen: data.transcript?.length || 0,
+          hasRun: !!data.run,
+          runStatus: data.run?.status,
         })
       }
       
-      // Fetch updated run data
-      await fetchRun(runId)
+      // Update run state immediately from response
+      if (data.ok && data.run) {
+        setRun({ ...data.run, audio_url: run?.audio_url || null })
+        if (DEBUG) {
+          console.log('[Try] Run state updated from transcribe response:', {
+            runId: data.run.id,
+            status: data.run.status,
+            hasTranscript: !!data.run.transcript,
+            transcriptLen: data.run.transcript?.length || 0,
+          })
+        }
+      } else {
+        // Fallback: fetch if response doesn't include run
+        await fetchRun(runId)
+      }
+      
+      setIsTranscribing(false)
       
       // Auto-start feedback generation if transcript exists
-      if (data.transcript && data.transcript.length > 0) {
-        setIsTranscribing(false)
+      if (data.run?.transcript && data.run.transcript.length > 0) {
         setIsGettingFeedback(true) // UI will show "Generating feedback..."
         await getFeedback(runId)
-      } else {
-        setIsTranscribing(false)
       }
     } catch (err: any) {
       setError(err.message || 'Transcription failed')
@@ -920,11 +934,23 @@ export default function TryPage() {
         throw new Error(`${errorMsg}${details}${fieldsChecked}`)
       }
 
+      // Update run state immediately from response
+      if (responseData?.ok && responseData?.run) {
+        setRun({ ...responseData.run, audio_url: run?.audio_url || null })
+        if (DEBUG) {
+          console.log('[Try] Run state updated from feedback response:', {
+            runId: responseData.run.id,
+            status: responseData.run.status,
+            hasAnalysisJson: !!responseData.run.analysis_json,
+          })
+        }
+      }
+      
       // Store feedback immediately from response
       if (responseData?.ok && responseData?.analysis) {
         setFeedback(responseData.analysis)
         if (DEBUG) {
-          console.log('[Try] Feedback stored from response:', {
+          console.log('[Try] Feedback stored from response.analysis:', {
             runId,
             hasSummary: !!responseData.analysis.summary,
             hasRubricScores: !!responseData.analysis.rubric_scores,
@@ -936,6 +962,17 @@ export default function TryPage() {
           console.log('[Try] Feedback stored from run.analysis_json:', {
             runId,
             hasSummary: !!responseData.run.analysis_json.summary,
+          })
+        }
+      } else if (responseData?.ok && responseData?.run) {
+        // Run was updated but no analysis in response - it should be in run.analysis_json
+        // This shouldn't happen, but if it does, the run state was already updated above
+        if (DEBUG) {
+          console.warn('[Try] Feedback response missing analysis data but run was updated:', {
+            runId,
+            responseData,
+            hasAnalysis: !!responseData?.analysis,
+            hasRunAnalysisJson: !!responseData?.run?.analysis_json,
           })
         }
       } else {
@@ -950,8 +987,6 @@ export default function TryPage() {
         throw new Error('Feedback generation succeeded but no feedback data in response')
       }
 
-      // Refetch run to confirm persistence
-      await fetchRun(runId)
       setIsGettingFeedback(false)
     } catch (err: any) {
       setError(err.message || 'Feedback generation failed')
@@ -1657,8 +1692,10 @@ export default function TryPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <div>Active Run ID:</div>
                     <div className="font-mono">{run?.id || 'none'}</div>
-                    <div>DB Status:</div>
+                    <div>Run Status:</div>
                     <div>{run?.status || 'none'}</div>
+                    <div>Run ID:</div>
+                    <div className="font-mono">{run?.id || 'none'}</div>
                     <div>UI Status:</div>
                     <div>{isRecording ? 'recording' : isUploading ? 'uploading' : isTranscribing ? 'transcribing' : isGettingFeedback ? 'getting feedback' : run ? 'ready' : 'idle'}</div>
                     <div>Is Recording:</div>

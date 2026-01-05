@@ -292,8 +292,10 @@ export async function POST(
     }
 
     // Calculate word count and WPM
+    // Use duration_ms as source of truth if available, otherwise use audioSeconds
+    const durationForWPM = run.duration_ms ? run.duration_ms / 1000 : audioSeconds
     const wordCount = countWords(transcript)
-    const wpm = calculateWPM(wordCount, audioSeconds)
+    const wpm = calculateWPM(wordCount, durationForWPM)
 
     console.log('[Transcribe] Calculated metrics:', {
       runId: id,

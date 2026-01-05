@@ -650,20 +650,36 @@ export default function RunPage() {
                     Click "Transcribe" to transcribe your audio and get timing metrics.
                   </p>
                 </div>
-                <button
-                  onClick={() => handleTranscribe(false)}
-                  disabled={isTranscribing}
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isTranscribing ? (
-                    <>
-                      <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Transcribing...
-                    </>
-                  ) : (
-                    '🎤 Transcribe'
-                  )}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleTranscribe(false)}
+                    disabled={isTranscribing}
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isTranscribing ? (
+                      <>
+                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Transcribing...
+                      </>
+                    ) : (
+                      '🎤 Transcribe'
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleTranscribe(true)}
+                    disabled={isTranscribing}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isTranscribing ? (
+                      <>
+                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Transcribing...
+                      </>
+                    ) : (
+                      '⚡ Force'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           )}

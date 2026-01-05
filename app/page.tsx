@@ -124,7 +124,7 @@ export default function LandingPage() {
               <span className="block">Perform better everywhere.</span>
             </h1>
             <p className="text-xl md:text-2xl lg:text-3xl mb-16 md:mb-20 max-w-3xl mx-auto leading-relaxed font-normal" style={{ color: colors.text.secondary }}>
-              Get instant, actionable feedback on clarity, pacing, and structure—before your next big moment.
+              Record yourself speaking and get instant feedback on clarity, pacing, and structure — before it actually matters.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
               <motion.div
@@ -155,9 +155,32 @@ export default function LandingPage() {
                   }}
                   className="border border-[#1E293B] hover:border-[#334155] hover:bg-[#0F172A]/50 transition-all"
                 >
-                  See how it works
+                  See an example
                 </Button>
               </motion.div>
+            </div>
+            <div className="flex flex-wrap justify-center items-center gap-6 md:gap-8 mb-8" style={{ color: colors.text.secondary }}>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🎙</span>
+                <div>
+                  <div className="text-sm font-medium" style={{ color: colors.text.primary }}>Record</div>
+                  <div className="text-xs" style={{ color: colors.text.tertiary }}>Say it out loud</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">✍</span>
+                <div>
+                  <div className="text-sm font-medium" style={{ color: colors.text.primary }}>Transcript</div>
+                  <div className="text-xs" style={{ color: colors.text.tertiary }}>See exactly what you said</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🎯</span>
+                <div>
+                  <div className="text-sm font-medium" style={{ color: colors.text.primary }}>Feedback</div>
+                  <div className="text-xs" style={{ color: colors.text.tertiary }}>Get clear suggestions</div>
+                </div>
+              </div>
             </div>
             <p className="text-sm md:text-base" style={{ color: colors.text.tertiary }}>
               Free practice run · No signup required

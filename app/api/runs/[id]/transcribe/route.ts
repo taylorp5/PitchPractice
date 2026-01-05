@@ -80,6 +80,12 @@ export async function POST(
       willOverwrite: transcriptLenBefore > 0,
     })
 
+    // Set status to 'transcribing' immediately
+    await supabaseAdmin
+      .from('pitch_runs')
+      .update({ status: 'transcribing' })
+      .eq('id', id)
+
     // Always proceed - no blocking behavior
     // We will overwrite transcript, status, and clear error_message on success
 

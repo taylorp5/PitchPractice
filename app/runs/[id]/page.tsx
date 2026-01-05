@@ -175,18 +175,6 @@ export default function RunPage() {
       // Log full JSON response
       console.log('[Client] Transcribe response (full JSON):', JSON.stringify(responseData, null, 2))
       
-      // Check ID consistency
-      const responseRunId = responseData.runId
-      console.log({ routeRunId, responseRunId: responseRunId })
-      
-      // If response.runId exists and differs from routeRunId, redirect
-      if (responseRunId && responseRunId !== routeRunId) {
-        console.log(`[ID Mismatch] Redirecting from ${routeRunId} to ${responseRunId}`)
-        router.replace(`/runs/${responseRunId}`)
-        // Don't fetch here - the route change will trigger useEffect to fetch
-        return
-      }
-      
       // Store last transcribe response for debug panel
       setLastTranscribeResponse(responseData)
       
@@ -199,6 +187,7 @@ export default function RunPage() {
       if (!responseData.ok) {
         const errorMsg = responseData.message || responseData.error || 'Transcription failed'
         setError(errorMsg)
+        setLastAction(`Transcription failed: ${errorMsg}`)
         // Don't throw - let the UI show the error message
         await fetchRun()
         return
@@ -208,22 +197,23 @@ export default function RunPage() {
         // Show exact error message from API
         const errorMsg = responseData.message || responseData.error || 'Transcription failed'
         setError(errorMsg)
+        setLastAction(`Transcription failed: ${errorMsg}`)
         await fetchRun()
         return
       }
 
-      // Update local state immediately with response data
+      // Update local state immediately with response data - NO REDIRECT/REFRESH
       if (responseData.ok && responseData.run) {
-        setRun(prev => ({ ...prev, ...responseData.run }))
+        setRun(responseData.run)
+        setLastAction('Transcribed successfully')
       }
       
       // Store transcript from response
       if (responseData.transcript) {
         setLastTranscript(responseData.transcript)
       }
-
-      // Also refresh run data to ensure consistency
-      await fetchRun()
+      
+      // DO NOT call fetchRun() or router.refresh() - keep state stable
     } catch (err) {
       console.error('[Fetch Error] Transcription error:', {
         url,
@@ -308,14 +298,24 @@ export default function RunPage() {
         throw new Error(errorData.error || 'Analysis failed')
       }
 
-      // Refresh run data to get updated analysis
-      await fetchRun()
+      const responseData = await response.json()
+      
+      // Update local state immediately - NO REDIRECT/REFRESH
+      if (responseData.run) {
+        setRun(responseData.run)
+        setLastAction('Analysis completed successfully')
+      } else if (responseData.ok) {
+        // If response doesn't include run, fetch it
+        await fetchRun()
+        setLastAction('Analysis completed successfully')
+      }
     } catch (err) {
       console.error('[Fetch Error] Analysis error:', {
         url: `/api/runs/${routeRunId}/analyze`,
         error: err,
       })
       setError(err instanceof Error ? err.message : 'Failed to analyze pitch')
+      setLastAction(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
       // Refresh to get updated error status
       await fetchRun()
     } finally {
@@ -473,6 +473,25 @@ export default function RunPage() {
             </div>
           )}
 
+          {/* Last Action Log */}
+          {lastAction && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <p className="text-green-800 text-sm font-medium">{lastAction}</p>
+                {lastTranscribeResponse && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-green-600 hover:text-green-700">
+                      View response JSON
+                    </summary>
+                    <pre className="mt-2 p-2 bg-white border border-green-200 rounded text-xs overflow-auto max-h-40 font-mono">
+                      {JSON.stringify(lastTranscribeResponse, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            </div>
+          )}
+
           {run.rubrics && (
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <h3 className="font-semibold text-blue-900 mb-2">
@@ -591,36 +610,35 @@ export default function RunPage() {
             </div>
           )}
 
-          {/* Timing Metrics */}
-          {(run.audio_seconds || run.word_count || run.words_per_minute) && (
+          {/* Metrics Card - Always visible */}
+          {run && (
             <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900 mb-3">Timing Metrics</h2>
+              <h2 className="text-xl font-semibold text-gray-900 mb-3">Metrics</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {run.audio_seconds !== null && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Duration</p>
-                    <p className="text-lg font-semibold text-gray-900">
-                      {Math.floor(run.audio_seconds / 60)}:
-                      {String(Math.floor(run.audio_seconds % 60)).padStart(2, '0')}
-                    </p>
-                  </div>
-                )}
-                {run.word_count !== null && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Word Count</p>
-                    <p className="text-lg font-semibold text-gray-900">
-                      {run.word_count.toLocaleString()}
-                    </p>
-                  </div>
-                )}
-                {run.words_per_minute !== null && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Words Per Minute</p>
-                    <p className="text-lg font-semibold text-gray-900">
-                      {run.words_per_minute} WPM
-                    </p>
-                  </div>
-                )}
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">Duration</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {run.audio_seconds !== null && run.audio_seconds !== undefined
+                      ? `${Math.floor(run.audio_seconds / 60)}:${String(Math.floor(run.audio_seconds % 60)).padStart(2, '0')}`
+                      : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">Word Count</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {run.word_count !== null && run.word_count !== undefined
+                      ? run.word_count.toLocaleString()
+                      : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600 mb-1">WPM</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {run.words_per_minute !== null && run.words_per_minute !== undefined
+                      ? `${run.words_per_minute}`
+                      : '—'}
+                  </p>
+                </div>
               </div>
             </div>
           )}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSessionId } from '@/lib/session'
 import { Card } from '@/components/ui/Card'
@@ -114,6 +114,9 @@ export default function TryPage() {
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isGettingFeedback, setIsGettingFeedback] = useState(false) // UI shows "Get feedback" / "Generating feedback..."
   const [expandedChunks, setExpandedChunks] = useState<Set<number>>(new Set())
+  const [pinnedSentenceIdx, setPinnedSentenceIdx] = useState<number | null>(null)
+  const [highlightedCriterion, setHighlightedCriterion] = useState<string | null>(null)
+  const [expandedRewrites, setExpandedRewrites] = useState<Set<number>>(new Set())
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null)
   const [pausedTotalMs, setPausedTotalMs] = useState(0)
   const [pauseStartTime, setPauseStartTime] = useState<number | null>(null)
@@ -373,6 +376,115 @@ export default function TryPage() {
     // WPM = word_count / (duration_ms / 60000)
     const wpm = Math.round(words / (durationMs / 60000))
     return wpm
+  }
+
+  // Split transcript into sentences
+  const splitIntoSentences = (text: string): string[] => {
+    if (!text) return []
+    // Split by sentence endings, but preserve the punctuation
+    const sentences = text
+      .split(/([.!?]+[\s\n]+)/)
+      .filter(s => s.trim().length > 0)
+      .map(s => s.trim())
+    
+    // Merge punctuation back with previous sentence
+    const merged: string[] = []
+    for (let i = 0; i < sentences.length; i++) {
+      if (sentences[i].match(/^[.!?]+$/)) {
+        // This is just punctuation, merge with previous
+        if (merged.length > 0) {
+          merged[merged.length - 1] += sentences[i]
+        }
+      } else {
+        merged.push(sentences[i])
+      }
+    }
+    
+    return merged.filter(s => s.length > 0)
+  }
+
+  // Map chunks to sentences for feedback
+  const createSentenceFeedbackMap = (transcript: string, chunks: any[]): Map<number, any> => {
+    const sentences = splitIntoSentences(transcript)
+    const feedbackMap = new Map<number, any>()
+    
+    sentences.forEach((sentence, idx) => {
+      // Find best matching chunk
+      let bestMatch: any = null
+      let bestScore = 0
+      
+      chunks.forEach(chunk => {
+        const chunkText = chunk.text || ''
+        const sentenceLower = sentence.toLowerCase().trim()
+        const chunkLower = chunkText.toLowerCase().trim()
+        
+        // Exact substring match
+        if (chunkLower.includes(sentenceLower) || sentenceLower.includes(chunkLower)) {
+          const score = Math.min(sentenceLower.length, chunkLower.length) / Math.max(sentenceLower.length, chunkLower.length)
+          if (score > bestScore) {
+            bestScore = score
+            bestMatch = chunk
+          }
+        }
+      })
+      
+      if (bestMatch) {
+        feedbackMap.set(idx, {
+          purpose_label: bestMatch.purpose_label || bestMatch.purpose || 'General',
+          score: bestMatch.score,
+          status: bestMatch.status || (bestMatch.score !== null && bestMatch.score >= 7 ? 'strong' : bestMatch.score !== null && bestMatch.score >= 4 ? 'needs_work' : 'unscored'),
+          why: bestMatch.feedback || '',
+          suggestion: bestMatch.rewrite_suggestion ? `Try: ${bestMatch.rewrite_suggestion}` : '',
+          rewrite: bestMatch.rewrite_suggestion || null,
+        })
+      } else {
+        // No match - default to unscored
+        feedbackMap.set(idx, {
+          purpose_label: 'General',
+          score: null,
+          status: 'unscored',
+          why: 'No specific coaching for this line yet.',
+          suggestion: '',
+          rewrite: null,
+        })
+      }
+    })
+    
+    return feedbackMap
+  }
+
+  // Group sentences into paragraphs
+  const groupSentencesIntoParagraphs = (sentences: string[], feedbackMap: Map<number, any>): string[][] => {
+    const paragraphs: string[][] = []
+    let currentParagraph: string[] = []
+    let lastPurpose: string | null = null
+    
+    sentences.forEach((sentence, idx) => {
+      const feedback = feedbackMap.get(idx)
+      const currentPurpose = feedback?.purpose_label || 'General'
+      
+      // Start new paragraph if:
+      // 1. Purpose changed
+      // 2. Current paragraph has 2-3 sentences
+      if (
+        (lastPurpose && lastPurpose !== currentPurpose) ||
+        (currentParagraph.length >= 3)
+      ) {
+        if (currentParagraph.length > 0) {
+          paragraphs.push(currentParagraph)
+          currentParagraph = []
+        }
+      }
+      
+      currentParagraph.push(sentence)
+      lastPurpose = currentPurpose
+    })
+    
+    if (currentParagraph.length > 0) {
+      paragraphs.push(currentParagraph)
+    }
+    
+    return paragraphs
   }
 
   // Get WPM interpretation
@@ -1580,150 +1692,126 @@ export default function TryPage() {
                   </Card>
                 )}
 
-                {/* Chunked Transcript */}
+                {/* Transcript-First UI */}
                 {run.transcript && run.transcript.trim().length > 0 && (() => {
                   const feedbackData = feedback || run.analysis_json
                   const serverChunks = feedbackData?.chunks || []
                   
-                  // Client-side fallback chunking if server chunks not available
-                  const chunks = serverChunks.length > 0 ? serverChunks : (() => {
-                    const sentences = run.transcript.split(/[.!?]+/).filter(s => s.trim().length > 0)
-                    const fallbackChunks: any[] = []
-                    let currentChunk: string[] = []
-                    
-                    for (let i = 0; i < sentences.length; i++) {
-                      currentChunk.push(sentences[i].trim())
-                      // Merge short sentences into chunks of 1-2 sentences
-                      if (currentChunk.length >= 2 || (currentChunk.length === 1 && sentences[i].trim().length > 100)) {
-                        fallbackChunks.push({
-                          text: currentChunk.join('. ') + '.',
-                          purpose: 'other',
-                          purpose_label: 'Content',
-                          score: null,
-                          status: 'needs_work' as const,
-                          feedback: '',
-                          rewrite_suggestion: null,
-                        })
-                        currentChunk = []
-                      }
-                    }
-                    if (currentChunk.length > 0) {
-                      fallbackChunks.push({
-                        text: currentChunk.join('. ') + '.',
-                        purpose: 'other',
-                        purpose_label: 'Content',
-                        score: null,
-                        status: 'needs_work' as const,
-                        feedback: '',
-                        rewrite_suggestion: null,
-                      })
-                    }
-                    return fallbackChunks
-                  })()
+                  // Create sentence feedback map
+                  const sentences = splitIntoSentences(run.transcript)
+                  const sentenceFeedbackMap = createSentenceFeedbackMap(run.transcript, serverChunks)
+                  const paragraphs = groupSentencesIntoParagraphs(sentences, sentenceFeedbackMap)
                   
-                  return (
-                    <Card className="p-6 bg-[#121826] border-[#22283A]">
-                      <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Annotated Transcript</h3>
-                      <div className="space-y-3 max-h-96 overflow-y-auto">
-                        {chunks.map((chunk: any, idx: number) => {
-                          const isExpanded = expandedChunks.has(idx)
-                          
-                          const getStatusInfo = (status: string) => {
-                            if (status === 'strong') {
-                              return {
-                                label: 'Strong',
-                                color: 'bg-[#22C55E]/20 text-[#22C55E] border-[#22C55E]/30',
-                                icon: CheckCircle2,
-                              }
-                            } else if (status === 'needs_work') {
-                              return {
-                                label: 'Needs work',
-                                color: 'bg-[#F97316]/20 text-[#F97316] border-[#F97316]/30',
-                                icon: AlertCircle,
-                              }
-                            } else {
-                              return {
-                                label: 'Missing',
-                                color: 'bg-[#EF4444]/20 text-[#EF4444] border-[#EF4444]/30',
-                                icon: X,
-                              }
-                            }
-                          }
-                          
-                          const statusInfo = getStatusInfo(chunk.status || 'needs_work')
-                          const StatusIcon = statusInfo.icon
-                          
-                          return (
-                            <div
-                              key={idx}
-                              className={`p-4 rounded-lg border cursor-pointer transition-colors ${
-                                statusInfo.color
-                              }`}
-                              onClick={() => {
-                                setExpandedChunks(prev => {
-                                  const next = new Set(prev)
-                                  if (next.has(idx)) {
-                                    next.delete(idx)
-                                  } else {
-                                    next.add(idx)
-                                  }
-                                  return next
-                                })
-                              }}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-xs font-medium px-2 py-1 rounded border bg-[#0B0F14]/50">
-                                      {chunk.purpose_label || chunk.purpose || 'Content'}
-                                    </span>
-                                    <StatusIcon className="h-4 w-4" />
-                                    <span className="text-xs font-medium">{statusInfo.label}</span>
-                                    {chunk.score !== null && (
-                                      <span className="text-xs text-[#9AA4B2]">
-                                        {chunk.score}/10
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-sm text-[#E6E8EB]">{chunk.text}</p>
-                                </div>
-                                <button className="flex-shrink-0 text-[#9AA4B2] hover:text-[#E6E8EB] transition-colors">
-                                  {isExpanded ? (
-                                    <ChevronUp className="h-4 w-4" />
-                                  ) : (
-                                    <ChevronDown className="h-4 w-4" />
-                                  )}
-                                </button>
+                  // Sentence span component - use CSS hover instead of hooks
+                  const SentenceSpan = ({ sentence, idx }: { sentence: string; idx: number }) => {
+                    const feedback = sentenceFeedbackMap.get(idx)
+                    const isPinned = pinnedSentenceIdx === idx
+                    const isHighlighted = highlightedCriterion && feedback?.purpose_label === highlightedCriterion
+                    
+                    const getStatusColor = (status: string) => {
+                      if (status === 'strong') return 'hover:border-[#22C55E]/50 hover:bg-[#22C55E]/5'
+                      if (status === 'needs_work') return 'hover:border-[#F97316]/50 hover:bg-[#F97316]/5'
+                      return 'hover:border-[#6B7280]/50 hover:bg-[#6B7280]/5'
+                    }
+                    
+                    return (
+                      <span
+                        id={`sentence-${idx}`}
+                        className={`group relative inline cursor-pointer transition-all rounded px-1 py-0.5 border border-transparent ${
+                          isHighlighted ? 'bg-[#F59E0B]/20 border-[#F59E0B]/50 animate-pulse' : getStatusColor(feedback?.status || 'unscored')
+                        }`}
+                        onClick={() => {
+                          setPinnedSentenceIdx(isPinned ? null : idx)
+                        }}
+                      >
+                        {sentence}
+                        {feedback && (
+                          <div className={`absolute z-50 mt-2 p-3 bg-[#0B0F14] border border-[#22283A] rounded-lg shadow-xl min-w-[280px] max-w-[400px] ${
+                            isPinned ? 'block' : 'hidden group-hover:block'
+                          }`}
+                          style={{ left: '50%', transform: 'translateX(-50%)', top: '100%' }}
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium px-2 py-1 rounded border bg-[#121826] text-[#9AA4B2]">
+                                  {feedback.purpose_label}
+                                </span>
+                                {feedback.score !== null && (
+                                  <span className="text-xs text-[#E6E8EB]">
+                                    {feedback.score}/10
+                                  </span>
+                                )}
                               </div>
-                              {isExpanded && (
-                                <div className="mt-3 pt-3 border-t border-[#22283A] space-y-2">
-                                  <div>
-                                    <p className="text-xs font-medium text-[#9AA4B2] mb-1">Purpose</p>
-                                    <p className="text-sm text-[#E6E8EB]">{chunk.purpose_label || chunk.purpose}</p>
-                                  </div>
-                                  {chunk.score !== null && (
-                                    <div>
-                                      <p className="text-xs font-medium text-[#9AA4B2] mb-1">Score</p>
-                                      <p className="text-sm text-[#E6E8EB]">{chunk.score} / 10</p>
-                                    </div>
-                                  )}
-                                  {chunk.feedback && (
-                                    <div>
-                                      <p className="text-xs font-medium text-[#9AA4B2] mb-1">Feedback</p>
-                                      <p className="text-sm text-[#E6E8EB]">{chunk.feedback}</p>
-                                    </div>
-                                  )}
-                                  {chunk.rewrite_suggestion && (
-                                    <div>
-                                      <p className="text-xs font-medium text-[#9AA4B2] mb-1">Rewrite suggestion</p>
-                                      <p className="text-sm text-[#E6E8EB] italic">{chunk.rewrite_suggestion}</p>
-                                    </div>
+                              {feedback.why && (
+                                <p className="text-sm text-[#E6E8EB]">{feedback.why}</p>
+                              )}
+                              {feedback.suggestion && (
+                                <p className="text-sm text-[#9AA4B2]">{feedback.suggestion}</p>
+                              )}
+                              {feedback.rewrite && (
+                                <div>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setExpandedRewrites(prev => {
+                                        const next = new Set(prev)
+                                        if (next.has(idx)) {
+                                          next.delete(idx)
+                                        } else {
+                                          next.add(idx)
+                                        }
+                                        return next
+                                      })
+                                    }}
+                                    className="text-xs text-[#F59E0B] hover:text-[#F97316]"
+                                  >
+                                    {expandedRewrites.has(idx) ? 'Hide rewrite' : 'Show rewrite'}
+                                  </button>
+                                  {expandedRewrites.has(idx) && (
+                                    <p className="text-sm text-[#E6E8EB] italic mt-1">{feedback.rewrite}</p>
                                   )}
                                 </div>
                               )}
+                              {isPinned && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setPinnedSentenceIdx(null)
+                                  }}
+                                  className="text-xs text-[#6B7280] hover:text-[#9AA4B2]"
+                                >
+                                  Close
+                                </button>
+                              )}
                             </div>
-                          )
-                        })}
+                          </div>
+                        )}
+                      </span>
+                    )
+                  }
+                  
+                  return (
+                    <Card className="p-6 bg-[#121826] border-[#22283A]">
+                      <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Transcript</h3>
+                      <div className="max-h-[600px] overflow-y-auto">
+                        <div className="max-w-[72ch] mx-auto" style={{ lineHeight: '1.7' }}>
+                          {paragraphs.map((paragraph, pIdx) => {
+                            let globalSentenceIdx = paragraphs.slice(0, pIdx).reduce((sum, p) => sum + p.length, 0)
+                            return (
+                              <p key={pIdx} className="mb-4 text-[#E6E8EB] text-base">
+                                {paragraph.map((sentence, sIdx) => {
+                                  const globalIdx = globalSentenceIdx++
+                                  return (
+                                    <React.Fragment key={globalIdx}>
+                                      <SentenceSpan sentence={sentence} idx={globalIdx} />
+                                      {sIdx < paragraph.length - 1 && ' '}
+                                    </React.Fragment>
+                                  )
+                                })}
+                              </p>
+                            )
+                          })}
+                        </div>
                       </div>
                     </Card>
                   )
@@ -1838,6 +1926,37 @@ export default function TryPage() {
                                         </div>
                                       </div>
                                     </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        // Find first sentence with this purpose
+                                        if (!run.transcript) return
+                                        const sentences = splitIntoSentences(run.transcript)
+                                        const sentenceFeedbackMap = createSentenceFeedbackMap(run.transcript, (feedbackData?.chunks || []))
+                                        let targetIdx = -1
+                                        for (let i = 0; i < sentences.length; i++) {
+                                          const feedback = sentenceFeedbackMap.get(i)
+                                          if (feedback?.purpose_label === criterionLabel) {
+                                            targetIdx = i
+                                            break
+                                          }
+                                        }
+                                        
+                                        if (targetIdx >= 0) {
+                                          // Scroll to sentence
+                                          const element = document.getElementById(`sentence-${targetIdx}`)
+                                          if (element) {
+                                            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                                            setHighlightedCriterion(criterionLabel)
+                                            setTimeout(() => setHighlightedCriterion(null), 2000)
+                                          }
+                                        }
+                                      }}
+                                      className="ml-3 text-xs"
+                                    >
+                                      Show evidence
+                                    </Button>
                                   </div>
                                   {rubricScore.notes && (
                                     <div className="mt-2 pt-2 border-t border-[#22283A]">

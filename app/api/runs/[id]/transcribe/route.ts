@@ -112,14 +112,9 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
-          started: true,
-          run: {
-            id,
-            statusBefore,
-            transcriptLenBefore,
-          },
-          forceUsed: false,
-          message: `Failed to download audio file: ${downloadError?.message || 'Unknown storage error'}`,
+          bytesDownloaded: 0,
+          mime: null,
+          transcriptLen: 0,
         },
         { status: 500 }
       )
@@ -218,14 +213,9 @@ export async function POST(
         return NextResponse.json(
           { 
             ok: false,
-            started: true,
-            run: {
-              id,
-              statusBefore,
-              transcriptLenBefore,
-            },
-            forceUsed: false,
-            message: 'OpenAI returned an empty transcript. The audio file may be corrupted or silent.',
+            bytesDownloaded: bytes,
+            mime: mimeType,
+            transcriptLen: 0,
           },
           { status: 500 }
         )
@@ -255,14 +245,9 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
-          started: true,
-          run: {
-            id,
-            statusBefore,
-            transcriptLenBefore,
-          },
-          forceUsed: false,
-          message: `Transcription failed: ${errorMessage}`,
+          bytesDownloaded: bytes,
+          mime: mimeType,
+          transcriptLen: 0,
         },
         { status: statusCode >= 400 && statusCode < 600 ? statusCode : 500 }
       )
@@ -303,14 +288,9 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
-          started: true,
-          run: {
-            id,
-            statusBefore,
-            transcriptLenBefore,
-          },
-          forceUsed: false,
-          message: `Failed to update run with transcript: ${updateError.message}`,
+          bytesDownloaded: bytes,
+          mime: mimeType,
+          transcriptLen: transcript.length,
         },
         { status: 500 }
       )
@@ -331,14 +311,9 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
-      started: true,
-      run: {
-        id,
-        statusBefore,
-        transcriptLenBefore,
-      },
-      forceUsed: false,
-      message: 'Transcription completed successfully',
+      bytesDownloaded: bytes,
+      mime: mimeType,
+      transcriptLen: transcript.length,
     })
   } catch (error: any) {
     const duration = Date.now() - startTime
@@ -366,8 +341,9 @@ export async function POST(
     return NextResponse.json(
       { 
         ok: false,
-        error: 'Internal server error',
-        message: error?.message || 'An unexpected error occurred',
+        bytesDownloaded: 0,
+        mime: null,
+        transcriptLen: 0,
       },
       { status: 500 }
     )

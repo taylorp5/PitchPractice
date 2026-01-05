@@ -40,6 +40,7 @@ export default function RunPage() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [debugInfo, setDebugInfo] = useState<any>(null)
   const [transcribeDebug, setTranscribeDebug] = useState<string>('')
+  const [lastTranscribeResponse, setLastTranscribeResponse] = useState<any>(null)
 
   const fetchRun = async () => {
     if (!runId) return
@@ -58,7 +59,7 @@ export default function RunPage() {
           const audioRes = await fetch(`/api/runs/${runId}/audio-url`)
           if (audioRes.ok) {
             const audioData = await audioRes.json()
-            setAudioUrl(audioData.audio_url)
+            setAudioUrl(audioData.url)
           }
         } catch (err) {
           console.error('Failed to fetch audio URL:', err)
@@ -115,6 +116,9 @@ export default function RunPage() {
       })
 
       const responseData = await response.json()
+      
+      // Store last transcribe response for debug panel
+      setLastTranscribeResponse(responseData)
       
       // Always display response JSON in debug area
       const responseDebug = `Response: ${JSON.stringify(responseData, null, 2)}`
@@ -405,12 +409,19 @@ export default function RunPage() {
               {process.env.NODE_ENV === 'development' && (
                 <details className="mt-4 p-3 bg-gray-100 rounded text-xs">
                   <summary className="cursor-pointer font-semibold text-gray-700">Debug Info</summary>
-                  <div className="mt-2 space-y-1 text-gray-600">
-                    <div><strong>audio_path:</strong> {run.audio_path}</div>
-                    <div><strong>signed_audio_url:</strong> {audioUrl ? '✓ Generated' : '✗ Failed'}</div>
-                    {audioUrl && <div className="break-all"><strong>URL:</strong> {audioUrl.substring(0, 100)}...</div>}
+                  <div className="mt-2 space-y-2 text-gray-600">
                     <div><strong>status:</strong> {run.status}</div>
-                    <div><strong>has_transcript:</strong> {run.transcript ? `Yes (${run.transcript.length} chars)` : 'No'}</div>
+                    <div><strong>transcript length:</strong> {run.transcript ? `${run.transcript.length} chars` : 'null'}</div>
+                    <div><strong>audio_path:</strong> {run.audio_path || 'null'}</div>
+                    <div><strong>error_message:</strong> {run.error_message || 'null'}</div>
+                    {lastTranscribeResponse && (
+                      <div className="mt-2">
+                        <strong>Last Transcribe Response:</strong>
+                        <pre className="mt-1 p-2 bg-gray-200 rounded text-xs overflow-auto max-h-40">
+                          {JSON.stringify(lastTranscribeResponse, null, 2)}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 </details>
               )}

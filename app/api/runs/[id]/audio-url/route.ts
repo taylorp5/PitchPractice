@@ -40,8 +40,7 @@ export async function GET(
     }
 
     return NextResponse.json({
-      audio_url: signedUrlData.signedUrl,
-      expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+      url: signedUrlData.signedUrl,
     })
   } catch (error: any) {
     console.error('[Audio URL] Unexpected error:', error)

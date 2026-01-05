@@ -168,7 +168,7 @@ export async function POST(
     try {
       const body = await request.json().catch(() => ({}))
       requestRubricId = body.rubric_id || null
-      if (requestRubricId && DEBUG) {
+      if (requestRubricId) {
         console.log('[Analyze] Request specified rubric_id:', requestRubricId)
       }
     } catch (e) {

@@ -16,13 +16,11 @@ export default function LandingPage() {
   const [focusedInsight, setFocusedInsight] = useState<string | null>(null)
 
   const testimonials = [
-    { quote: "Helped me realize where I was rambling without noticing.", author: "Jamie, Sales" },
-    { quote: "I cut almost a minute from my presentation and it still felt complete.", author: "Aimee, Educator" },
-    { quote: "The pacing feedback was way more useful than I expected.", author: "Marcus, Student" },
-    { quote: "Finally practiced without having to bug someone for feedback.", author: "Taylor, Business" },
-    { quote: "I didn't realize how fast I was talking until I saw it written out.", author: "James, Founder" },
-    { quote: "Simple, but surprisingly effective before a big meeting.", author: "Chris, Product" },
-    { quote: "This caught things I wouldn't have thought to fix.", author: "Elena, Graduate Student" },
+    { quote: "I didn't realize how many filler phrases I used until I saw it highlighted.", author: "Maya, Student" },
+    { quote: "The pacing notes were the difference between 'okay' and actually confident.", author: "Chris, Sales" },
+    { quote: "Helped me cut 30 seconds without losing the point.", author: "Elena, Founder" },
+    { quote: "I practiced twice and felt way calmer walking into the meeting.", author: "Jordan, Product" },
+    { quote: "Seeing my transcript made it obvious where I rambled.", author: "Sam, Consultant" },
   ]
 
   const exampleTranscript = [
@@ -187,51 +185,52 @@ export default function LandingPage() {
             </p>
           </div>
           <div className="relative overflow-hidden">
-            <motion.div
-              className="flex gap-20"
-              animate={{
-                x: [0, -50 * testimonials.length + '%'],
+            {/* Gradient fades at edges */}
+            <div 
+              className="absolute left-0 top-0 bottom-0 w-32 z-10 pointer-events-none"
+              style={{
+                background: `linear-gradient(to right, ${colors.background.primary}, transparent)`,
               }}
-              transition={{
-                duration: 60,
-                repeat: Infinity,
-                ease: 'linear',
+            />
+            <div 
+              className="absolute right-0 top-0 bottom-0 w-32 z-10 pointer-events-none"
+              style={{
+                background: `linear-gradient(to left, ${colors.background.primary}, transparent)`,
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.animationPlayState = 'paused'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.animationPlayState = 'running'
-              }}
-            >
-              {[...testimonials, ...testimonials, ...testimonials].map((testimonial, idx) => (
-                <div
-                  key={idx}
-                  className="flex-shrink-0 text-center opacity-75 hover:opacity-100 transition-all duration-300 min-w-[320px] px-4"
-                >
-                  <div 
-                    className="p-6 rounded-xl border backdrop-blur-sm"
-                    style={{
-                      backgroundColor: `${colors.background.secondary}60`,
-                      borderColor: `${colors.border.primary}40`,
-                    }}
+            />
+            <div className="marquee-container">
+              <div className="flex gap-16 marquee-animate">
+                {/* Render testimonials twice for seamless loop */}
+                {[...testimonials, ...testimonials].map((testimonial, idx) => (
+                  <div
+                    key={idx}
+                    className="flex-shrink-0 text-center min-w-[380px] px-4"
                   >
-                    <p 
-                      className="text-base italic mb-3 leading-relaxed"
-                      style={{ color: colors.text.primary }}
+                    <div 
+                      className="p-7 rounded-xl border backdrop-blur-sm transition-opacity duration-300 group-hover:opacity-100"
+                      style={{
+                        backgroundColor: `${colors.background.secondary}70`,
+                        borderColor: `${colors.border.primary}40`,
+                        opacity: 0.85,
+                      }}
                     >
-                      "{testimonial.quote}"
-                    </p>
-                    <p 
-                      className="text-xs font-medium"
-                      style={{ color: colors.text.tertiary }}
-                    >
-                      — {testimonial.author}
-                    </p>
+                      <p 
+                        className="text-lg md:text-xl font-normal mb-4 leading-relaxed"
+                        style={{ color: colors.text.primary }}
+                      >
+                        "{testimonial.quote}"
+                      </p>
+                      <p 
+                        className="text-sm font-medium"
+                        style={{ color: colors.text.secondary }}
+                      >
+                        — {testimonial.author}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </motion.div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>

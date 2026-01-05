@@ -7,3 +7,22 @@
     @apply bg-[#0B0F14] text-[#E6E8EB];
   }
 }
+
+@layer utilities {
+  @keyframes marquee {
+    0% {
+      transform: translateX(0%);
+    }
+    100% {
+      transform: translateX(-50%);
+    }
+  }
+  
+  .marquee-animate {
+    animation: marquee 80s linear infinite;
+  }
+  
+  .marquee-container:hover .marquee-animate {
+    animation-play-state: paused;
+  }
+}

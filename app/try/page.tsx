@@ -135,6 +135,7 @@ export default function TryPage() {
   const [lastError, setLastError] = useState<any>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [lastFeedbackResponse, setLastFeedbackResponse] = useState<any>(null)
+  const [isDebugExpanded, setIsDebugExpanded] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -1299,13 +1300,12 @@ export default function TryPage() {
       </nav>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* LEFT COLUMN */}
-          <div className="space-y-8">
-            {/* Section 1: Pick a prompt */}
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
+          {/* LEFT COLUMN: Prompt Selection */}
+          <div className="space-y-6">
             <div>
-              <h2 className="text-2xl font-bold text-[#E6E8EB] mb-4">Pick a prompt</h2>
+              <h2 className="text-xl font-semibold text-[#E6E8EB] mb-4">What are you practicing today?</h2>
               <div className="space-y-3">
                 {PROMPTS.map((prompt) => (
                   <div
@@ -1316,13 +1316,20 @@ export default function TryPage() {
                     <Card
                       className={`p-4 transition-all ${
                         selectedPrompt === prompt.id
-                          ? 'bg-[#151C2C] border-[#F59E0B]'
-                          : 'bg-[#121826] border-[#22283A] hover:border-[#6B7280]'
+                          ? 'bg-[#151C2C] border-[#F59E0B]/50'
+                          : 'bg-[#121826] border-[#1E293B] hover:border-[#334155] opacity-70 hover:opacity-100'
                       }`}
                     >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <h3 className="font-semibold text-[#E6E8EB] mb-1">{prompt.title}</h3>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-[#E6E8EB]">{prompt.title}</h3>
+                          {prompt.id === 'elevator' && (
+                            <span className="text-xs font-medium px-2 py-0.5 rounded bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30">
+                              Recommended
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-[#6B7280] mb-3">{prompt.duration}</p>
                         <div className="space-y-1">
                           {prompt.cues.map((cue, idx) => (
@@ -1342,49 +1349,53 @@ export default function TryPage() {
                 ))}
               </div>
             </div>
+          </div>
 
-            {/* Section 2: Record or Upload */}
-            <div>
-              <h2 className="text-2xl font-bold text-[#E6E8EB] mb-4">Record or upload</h2>
-              
-              {/* Tabs */}
-              <div className="flex gap-2 mb-4">
-                <button
-                  onClick={() => setActiveTab('record')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === 'record'
-                      ? 'bg-[#F59E0B] text-[#0B0F14]'
-                      : 'bg-[#121826] text-[#9AA4B2] hover:text-[#E6E8EB]'
-                  }`}
-                >
-                  Record
-                </button>
-                <button
-                  onClick={() => setActiveTab('upload')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === 'upload'
-                      ? 'bg-[#F59E0B] text-[#0B0F14]'
-                      : 'bg-[#121826] text-[#9AA4B2] hover:text-[#E6E8EB]'
-                  }`}
-                >
-                  Upload
-                </button>
+          {/* CENTER COLUMN: Recording Area (Main Focus) */}
+          <div className="space-y-6">
+            <Card className="p-8 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
+              <div className="text-center mb-6">
+                <p className="text-sm text-[#9AA4B2] mb-6">Speak naturally. Aim for 30–60 seconds.</p>
+                
+                {/* Tabs */}
+                <div className="flex gap-2 justify-center mb-6">
+                  <button
+                    onClick={() => setActiveTab('record')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === 'record'
+                        ? 'bg-[#F59E0B] text-[#0B0F14]'
+                        : 'bg-[#0B0F14] text-[#9AA4B2] hover:text-[#E6E8EB] border border-[#1E293B]'
+                    }`}
+                  >
+                    Record
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('upload')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      activeTab === 'upload'
+                        ? 'bg-[#F59E0B] text-[#0B0F14]'
+                        : 'bg-[#0B0F14] text-[#9AA4B2] hover:text-[#E6E8EB] border border-[#1E293B]'
+                    }`}
+                  >
+                    Upload
+                  </button>
+                </div>
               </div>
 
-              <Card className="p-6 bg-[#121826] border-[#22283A]">
+              <div>
                 {activeTab === 'record' ? (
-                  <div className="space-y-4">
-                    {/* Device selection */}
+                  <div className="space-y-6">
+                    {/* Device selection - visually secondary */}
                     {audioDevices.length > 1 && (
                       <div className="text-sm">
-                        <label className="block text-[#9AA4B2] mb-1">Mic input</label>
+                        <label className="block text-[#6B7280] mb-1 text-xs">Microphone</label>
                         <select
                           value={selectedDeviceId}
                           onChange={(e) => {
                             setSelectedDeviceId(e.target.value)
                             localStorage.setItem('pitchpractice_selected_device_id', e.target.value)
                           }}
-                          className="w-full px-3 py-2 bg-[#0B0F14] border border-[#22283A] rounded-lg text-[#E6E8EB] text-sm"
+                          className="w-full px-3 py-2 bg-[#0B0F14] border border-[#1E293B] rounded-lg text-[#9AA4B2] text-sm"
                           disabled={isRecording || isTestingMic}
                         >
                           {audioDevices.map((device) => (
@@ -1441,7 +1452,7 @@ export default function TryPage() {
                           variant="primary"
                           size="lg"
                           onClick={startRecording}
-                          className="w-full"
+                          className="w-full shadow-lg shadow-[#F59E0B]/20"
                           disabled={!selectedPrompt || isSilent}
                         >
                           <Mic className="mr-2 h-5 w-5" />
@@ -1449,12 +1460,12 @@ export default function TryPage() {
                         </Button>
                         {!isTestingMic && hasMicPermission && (
                           <Button
-                            variant="secondary"
+                            variant="ghost"
                             size="sm"
                             onClick={testMicrophone}
-                            className="w-full"
+                            className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
                           >
-                            🎤 Test Mic
+                            🎤 Test microphone
                           </Button>
                         )}
                       </div>
@@ -1615,24 +1626,21 @@ export default function TryPage() {
                   </div>
                 )}
 
-                <p className="text-xs text-[#6B7280] text-center mt-4">
-                  Free practice run · No signup required
-                </p>
-              </Card>
-            </div>
+              </div>
+            </Card>
           </div>
 
-          {/* RIGHT COLUMN - Results */}
+          {/* RIGHT COLUMN: Results */}
           <div className="space-y-6">
             {!run ? (
-              <Card className="p-12 bg-[#121826] border-[#22283A] text-center">
-                <p className="text-[#9AA4B2]">Your transcript and feedback will appear here.</p>
+              <Card className="p-12 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B] text-center">
+                <p className="text-[#9AA4B2]">Your transcript and feedback will appear here after you record.</p>
               </Card>
             ) : (
               <>
                 {/* Metrics */}
                 {run.transcript && run.transcript.trim().length > 0 && (
-                  <Card className="p-4 bg-[#121826] border-[#22283A]">
+                  <Card className="p-6 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div>
                         <p className="text-xs text-[#6B7280] mb-1">Duration</p>
@@ -1791,8 +1799,8 @@ export default function TryPage() {
                   }
                   
                   return (
-                    <Card className="p-6 bg-[#121826] border-[#22283A]">
-                      <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Transcript</h3>
+                    <Card className="p-8 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
+                      <h3 className="text-lg font-bold text-[#E6E8EB] mb-6">Transcript</h3>
                       <div className="max-h-[600px] overflow-y-auto">
                         <div className="max-w-[72ch] mx-auto" style={{ lineHeight: '1.7' }}>
                           {paragraphs.map((paragraph, pIdx) => {
@@ -1826,8 +1834,8 @@ export default function TryPage() {
                     // Show empty state if transcript exists but no feedback
                     if (run.transcript) {
                       return (
-                        <Card className="p-6 bg-[#121826] border-[#22283A]">
-                          <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Your Evaluation</h3>
+                        <Card className="p-8 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
+                          <h3 className="text-lg font-bold text-[#E6E8EB] mb-6">Your Evaluation</h3>
                           <div className="text-center py-8">
                             <p className="text-sm text-[#9AA4B2] mb-4">Evaluation isn't generated yet.</p>
                             <Button
@@ -1870,8 +1878,8 @@ export default function TryPage() {
                       )}
                       
                       {/* Rubric Breakdown */}
-                      <Card className="p-6 bg-[#121826] border-[#22283A]">
-                        <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Rubric Breakdown</h3>
+                      <Card className="p-8 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
+                        <h3 className="text-lg font-bold text-[#E6E8EB] mb-6">Rubric Breakdown</h3>
                         <div className="space-y-3">
                           {feedbackData.rubric_scores && feedbackData.rubric_scores.length > 0 ? (
                             feedbackData.rubric_scores.map((rubricScore: any, idx: number) => {
@@ -1899,7 +1907,7 @@ export default function TryPage() {
                               return (
                                 <div
                                   key={idx}
-                                  className="p-4 rounded-lg border bg-[#0B0F14] border-[#22283A]"
+                                  className="p-5 rounded-lg border bg-[#0B0F14] border-[#1E293B]"
                                 >
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-3 flex-1">
@@ -2018,11 +2026,22 @@ export default function TryPage() {
               </>
             )}
 
-            {/* Debug panel (temporary) */}
+            {/* Debug panel (collapsible) */}
             {DEBUG && (
-              <Card className="p-4 bg-[#0B0F14] border-[#22283A] mt-6">
-                <h4 className="text-sm font-bold text-[#E6E8EB] mb-2">Debug Panel</h4>
-                <div className="space-y-2 text-xs text-[#9AA4B2]">
+              <Card className="p-4 bg-[#0B0F14] border-[#1E293B] mt-6">
+                <button
+                  onClick={() => setIsDebugExpanded(!isDebugExpanded)}
+                  className="w-full flex items-center justify-between text-left"
+                >
+                  <h4 className="text-sm font-bold text-[#E6E8EB]">Advanced / Debug</h4>
+                  {isDebugExpanded ? (
+                    <ChevronUp className="h-4 w-4 text-[#9AA4B2]" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-[#9AA4B2]" />
+                  )}
+                </button>
+                {isDebugExpanded && (
+                  <div className="space-y-2 text-xs text-[#9AA4B2] mt-4">
                   <div className="grid grid-cols-2 gap-2">
                     <div>Active Run ID:</div>
                     <div className="font-mono">{run?.id || 'none'}</div>
@@ -2200,7 +2219,8 @@ export default function TryPage() {
                   >
                     Test run creation
                   </Button>
-                </div>
+                  </div>
+                )}
               </Card>
             )}
           </div>

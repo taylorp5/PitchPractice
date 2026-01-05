@@ -112,9 +112,10 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
+          transcriptLen: 0,
           bytesDownloaded: 0,
           mime: null,
-          transcriptLen: 0,
+          message: `Failed to download audio file: ${downloadError?.message || 'Unknown storage error'}`,
         },
         { status: 500 }
       )
@@ -213,9 +214,10 @@ export async function POST(
         return NextResponse.json(
           { 
             ok: false,
+            transcriptLen: 0,
             bytesDownloaded: bytes,
             mime: mimeType,
-            transcriptLen: 0,
+            message: 'OpenAI returned an empty transcript. The audio file may be corrupted or silent.',
           },
           { status: 500 }
         )
@@ -245,9 +247,10 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
+          transcriptLen: 0,
           bytesDownloaded: bytes,
           mime: mimeType,
-          transcriptLen: 0,
+          message: `OpenAI transcription failed: ${errorMessage}`,
         },
         { status: statusCode >= 400 && statusCode < 600 ? statusCode : 500 }
       )
@@ -288,9 +291,10 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
+          transcriptLen: transcript.length,
           bytesDownloaded: bytes,
           mime: mimeType,
-          transcriptLen: transcript.length,
+          message: `Failed to update run with transcript: ${updateError.message}`,
         },
         { status: 500 }
       )
@@ -311,9 +315,10 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
+      transcriptLen: transcript.length,
       bytesDownloaded: bytes,
       mime: mimeType,
-      transcriptLen: transcript.length,
+      message: 'Transcription completed successfully',
     })
   } catch (error: any) {
     const duration = Date.now() - startTime
@@ -341,9 +346,10 @@ export async function POST(
     return NextResponse.json(
       { 
         ok: false,
+        transcriptLen: 0,
         bytesDownloaded: 0,
         mime: null,
-        transcriptLen: 0,
+        message: error?.message || 'An unexpected error occurred during transcription',
       },
       { status: 500 }
     )

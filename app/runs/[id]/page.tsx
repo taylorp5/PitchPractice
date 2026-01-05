@@ -117,6 +117,9 @@ export default function RunPage() {
 
       const responseData = await response.json()
       
+      // Log full JSON response
+      console.log('[Client] Transcribe response (full JSON):', JSON.stringify(responseData, null, 2))
+      
       // Store last transcribe response for debug panel
       setLastTranscribeResponse(responseData)
       
@@ -125,15 +128,21 @@ export default function RunPage() {
       console.log('[Client] Transcribe response:', responseData)
       setTranscribeDebug(prev => prev + '\n\n' + responseDebug)
 
-      if (!response.ok) {
-        // Show exact error message from API
-        const errorMsg = responseData.error || responseData.message || 'Transcription failed'
-        throw new Error(errorMsg)
+      // Check if ok=false and show message prominently
+      if (!responseData.ok) {
+        const errorMsg = responseData.message || responseData.error || 'Transcription failed'
+        setError(errorMsg)
+        // Don't throw - let the UI show the error message
+        await fetchRun()
+        return
       }
 
-      // Check response format
-      if (!responseData.ok) {
-        throw new Error(responseData.message || responseData.error || 'Transcription failed')
+      if (!response.ok) {
+        // Show exact error message from API
+        const errorMsg = responseData.message || responseData.error || 'Transcription failed'
+        setError(errorMsg)
+        await fetchRun()
+        return
       }
 
       // Refresh run data to get updated transcript and timing
@@ -342,8 +351,27 @@ export default function RunPage() {
           </div>
 
           {run.error_message && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-              <strong>Error:</strong> {run.error_message}
+            <div className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg">
+              <div className="flex items-start gap-2">
+                <span className="text-red-600 text-xl">⚠️</span>
+                <div className="flex-1">
+                  <strong className="text-red-800 text-lg block mb-1">Error</strong>
+                  <p className="text-red-700">{run.error_message}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Show API error message prominently if transcribe failed */}
+          {lastTranscribeResponse && !lastTranscribeResponse.ok && lastTranscribeResponse.message && (
+            <div className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg">
+              <div className="flex items-start gap-2">
+                <span className="text-red-600 text-xl">⚠️</span>
+                <div className="flex-1">
+                  <strong className="text-red-800 text-lg block mb-1">Transcription Failed</strong>
+                  <p className="text-red-700">{lastTranscribeResponse.message}</p>
+                </div>
+              </div>
             </div>
           )}
 
@@ -405,24 +433,26 @@ export default function RunPage() {
                 </div>
               )}
               
-              {/* Debug Panel (dev-only) */}
-              {process.env.NODE_ENV === 'development' && (
-                <details className="mt-4 p-3 bg-gray-100 rounded text-xs">
-                  <summary className="cursor-pointer font-semibold text-gray-700">Debug Info</summary>
-                  <div className="mt-2 space-y-2 text-gray-600">
-                    <div><strong>status:</strong> {run.status}</div>
-                    <div><strong>transcript length:</strong> {run.transcript ? `${run.transcript.length} chars` : 'null'}</div>
-                    <div><strong>audio_path:</strong> {run.audio_path || 'null'}</div>
-                    <div><strong>error_message:</strong> {run.error_message || 'null'}</div>
-                    {lastTranscribeResponse && (
-                      <div className="mt-2">
-                        <strong>Last Transcribe Response:</strong>
-                        <pre className="mt-1 p-2 bg-gray-200 rounded text-xs overflow-auto max-h-40">
-                          {JSON.stringify(lastTranscribeResponse, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
+              {/* Debug Panel */}
+              <details className="mt-4 p-3 bg-gray-100 rounded text-xs">
+                <summary className="cursor-pointer font-semibold text-gray-700">Debug Info</summary>
+                <div className="mt-2 space-y-2 text-gray-600">
+                  <div><strong>status:</strong> {run.status}</div>
+                  <div><strong>transcript length:</strong> {run.transcript ? `${run.transcript.length} chars` : 'null'}</div>
+                  <div><strong>audio_path:</strong> {run.audio_path || 'null'}</div>
+                  <div><strong>error_message:</strong> {run.error_message || 'null'}</div>
+                </div>
+              </details>
+              
+              {/* Last API Response Panel */}
+              {lastTranscribeResponse && (
+                <details className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded" open={!lastTranscribeResponse.ok}>
+                  <summary className="cursor-pointer font-semibold text-blue-800 mb-2">
+                    Last API Response {!lastTranscribeResponse.ok && <span className="text-red-600">(Error)</span>}
+                  </summary>
+                  <pre className="mt-2 p-3 bg-white border border-blue-200 rounded text-xs overflow-auto max-h-60 font-mono">
+                    {JSON.stringify(lastTranscribeResponse, null, 2)}
+                  </pre>
                 </details>
               )}
             </div>

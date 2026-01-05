@@ -1301,64 +1301,62 @@ export default function TryPage() {
 
       {/* Main Content */}
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
-          {/* LEFT COLUMN: Prompt Selection */}
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold text-[#E6E8EB] mb-4">What are you practicing today?</h2>
-              <div className="space-y-3">
-                {PROMPTS.map((prompt) => (
-                  <div
-                    key={prompt.id}
-                    onClick={() => setSelectedPrompt(prompt.id)}
-                    className="cursor-pointer"
-                  >
-                    <Card
-                      className={`p-4 transition-all ${
-                        selectedPrompt === prompt.id
-                          ? 'bg-[#151C2C] border-[#F59E0B]/50'
-                          : 'bg-[#121826] border-[#1E293B] hover:border-[#334155] opacity-70 hover:opacity-100'
-                      }`}
-                    >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-[#E6E8EB]">{prompt.title}</h3>
-                          {prompt.id === 'elevator' && (
-                            <span className="text-xs font-medium px-2 py-0.5 rounded bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30">
-                              Recommended
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-[#6B7280] mb-3">{prompt.duration}</p>
-                        <div className="space-y-1">
-                          {prompt.cues.map((cue, idx) => (
-                            <div key={idx} className="flex items-start gap-2 text-sm text-[#9AA4B2]">
-                              <span className="mt-1">•</span>
-                              <span>{cue}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      {selectedPrompt === prompt.id && (
-                        <CheckCircle2 className="h-5 w-5 text-[#F59E0B] flex-shrink-0" />
-                      )}
-                    </div>
-                    </Card>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {/* Prompt Selection - Horizontal Row */}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold text-[#E6E8EB] mb-4">What are you practicing today?</h2>
+          <div className="flex flex-wrap gap-3">
+            {PROMPTS.map((prompt) => (
+              <button
+                key={prompt.id}
+                onClick={() => setSelectedPrompt(prompt.id)}
+                className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
+                  selectedPrompt === prompt.id
+                    ? 'bg-[#F59E0B] text-[#0B0F14] shadow-md shadow-[#F59E0B]/30'
+                    : 'bg-[#121826] text-[#9AA4B2] hover:text-[#E6E8EB] border border-[#1E293B] hover:border-[#334155]'
+                }`}
+              >
+                <span>{prompt.title}</span>
+                <span className="text-xs opacity-75">({prompt.duration})</span>
+                {prompt.id === 'elevator' && (
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-[#0B0F14]/30 text-[#0B0F14]">
+                    Recommended
+                  </span>
+                )}
+                {selectedPrompt === prompt.id && (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+              </button>
+            ))}
           </div>
+          
+          {/* Guiding Questions - Shown when prompt is selected */}
+          {selectedPrompt && (() => {
+            const selectedPromptData = PROMPTS.find(p => p.id === selectedPrompt)
+            return selectedPromptData ? (
+              <div className="mt-4 p-4 bg-[#121826]/50 border border-[#1E293B]/50 rounded-lg">
+                <p className="text-xs text-[#6B7280] mb-2 font-medium">Guiding questions:</p>
+                <div className="flex flex-wrap gap-3">
+                  {selectedPromptData.cues.map((cue, idx) => (
+                    <span key={idx} className="text-xs text-[#9AA4B2]">
+                      {cue}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null
+          })()}
+        </div>
 
-          {/* CENTER COLUMN: Recording Area (Main Focus) */}
-          <div className="space-y-6">
-            <Card className="p-8 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
-              <div className="text-center mb-6">
-                <p className="text-sm text-[#9AA4B2] mb-6">Speak naturally. Aim for 30–60 seconds.</p>
+        {/* Two-Column Layout: Controls (left) | Transcript/Feedback (right) */}
+        <div className="grid lg:grid-cols-[320px_1fr] gap-6 lg:gap-8">
+          {/* LEFT COLUMN: Recording Controls (Narrow) */}
+          <div className="space-y-4">
+            <Card className="p-5 bg-[#121826] border-[#1E293B]">
+              <div className="text-center mb-3">
+                <p className="text-xs text-[#6B7280] mb-3">Speak naturally. Aim for 30–60 seconds.</p>
                 
                 {/* Tabs */}
-                <div className="flex gap-2 justify-center mb-6">
+                <div className="flex gap-2 justify-center mb-3">
                   <button
                     onClick={() => setActiveTab('record')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -1384,7 +1382,7 @@ export default function TryPage() {
 
               <div>
                 {activeTab === 'record' ? (
-                  <div className="space-y-6">
+                  <div className="space-y-4">
                     {/* Device selection - visually secondary */}
                     {audioDevices.length > 1 && (
                       <div className="text-sm">
@@ -1409,8 +1407,8 @@ export default function TryPage() {
 
                     {/* Test Mic Button */}
                     {!hasMicPermission && !isRecording && !run && (
-                      <div className="text-center p-4 bg-[#0B0F14] border border-[#22283A] rounded-lg">
-                        <p className="text-sm text-[#9AA4B2] mb-3">Enable microphone to see input level</p>
+                      <div className="text-center p-3 bg-[#0B0F14] border border-[#22283A] rounded-lg">
+                        <p className="text-xs text-[#9AA4B2] mb-2">Enable microphone to see input level</p>
                         <Button
                           variant="secondary"
                           size="sm"
@@ -1472,10 +1470,10 @@ export default function TryPage() {
                     )}
 
                     {isRecording && (
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         {/* Timer */}
                         <div className="text-center">
-                          <div className="text-3xl font-bold text-[#E6E8EB] mb-2">
+                          <div className="text-2xl font-bold text-[#E6E8EB] mb-2">
                             {formatTime(recordingTime)}
                           </div>
                         </div>
@@ -1514,7 +1512,7 @@ export default function TryPage() {
                     )}
 
                     {run && audioUrl && (
-                      <div className="space-y-4">
+                      <div className="space-y-3">
                         <div className="flex items-center gap-2">
                           <audio
                             ref={audioRef}
@@ -1544,14 +1542,14 @@ export default function TryPage() {
                     )}
 
                     {isTranscribing && (
-                      <div className="text-center py-4">
+                      <div className="text-center py-3">
                         <LoadingSpinner size="md" text="Transcribing..." />
                       </div>
                     )}
 
                     {isGettingFeedback && (
-                      <div className="text-center py-4">
-                        <LoadingSpinner size="md" text="Evaluating against prompt..." />
+                      <div className="text-center py-3">
+                        <LoadingSpinner size="md" text="Evaluating..." />
                       </div>
                     )}
 
@@ -1577,11 +1575,11 @@ export default function TryPage() {
                   <div
                     onDrop={handleDrop}
                     onDragOver={handleDragOver}
-                    className="border-2 border-dashed border-[#22283A] rounded-lg p-8 text-center hover:border-[#6B7280] transition-colors"
+                    className="border-2 border-dashed border-[#22283A] rounded-lg p-6 text-center hover:border-[#6B7280] transition-colors"
                   >
-                    <Upload className="h-12 w-12 text-[#6B7280] mx-auto mb-4" />
-                    <p className="text-[#E6E8EB] mb-2">Drag and drop an audio file</p>
-                    <p className="text-sm text-[#9AA4B2] mb-4">or</p>
+                    <Upload className="h-10 w-10 text-[#6B7280] mx-auto mb-3" />
+                    <p className="text-sm text-[#E6E8EB] mb-2">Drag and drop an audio file</p>
+                    <p className="text-xs text-[#9AA4B2] mb-3">or</p>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1605,14 +1603,14 @@ export default function TryPage() {
                 )}
 
                 {isUploading && (
-                  <div className="text-center py-4">
+                  <div className="text-center py-3">
                     <LoadingSpinner size="md" text="Uploading..." />
                   </div>
                 )}
 
                 {error && (
-                  <div className="p-4 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
-                    <p className="text-sm text-[#EF4444] mb-3">{error}</p>
+                  <div className="p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
+                    <p className="text-xs text-[#EF4444] mb-2">{error}</p>
                     <Button
                       variant="secondary"
                       size="sm"
@@ -1630,10 +1628,10 @@ export default function TryPage() {
             </Card>
           </div>
 
-          {/* RIGHT COLUMN: Results */}
-          <div className="space-y-6">
+          {/* RIGHT COLUMN: Transcript & Feedback (Wide) */}
+          <div className="space-y-8">
             {!run ? (
-              <Card className="p-12 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B] text-center">
+              <Card className="p-16 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B] text-center">
                 <p className="text-[#9AA4B2]">Your transcript and feedback will appear here after you record.</p>
               </Card>
             ) : (
@@ -1799,10 +1797,10 @@ export default function TryPage() {
                   }
                   
                   return (
-                    <Card className="p-8 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
-                      <h3 className="text-lg font-bold text-[#E6E8EB] mb-6">Transcript</h3>
-                      <div className="max-h-[600px] overflow-y-auto">
-                        <div className="max-w-[72ch] mx-auto" style={{ lineHeight: '1.7' }}>
+                    <Card className="p-10 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
+                      <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Transcript</h3>
+                      <div className="max-h-[700px] overflow-y-auto">
+                        <div className="max-w-[80ch] mx-auto" style={{ lineHeight: '1.8' }}>
                           {paragraphs.map((paragraph, pIdx) => {
                             let globalSentenceIdx = paragraphs.slice(0, pIdx).reduce((sum, p) => sum + p.length, 0)
                             return (
@@ -1834,8 +1832,8 @@ export default function TryPage() {
                     // Show empty state if transcript exists but no feedback
                     if (run.transcript) {
                       return (
-                        <Card className="p-8 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
-                          <h3 className="text-lg font-bold text-[#E6E8EB] mb-6">Your Evaluation</h3>
+                        <Card className="p-10 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
+                          <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Your Evaluation</h3>
                           <div className="text-center py-8">
                             <p className="text-sm text-[#9AA4B2] mb-4">Evaluation isn't generated yet.</p>
                             <Button
@@ -1878,8 +1876,8 @@ export default function TryPage() {
                       )}
                       
                       {/* Rubric Breakdown */}
-                      <Card className="p-8 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
-                        <h3 className="text-lg font-bold text-[#E6E8EB] mb-6">Rubric Breakdown</h3>
+                      <Card className="p-10 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
+                        <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Rubric Breakdown</h3>
                         <div className="space-y-3">
                           {feedbackData.rubric_scores && feedbackData.rubric_scores.length > 0 ? (
                             feedbackData.rubric_scores.map((rubricScore: any, idx: number) => {

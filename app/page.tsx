@@ -8,12 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { useRef, useState, useEffect } from 'react'
 
 export default function LandingPage() {
-  const [autoPlayStarted, setAutoPlayStarted] = useState(false)
-  const [highlightedLine, setHighlightedLine] = useState<number | null>(null)
-  const demoRef = useRef<HTMLDivElement>(null)
-  const isInView = useInView(demoRef, { once: true, margin: '-100px' })
-  
-  // New section state
+  // "From first take to ready" section state
   const [currentStage, setCurrentStage] = useState<'record' | 'transcript' | 'improve' | null>(null)
   const [visibleLines, setVisibleLines] = useState<number[]>([])
   const [showMetrics, setShowMetrics] = useState(false)
@@ -46,16 +41,6 @@ export default function LandingPage() {
     },
   ]
 
-  const demoTranscript = [
-    { text: "Hi, I'm excited to share our product with you today.", type: null, delay: 0 },
-    { text: "We've built something that will revolutionize how teams collaborate.", type: 'strength', delay: 0.5 },
-    { text: "Let me tell you a story about how we got started...", type: null, delay: 1 },
-    { text: "It was a rainy Tuesday in 2019 when our founder had this idea...", type: 'cut', delay: 1.5 },
-    { text: "So we decided to build a platform that solves this problem.", type: null, delay: 2 },
-    { text: "Our solution is simple, powerful, and easy to use.", type: 'pacing', delay: 2.5 },
-    { text: "Would you like to see a demo?", type: null, delay: 3 },
-  ]
-
   const narrativeTranscript = [
     { text: "Hi, I'm excited to share our product with you today.", type: null },
     { text: "We've built something that will revolutionize how teams collaborate.", type: 'strength' },
@@ -66,31 +51,7 @@ export default function LandingPage() {
     { text: "Would you like to see a demo?", type: null },
   ]
 
-  useEffect(() => {
-    if (isInView && !autoPlayStarted) {
-      setAutoPlayStarted(true)
-      // Animate lines appearing
-      demoTranscript.forEach((line, idx) => {
-        setTimeout(() => {
-          setHighlightedLine(idx)
-          if (line.type) {
-            // Keep highlight for a moment, then fade
-            setTimeout(() => {
-              if (idx === demoTranscript.length - 1) {
-                // Reset after full sequence
-                setTimeout(() => {
-                  setHighlightedLine(null)
-                  setAutoPlayStarted(false)
-                }, 2000)
-              }
-            }, 1500)
-          }
-        }, line.delay * 1000)
-      })
-    }
-  }, [isInView, autoPlayStarted])
-
-  // New section animation
+  // "From first take to ready" section animation
   useEffect(() => {
     if (howItWorksInView && currentStage === null) {
       // Stage 1: Record - lines appear one by one
@@ -194,7 +155,7 @@ export default function LandingPage() {
                 x: [0, -50 * testimonials.length + '%'],
               }}
               transition={{
-                duration: 40,
+                duration: 60,
                 repeat: Infinity,
                 ease: 'linear',
               }}
@@ -422,85 +383,70 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Interactive Demo - Asymmetrical Section */}
+      {/* Try it now */}
       <section className="py-32 px-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-16 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-            >
-              <h2 className="text-4xl font-bold text-[#E5E7EB] mb-6">See how feedback works</h2>
-              <p className="text-xl text-[#9CA3AF] leading-relaxed mb-8">
-                Watch as our system identifies strengths, pacing opportunities, and areas to cut—all in real-time.
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-12"
+          >
+            <h2 className="text-4xl font-bold text-[#E5E7EB] mb-4">Try it now</h2>
+            <p className="text-xl text-[#9CA3AF]">We'll give you a simple prompt to get started. No prep required.</p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <Card className="p-8 bg-[#181F2F] border-[#22283A]">
+              <h3 className="text-2xl font-bold text-[#E5E7EB] mb-4">Elevator pitch</h3>
+              <p className="text-lg text-[#9CA3AF] mb-6 leading-relaxed">
+                Imagine you're explaining what you're working on to someone new.
               </p>
-              <p className="text-[#64748B] text-sm">
-                Scroll to see the demo auto-play
-              </p>
-            </motion.div>
-
-            <motion.div
-              ref={demoRef}
-              initial={{ opacity: 0, x: 20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-            >
-              <Card className="p-8 bg-[#181F2F]">
-                {/* Progress indicator */}
-                {autoPlayStarted && (
-                  <motion.div
-                    className="h-1 bg-[#64748B]/20 rounded-full mb-6 overflow-hidden"
-                    initial={{ width: 0 }}
-                    animate={{ width: '100%' }}
-                    transition={{ duration: 3.5, ease: 'linear' }}
-                  >
-                    <motion.div
-                      className="h-full bg-[#F59E0B]"
-                      initial={{ width: 0 }}
-                      animate={{ width: '100%' }}
-                      transition={{ duration: 3.5, ease: 'linear' }}
-                    />
-                  </motion.div>
-                )}
-
-                {/* Transcript */}
-                <div className="space-y-3">
-                  {demoTranscript.map((line, idx) => {
-                    const isVisible = highlightedLine !== null && idx <= highlightedLine
-                    const isHighlighted = highlightedLine === idx && line.type
-                    
-                    const highlightClasses = {
-                      strength: 'bg-[#84CC16]/20 border-[#84CC16]/50 text-[#84CC16]',
-                      pacing: 'bg-[#F59E0B]/20 border-[#F59E0B]/50 text-[#F59E0B]',
-                      cut: 'bg-[#FB7185]/20 border-[#FB7185]/50 text-[#FB7185] line-through',
-                    }
-
-                    return (
-                      <motion.div
-                        key={idx}
-                        initial={{ opacity: 0, x: -10 }}
-                        animate={{
-                          opacity: isVisible ? 1 : 0.3,
-                          x: isVisible ? 0 : -10,
-                        }}
-                        transition={{ duration: 0.4 }}
-                        className={`p-4 rounded-lg border transition-all ${
-                          isHighlighted && line.type
-                            ? highlightClasses[line.type as keyof typeof highlightClasses]
-                            : 'bg-[#121826] border-[#181F2F] text-[#E5E7EB]'
-                        }`}
-                      >
-                        {line.text}
-                      </motion.div>
-                    )
-                  })}
+              
+              <div className="space-y-2 mb-8">
+                <div className="flex items-start gap-2 text-sm text-[#64748B]">
+                  <span className="mt-1">•</span>
+                  <span>What are you working on?</span>
                 </div>
-              </Card>
-            </motion.div>
-          </div>
+                <div className="flex items-start gap-2 text-sm text-[#64748B]">
+                  <span className="mt-1">•</span>
+                  <span>Who is it for?</span>
+                </div>
+                <div className="flex items-start gap-2 text-sm text-[#64748B]">
+                  <span className="mt-1">•</span>
+                  <span>Why does it matter?</span>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-[#181F2F]">
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="mb-4"
+                >
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    asChild
+                    href="/app"
+                    className="w-full"
+                  >
+                    <Mic className="mr-2 h-5 w-5" />
+                    Start recording (2 min free)
+                  </Button>
+                </motion.div>
+                <p className="text-xs text-[#64748B] text-center">
+                  Aim for 30–60 seconds. There's no right answer.
+                </p>
+              </div>
+            </Card>
+          </motion.div>
         </div>
       </section>
 

@@ -626,41 +626,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Final CTA */}
-      <section id="try-it" className="py-32 px-4 bg-[#121826]">
-        <div className="max-w-3xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-          >
-            <h2 className="text-4xl md:text-5xl font-bold text-[#E5E7EB] mb-6">
-              Ready to speak with confidence?
-            </h2>
-            <p className="text-xl text-[#9CA3AF] mb-12 max-w-2xl mx-auto leading-relaxed">
-              Stop wondering if your pitch hits. Record once, get instant feedback, and walk into your next presentation knowing you're ready.
-            </p>
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <Button
-                variant="primary"
-                size="lg"
-                asChild
-                href="/app"
-                className="text-lg px-8 py-4"
-              >
-                <Mic className="mr-2 h-5 w-5" />
-                Start Recording
-              </Button>
-            </motion.div>
-            <p className="text-sm text-[#64748B] mt-6">Free for up to 2 minutes • No sign-up required</p>
-          </motion.div>
-        </div>
-      </section>
-
       {/* Footer */}
       <footer className="bg-[#0B0E14] border-t border-[#181F2F] text-[#9CA3AF] py-12 px-4">
         <div className="max-w-6xl mx-auto">

@@ -204,8 +204,9 @@ export default function RunPage() {
     setError(null)
     setTranscribeDebug('')
 
+    const url = `/api/runs/${runId}/reset`
+    
     try {
-      const url = `/api/runs/${runId}/reset`
       const debugMsg = `Calling: ${url}`
       console.log('[Client] Reset request:', debugMsg)
       setTranscribeDebug(debugMsg)

@@ -283,6 +283,11 @@ export async function POST(
         return NextResponse.json(
           { 
             ok: false,
+            forceUsed,
+            blocked: false,
+            transcriptLen: 0,
+            statusBefore: run.status,
+            statusAfter: 'error',
             error: 'Empty transcript returned',
             message: 'OpenAI returned an empty transcript. The audio file may be corrupted or silent.',
           },

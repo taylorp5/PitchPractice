@@ -687,7 +687,21 @@ export default function TryPage() {
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.message || 'Analysis failed')
+        
+        if (DEBUG) {
+          console.error('[Try] Analysis failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            errorData,
+            runId,
+          })
+        }
+        
+        // Show detailed error message
+        const errorMsg = errorData.error || errorData.message || 'Analysis failed'
+        const details = errorData.details ? ` Details: ${errorData.details}` : ''
+        const fieldsChecked = errorData.fieldsChecked ? ` Fields checked: ${errorData.fieldsChecked.join(', ')}` : ''
+        throw new Error(`${errorMsg}${details}${fieldsChecked}`)
       }
 
       if (DEBUG) {

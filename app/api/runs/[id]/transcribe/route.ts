@@ -297,6 +297,61 @@ export async function POST(
       .select('*')
       .single()
 
+    if (updateError) {
+      const errorMessage = (updateError as any)?.message || 'Unknown database error'
+      const errorCode = (updateError as any)?.code || 'UNKNOWN'
+      
+      console.error('[Transcribe] Database update error:', {
+        runId: id,
+        error: updateError,
+        message: errorMessage,
+        code: errorCode,
+      })
+      
+      return NextResponse.json(
+        { 
+          ok: false,
+          transcriptLen: transcript.length,
+          bytesDownloaded: bytes,
+          mime: mimeType,
+          message: `Failed to save transcript: ${errorMessage}`,
+          error: 'Database update failed',
+          details: errorMessage,
+        },
+        { status: 500 }
+      )
+    }
+
+    // Verify the update succeeded
+    if (!updatedRun || !updatedRun.transcript) {
+      console.error('[Transcribe] Update succeeded but transcript missing in response:', {
+        runId: id,
+        hasUpdatedRun: !!updatedRun,
+        hasTranscript: !!updatedRun?.transcript,
+      })
+      
+      return NextResponse.json(
+        { 
+          ok: false,
+          transcriptLen: transcript.length,
+          bytesDownloaded: bytes,
+          mime: mimeType,
+          message: 'Transcript saved but verification failed',
+          error: 'Update verification failed',
+          details: 'The transcript was saved but could not be verified in the response',
+        },
+        { status: 500 }
+      )
+    }
+
+    console.log('[Transcribe] Transcript saved successfully:', {
+      runId: id,
+      status: updatedRun.status,
+      transcriptLength: updatedRun.transcript.length,
+      wordCount: updatedRun.word_count,
+      wpm: updatedRun.words_per_minute,
+    })
+
     // Log update result for debugging
     console.log('TRANSCRIBE UPDATE RESULT', {
       id,
@@ -307,20 +362,25 @@ export async function POST(
     })
 
     if (updateError) {
+      const errorMessage = (updateError as any)?.message || 'Unknown database error'
+      const errorCode = (updateError as any)?.code || 'UNKNOWN'
+      
       console.error('[Transcribe] Database update error:', {
         runId: id,
         error: updateError,
-        message: updateError.message,
-        code: updateError.code,
+        message: errorMessage,
+        code: errorCode,
       })
+      
       return NextResponse.json(
         { 
           ok: false,
           transcriptLen: transcript.length,
           bytesDownloaded: bytes,
           mime: mimeType,
-          message: 'DB update failed',
-          error: updateError,
+          message: `Failed to save transcript: ${errorMessage}`,
+          error: 'Database update failed',
+          details: errorMessage,
         },
         { status: 500 }
       )

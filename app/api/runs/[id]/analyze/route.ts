@@ -175,29 +175,80 @@ export async function POST(
       .single()
 
     if (fetchError || !run) {
+      console.error('[Analyze] Run not found:', { id, error: fetchError })
       return NextResponse.json(
-        { error: 'Run not found' },
+        { 
+          ok: false,
+          error: 'Run not found',
+          details: fetchError?.message || 'Run with this ID does not exist',
+          runId: id,
+        },
         { status: 404 }
       )
     }
 
+    // Check transcript exists and has content (more robust than just checking status)
+    const transcriptLength = run.transcript?.length || 0
+    if (!run.transcript || transcriptLength === 0) {
+      console.error('[Analyze] Missing or empty transcript:', {
+        runId: id,
+        status: run.status,
+        hasTranscript: !!run.transcript,
+        transcriptLength,
+      })
+      return NextResponse.json(
+        { 
+          ok: false,
+          error: 'Transcript is required for analysis',
+          details: `Transcript is missing or empty. Status: ${run.status}, Transcript length: ${transcriptLength}`,
+          runId: id,
+          runStatus: run.status,
+          transcriptLength,
+          fieldsChecked: ['transcript', 'transcript.length'],
+        },
+        { status: 400 }
+      )
+    }
+
+    // Warn if status is not 'transcribed' but allow analysis if transcript exists
     if (run.status !== 'transcribed') {
+      console.warn('[Analyze] Run status is not "transcribed", but transcript exists:', {
+        runId: id,
+        status: run.status,
+        transcriptLength,
+      })
+      // Don't block - transcript exists, so we can analyze
+    }
+
+    if (!run.rubric_id) {
+      console.error('[Analyze] Missing rubric_id:', { runId: id, rubricId: run.rubric_id })
       return NextResponse.json(
-        { error: `Run must be transcribed first. Current status: ${run.status}` },
+        { 
+          ok: false,
+          error: 'Rubric is required for analysis',
+          details: `Run is missing rubric_id. Current rubric_id: ${run.rubric_id || 'null'}`,
+          runId: id,
+          runStatus: run.status,
+          transcriptLength,
+          fieldsChecked: ['rubric_id'],
+        },
         { status: 400 }
       )
     }
 
-    if (!run.transcript) {
+    if (!run.rubrics) {
+      console.error('[Analyze] Rubric not found:', { runId: id, rubricId: run.rubric_id })
       return NextResponse.json(
-        { error: 'Transcript is required for analysis' },
-        { status: 400 }
-      )
-    }
-
-    if (!run.rubric_id || !run.rubrics) {
-      return NextResponse.json(
-        { error: 'Rubric is required for analysis' },
+        { 
+          ok: false,
+          error: 'Rubric not found',
+          details: `Rubric with ID ${run.rubric_id} does not exist or could not be loaded`,
+          runId: id,
+          rubricId: run.rubric_id,
+          runStatus: run.status,
+          transcriptLength,
+          fieldsChecked: ['rubrics'],
+        },
         { status: 400 }
       )
     }
@@ -206,8 +257,18 @@ export async function POST(
     const criteria: RubricCriterion[] = rubric.criteria || []
 
     if (criteria.length === 0) {
+      console.error('[Analyze] Rubric has no criteria:', { runId: id, rubricId: run.rubric_id })
       return NextResponse.json(
-        { error: 'Rubric has no criteria defined' },
+        { 
+          ok: false,
+          error: 'Rubric has no criteria defined',
+          details: `Rubric "${rubric.name || run.rubric_id}" has no criteria. Cannot perform analysis without criteria.`,
+          runId: id,
+          rubricId: run.rubric_id,
+          runStatus: run.status,
+          transcriptLength,
+          fieldsChecked: ['rubrics.criteria', 'rubrics.criteria.length'],
+        },
         { status: 400 }
       )
     }

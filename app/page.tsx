@@ -111,7 +111,7 @@ export default function LandingPage() {
                   asChild
                   href="/app"
                 >
-                  Try it free (2 min recording)
+                  Try it free
                 </Button>
               </motion.div>
               <motion.div
@@ -129,6 +129,7 @@ export default function LandingPage() {
                 </Button>
               </motion.div>
             </div>
+            <p className="text-sm text-[#6B7280] mt-4">Free practice run · No signup required</p>
           </motion.div>
         </div>
       </section>
@@ -513,7 +514,7 @@ export default function LandingPage() {
                     href="/app"
                     className="w-full"
                   >
-                    Try it free (2 min recording)
+                    Try it free
                   </Button>
                 </motion.div>
                 <p className="text-xs text-[#6B7280] text-center">

@@ -3,9 +3,19 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from './ui/Button'
+import { useState, useEffect } from 'react'
 
 export function Navbar() {
   const pathname = usePathname()
+  const [isSignedIn, setIsSignedIn] = useState(false)
+
+  // TODO: Replace with actual auth check when auth is implemented
+  // For now, always show "Sign in" since there's no real auth system yet
+  // When Supabase auth is implemented, check: const { data: { session } } = await supabase.auth.getSession()
+  useEffect(() => {
+    // Placeholder: When auth is implemented, check Supabase session
+    setIsSignedIn(false)
+  }, [])
 
   return (
     <nav className="sticky top-0 z-50 bg-[#0B0F14]/80 backdrop-blur-md border-b border-[#22283A] shadow-lg shadow-black/20">
@@ -25,17 +35,22 @@ export function Navbar() {
           {/* Navigation Links - Hidden on mobile, shown on desktop */}
           <div className="hidden md:flex items-center gap-8">
             <Link 
-              href="/app" 
+              href="/upgrade" 
               className="text-sm font-medium text-[#9AA4B2] hover:text-[#F59E0B] transition-colors"
             >
-              Try Free
+              Upgrade
             </Link>
           </div>
 
           {/* CTA Buttons */}
           <div className="hidden md:flex items-center gap-3">
-            <Button variant="primary" size="sm" href="/app" asChild>
-              Try it free (2 min recording)
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              href={isSignedIn ? "/app" : "/app"}
+              asChild
+            >
+              {isSignedIn ? "Dashboard" : "Sign in"}
             </Button>
           </div>
 

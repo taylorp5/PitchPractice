@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from './ui/Button'
 import { useState, useEffect } from 'react'
+import { colors } from '@/lib/theme'
 
 export function Navbar() {
   const pathname = usePathname()
@@ -18,46 +19,63 @@ export function Navbar() {
   }, [])
 
   return (
-    <nav className="sticky top-0 z-50 bg-[#0B0F14]/80 backdrop-blur-md border-b border-[#22283A] shadow-lg shadow-black/20">
+    <nav 
+      className="sticky top-0 z-50 backdrop-blur-md border-b shadow-lg shadow-black/20"
+      style={{ 
+        backgroundColor: `${colors.background.primary}CC`, // 80% opacity
+        borderColor: colors.border.primary,
+      }}
+    >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 bg-[#F59E0B] rounded-lg flex items-center justify-center shadow-md shadow-[#F59E0B]/30 group-hover:shadow-lg group-hover:shadow-[#F59E0B]/40 transition-shadow">
-              <span className="text-[#0B0F14] font-bold text-lg">P</span>
+          <Link 
+            href="/" 
+            className="flex items-center gap-2 group"
+            aria-label="PitchPractice Home"
+          >
+            <div 
+              className="w-8 h-8 rounded-lg flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow"
+              style={{
+                backgroundColor: colors.accent.primary,
+                boxShadow: `${colors.accent.primary}30`,
+              }}
+            >
+              <span 
+                className="font-bold text-lg"
+                style={{ color: colors.background.primary }}
+              >
+                P
+              </span>
             </div>
-            <div>
-              <div className="font-bold text-[#E6E8EB] text-lg">PitchPractice</div>
-              <div className="text-xs text-[#6B7280] -mt-0.5">Practice your pitch. Get precise feedback.</div>
-            </div>
+            <span 
+              className="font-bold text-lg"
+              style={{ color: colors.text.primary }}
+            >
+              PitchPractice
+            </span>
           </Link>
 
-          {/* Right side: Upgrade + Auth grouped together */}
-          <div className="hidden md:flex items-center gap-6">
-            {/* Upgrade - subtle text link */}
+          {/* Right side: Upgrade + Sign in */}
+          <div className="flex items-center gap-4 md:gap-6">
             <Link 
               href="/upgrade" 
-              className="text-sm font-medium text-[#9AA4B2] hover:text-[#E6E8EB] transition-colors"
-            >
-              Upgrade
-            </Link>
-            
-            {/* Auth button - ghost/outline style, slightly more prominent */}
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              href={isSignedIn ? "/app" : "/app"}
-              asChild
-            >
-              {isSignedIn ? "Dashboard" : "Sign in"}
-            </Button>
-          </div>
-
-          {/* Mobile: simple menu */}
-          <div className="md:hidden flex items-center gap-4">
-            <Link 
-              href="/upgrade" 
-              className="text-sm font-medium text-[#9AA4B2] hover:text-[#E6E8EB] transition-colors"
+              className="text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0B0F14] rounded px-3 py-1.5"
+              style={{ 
+                color: colors.text.secondary,
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.color = colors.text.primary}
+              onMouseLeave={(e) => e.currentTarget.style.color = colors.text.secondary}
+              onFocus={(e) => {
+                e.currentTarget.style.color = colors.text.primary
+                e.currentTarget.style.outline = `2px solid ${colors.accent.primary}`
+                e.currentTarget.style.outlineOffset = '2px'
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.color = colors.text.secondary
+                e.currentTarget.style.outline = 'none'
+              }}
+              aria-label="Upgrade to premium"
             >
               Upgrade
             </Link>
@@ -66,6 +84,7 @@ export function Navbar() {
               size="sm" 
               href={isSignedIn ? "/app" : "/app"}
               asChild
+              aria-label={isSignedIn ? "Go to dashboard" : "Sign in"}
             >
               {isSignedIn ? "Dashboard" : "Sign in"}
             </Button>

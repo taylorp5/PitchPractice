@@ -135,6 +135,7 @@ export default function TryPage() {
   const [lastError, setLastError] = useState<any>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [lastFeedbackResponse, setLastFeedbackResponse] = useState<any>(null)
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -1299,14 +1300,13 @@ export default function TryPage() {
       </nav>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* LEFT COLUMN */}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {!run ? (
+          /* BEFORE RECORDING - Minimal UI */
           <div className="space-y-8">
-            {/* Section 1: Pick a prompt */}
+            {/* Prompt Selector */}
             <div>
-              <h2 className="text-2xl font-bold text-[#E6E8EB] mb-4">Pick a prompt</h2>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 {PROMPTS.map((prompt) => (
                   <div
                     key={prompt.id}
@@ -1314,70 +1314,92 @@ export default function TryPage() {
                     className="cursor-pointer"
                   >
                     <Card
-                      className={`p-4 transition-all ${
+                      className={`p-4 transition-all h-full ${
                         selectedPrompt === prompt.id
-                          ? 'bg-[#151C2C] border-[#F59E0B]'
+                          ? 'bg-[#151C2C] border-[#F59E0B] ring-2 ring-[#F59E0B]/20'
                           : 'bg-[#121826] border-[#22283A] hover:border-[#6B7280]'
                       }`}
                     >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-[#E6E8EB] mb-1">{prompt.title}</h3>
-                        <p className="text-xs text-[#6B7280] mb-3">{prompt.duration}</p>
-                        <div className="space-y-1">
-                          {prompt.cues.map((cue, idx) => (
-                            <div key={idx} className="flex items-start gap-2 text-sm text-[#9AA4B2]">
-                              <span className="mt-1">•</span>
-                              <span>{cue}</span>
-                            </div>
-                          ))}
-                        </div>
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="font-semibold text-[#E6E8EB] text-sm">{prompt.title}</h3>
+                        {selectedPrompt === prompt.id && (
+                          <CheckCircle2 className="h-4 w-4 text-[#F59E0B] flex-shrink-0" />
+                        )}
                       </div>
-                      {selectedPrompt === prompt.id && (
-                        <CheckCircle2 className="h-5 w-5 text-[#F59E0B] flex-shrink-0" />
-                      )}
-                    </div>
+                      <p className="text-xs text-[#6B7280]">{prompt.duration}</p>
                     </Card>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Section 2: Record or Upload */}
-            <div>
-              <h2 className="text-2xl font-bold text-[#E6E8EB] mb-4">Record or upload</h2>
-              
-              {/* Tabs */}
-              <div className="flex gap-2 mb-4">
-                <button
-                  onClick={() => setActiveTab('record')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === 'record'
-                      ? 'bg-[#F59E0B] text-[#0B0F14]'
-                      : 'bg-[#121826] text-[#9AA4B2] hover:text-[#E6E8EB]'
-                  }`}
-                >
-                  Record
-                </button>
-                <button
-                  onClick={() => setActiveTab('upload')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeTab === 'upload'
-                      ? 'bg-[#F59E0B] text-[#0B0F14]'
-                      : 'bg-[#121826] text-[#9AA4B2] hover:text-[#E6E8EB]'
-                  }`}
-                >
-                  Upload
-                </button>
-              </div>
+            {/* Recording Section */}
+            <div className="text-center">
 
-              <Card className="p-6 bg-[#121826] border-[#22283A]">
-                {activeTab === 'record' ? (
-                  <div className="space-y-4">
-                    {/* Device selection */}
-                    {audioDevices.length > 1 && (
+              <Card 
+                className="p-8 bg-[#121826] border-[#22283A]"
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+              >
+                {!isRecording && !run ? (
+                  /* IDLE STATE - Before recording */
+                  <div className="space-y-6">
+                    {/* Large Mic Button */}
+                    <div className="flex justify-center">
+                      <button
+                        onClick={startRecording}
+                        disabled={!selectedPrompt}
+                        className={`
+                          w-32 h-32 rounded-full flex items-center justify-center
+                          transition-all duration-200
+                          disabled:opacity-50 disabled:cursor-not-allowed
+                          ${selectedPrompt 
+                            ? 'bg-[#F59E0B] hover:bg-[#D97706] text-[#0B0F14] shadow-lg shadow-[#F59E0B]/30 hover:shadow-xl hover:shadow-[#F59E0B]/40 hover:scale-105' 
+                            : 'bg-[#22283A] text-[#6B7280] cursor-not-allowed'
+                          }
+                        `}
+                      >
+                        <Mic className="h-12 w-12" />
+                      </button>
+                    </div>
+
+                    {/* Microcopy */}
+                    <div className="text-center space-y-2">
+                      <p className="text-sm text-[#E6E8EB] font-medium">Start recording</p>
+                      <p className="text-xs text-[#9AA4B2]">Aim for 30–60 seconds. No signup required.</p>
+                    </div>
+
+                    {/* Upload option - hidden behind secondary button */}
+                    <div className="flex justify-center">
+                      <button
+                        onClick={() => {
+                          setActiveTab('upload')
+                          fileInputRef.current?.click()
+                        }}
+                        className="text-xs text-[#6B7280] hover:text-[#9AA4B2] transition-colors underline"
+                      >
+                        Or upload audio file
+                      </button>
+                    </div>
+
+                    {/* Mic permission prompt */}
+                    {!hasMicPermission && !isTestingMic && (
+                      <div className="text-center">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={testMicrophone}
+                          disabled={isTestingMic}
+                        >
+                          Enable microphone
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Device selection - only show if multiple devices */}
+                    {audioDevices.length > 1 && hasMicPermission && (
                       <div className="text-sm">
-                        <label className="block text-[#9AA4B2] mb-1">Mic input</label>
+                        <label className="block text-[#9AA4B2] mb-2 text-center text-xs">Microphone</label>
                         <select
                           value={selectedDeviceId}
                           onChange={(e) => {
@@ -1395,212 +1417,107 @@ export default function TryPage() {
                         </select>
                       </div>
                     )}
+                  </div>
+                ) : isRecording ? (
+                  /* RECORDING STATE */
+                  <div className="space-y-6">
+                    {/* Timer */}
+                    <div className="text-center">
+                      <div className="text-5xl font-bold text-[#E6E8EB] mb-4">
+                        {formatTime(recordingTime)}
+                      </div>
+                    </div>
 
-                    {/* Test Mic Button */}
-                    {!hasMicPermission && !isRecording && !run && (
-                      <div className="text-center p-4 bg-[#0B0F14] border border-[#22283A] rounded-lg">
-                        <p className="text-sm text-[#9AA4B2] mb-3">Enable microphone to see input level</p>
+                    {/* Enhanced Meter */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-3 bg-[#0B0F14] rounded-full overflow-hidden border border-[#22283A]">
+                          <div
+                            className={`h-full transition-all duration-75 rounded-full ${
+                              micLevel > 0.01 
+                                ? 'bg-gradient-to-r from-[#22C55E] via-[#22C55E] to-[#F59E0B]' 
+                                : 'bg-[#6B7280]'
+                            }`}
+                            style={{ 
+                              width: `${Math.min(micLevel * 100, 100)}%`,
+                              boxShadow: micLevel > 0.1 ? `0 0 8px ${micLevel > 0.5 ? '#22C55E' : '#F59E0B'}40` : 'none'
+                            }}
+                          />
+                        </div>
+                      </div>
+                      {isSilent && (
+                        <p className="text-xs text-[#EF4444] text-center font-medium">
+                          No microphone input detected
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Controls */}
+                    <div className="flex gap-3 justify-center">
+                      {!isPaused ? (
                         <Button
                           variant="secondary"
-                          size="sm"
-                          onClick={testMicrophone}
-                          disabled={isTestingMic}
-                        >
-                          {isTestingMic ? '⏹ Stop Test' : '🎤 Enable mic'}
-                        </Button>
-                      </div>
-                    )}
-
-                    {/* Mic Level Meter - visible when testing or recording */}
-                    {(isRecording || isTestingMic) && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-4 bg-[#0B0F14] rounded-full overflow-hidden">
-                            <div
-                              className={`h-full transition-all duration-100 ${
-                                micLevel > 0.01 ? 'bg-[#22C55E]' : 'bg-[#EF4444]'
-                              }`}
-                              style={{ width: `${Math.min(micLevel * 100, 100)}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-[#9AA4B2] w-16 text-right">
-                            {(micLevel * 100).toFixed(1)}%
-                          </span>
-                        </div>
-                        {isSilent && (
-                          <p className="text-xs text-[#EF4444] font-medium">
-                            ⚠️ No microphone input detected
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {!isRecording && !run && (
-                      <div className="space-y-3">
-                        <Button
-                          variant="primary"
+                          onClick={pauseRecording}
                           size="lg"
-                          onClick={startRecording}
-                          className="w-full"
-                          disabled={!selectedPrompt || isSilent}
                         >
-                          <Mic className="mr-2 h-5 w-5" />
-                          Start recording
+                          <Pause className="mr-2 h-5 w-5" />
+                          Pause
                         </Button>
-                        {!isTestingMic && hasMicPermission && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={testMicrophone}
-                            className="w-full"
-                          >
-                            🎤 Test Mic
-                          </Button>
-                        )}
-                      </div>
-                    )}
-
-                    {isRecording && (
-                      <div className="space-y-4">
-                        {/* Timer */}
-                        <div className="text-center">
-                          <div className="text-3xl font-bold text-[#E6E8EB] mb-2">
-                            {formatTime(recordingTime)}
-                          </div>
-                        </div>
-
-                        {/* Controls */}
-                        <div className="flex gap-2">
-                          {!isPaused ? (
-                            <Button
-                              variant="secondary"
-                              onClick={pauseRecording}
-                              className="flex-1"
-                            >
-                              <Pause className="mr-2 h-4 w-4" />
-                              Pause
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="secondary"
-                              onClick={resumeRecording}
-                              className="flex-1"
-                            >
-                              <Play className="mr-2 h-4 w-4" />
-                              Resume
-                            </Button>
-                          )}
-                          <Button
-                            variant="primary"
-                            onClick={stopRecording}
-                            className="flex-1"
-                          >
-                            <Square className="mr-2 h-4 w-4" />
-                            Stop
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-
-                    {run && audioUrl && (
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-2">
-                          <audio
-                            ref={audioRef}
-                            src={audioUrl}
-                            onEnded={() => setIsPlaying(false)}
-                            className="hidden"
-                          />
-                          <Button
-                            variant="secondary"
-                            onClick={togglePlayback}
-                            className="flex-1"
-                          >
-                            {isPlaying ? (
-                              <>
-                                <Pause className="mr-2 h-4 w-4" />
-                                Pause
-                              </>
-                            ) : (
-                              <>
-                                <Play className="mr-2 h-4 w-4" />
-                                Play
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-
-                    {isTranscribing && (
-                      <div className="text-center py-4">
-                        <LoadingSpinner size="md" text="Transcribing..." />
-                      </div>
-                    )}
-
-                    {isGettingFeedback && (
-                      <div className="text-center py-4">
-                        <LoadingSpinner size="md" text="Evaluating against prompt..." />
-                      </div>
-                    )}
-
-                    {/* Get feedback button (shown when transcript exists but no feedback yet) */}
-                    {run && run.transcript && !feedback && !run.analysis_json && !isTranscribing && !isGettingFeedback && (
+                      ) : (
+                        <Button
+                          variant="secondary"
+                          onClick={resumeRecording}
+                          size="lg"
+                        >
+                          <Play className="mr-2 h-5 w-5" />
+                          Resume
+                        </Button>
+                      )}
                       <Button
                         variant="primary"
+                        onClick={stopRecording}
                         size="lg"
-                        onClick={() => {
-                          if (run.id) {
-                            setIsGettingFeedback(true)
-                            getFeedback(run.id)
-                          }
-                        }}
-                        className="w-full"
-                        disabled={!selectedRubricId}
                       >
-                        Get My Evaluation
+                        <Square className="mr-2 h-5 w-5" />
+                        Stop
                       </Button>
-                    )}
+                    </div>
                   </div>
                 ) : (
-                  <div
-                    onDrop={handleDrop}
-                    onDragOver={handleDragOver}
-                    className="border-2 border-dashed border-[#22283A] rounded-lg p-8 text-center hover:border-[#6B7280] transition-colors"
-                  >
-                    <Upload className="h-12 w-12 text-[#6B7280] mx-auto mb-4" />
-                    <p className="text-[#E6E8EB] mb-2">Drag and drop an audio file</p>
-                    <p className="text-sm text-[#9AA4B2] mb-4">or</p>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="audio/webm,audio/mp3,audio/wav,audio/m4a"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) handleFileUpload(file)
-                      }}
-                      className="hidden"
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Choose file
-                    </Button>
-                    <p className="text-xs text-[#6B7280] mt-4">
-                      Supports: WebM, MP3, WAV, M4A
-                    </p>
+                  /* UPLOADING/TRANScribing STATE */
+                  <div className="space-y-4">
+                    {isUploading && (
+                      <div className="text-center py-8">
+                        <LoadingSpinner size="lg" text="Uploading..." />
+                      </div>
+                    )}
+                    {isTranscribing && (
+                      <div className="text-center py-8">
+                        <LoadingSpinner size="lg" text="Transcribing..." />
+                      </div>
+                    )}
+                    {isGettingFeedback && (
+                      <div className="text-center py-8">
+                        <LoadingSpinner size="lg" text="Generating feedback..." />
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {isUploading && (
-                  <div className="text-center py-4">
-                    <LoadingSpinner size="md" text="Uploading..." />
-                  </div>
-                )}
+                {/* Hidden file input for upload */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="audio/webm,audio/mp3,audio/wav,audio/m4a"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) handleFileUpload(file)
+                  }}
+                  className="hidden"
+                />
 
                 {error && (
-                  <div className="p-4 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
+                  <div className="p-4 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg text-center">
                     <p className="text-sm text-[#EF4444] mb-3">{error}</p>
                     <Button
                       variant="secondary"
@@ -1610,214 +1527,213 @@ export default function TryPage() {
                         handleNewTake()
                       }}
                     >
-                      Re-record to Improve Score
+                      Try again
                     </Button>
                   </div>
                 )}
-
-                <p className="text-xs text-[#6B7280] text-center mt-4">
-                  Free practice run · No signup required
-                </p>
               </Card>
             </div>
-          </div>
-
-          {/* RIGHT COLUMN - Results */}
-          <div className="space-y-6">
-            {!run ? (
-              <Card className="p-12 bg-[#121826] border-[#22283A] text-center">
-                <p className="text-[#9AA4B2]">Your transcript and feedback will appear here.</p>
-              </Card>
-            ) : (
-              <>
-                {/* Metrics */}
-                {run.transcript && run.transcript.trim().length > 0 && (
-                  <Card className="p-4 bg-[#121826] border-[#22283A]">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <p className="text-xs text-[#6B7280] mb-1">Duration</p>
-                        <p className="text-lg font-bold text-[#E6E8EB]">
-                          {(() => {
-                            // Use duration_ms as source of truth: local state > DB > audio_seconds
-                            const durationSec = durationMs 
-                              ? durationMs / 1000 
-                              : (run.duration_ms 
-                                ? run.duration_ms / 1000 
-                                : (run.audio_seconds || null))
-                            return durationSec ? formatTime(durationSec) : '—'
-                          })()}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-[#6B7280] mb-1">Words</p>
-                        <p className="text-lg font-bold text-[#E6E8EB]">
-                          {run.word_count || (run.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : null) || '—'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-[#6B7280] mb-1">WPM</p>
-                        <p className="text-lg font-bold text-[#E6E8EB]">
-                          {(() => {
-                            // Use duration_ms as source of truth for WPM calculation
-                            const durationMsForWPM = durationMs 
-                              || (run.duration_ms !== null ? run.duration_ms : null)
-                              || (run.audio_seconds ? Math.round(run.audio_seconds * 1000) : null)
-                            const wpm = calculateWPM(run.transcript, durationMsForWPM)
-                            return wpm !== null ? wpm : '—'
-                          })()}
-                        </p>
-                      </div>
+          ) : (
+            /* AFTER RECORDING - Transcript and Feedback */
+            <div className="space-y-6">
+              {/* Metrics */}
+              {run.transcript && run.transcript.trim().length > 0 && (
+                <Card className="p-6 bg-[#121826] border-[#22283A]">
+                  <div className="grid grid-cols-3 gap-6 text-center">
+                    <div>
+                      <p className="text-xs text-[#6B7280] mb-2 uppercase tracking-wide">Duration</p>
+                      <p className="text-2xl font-bold text-[#E6E8EB]">
+                        {(() => {
+                          const durationSec = durationMs 
+                            ? durationMs / 1000 
+                            : (run.duration_ms 
+                              ? run.duration_ms / 1000 
+                              : (run.audio_seconds || null))
+                          return durationSec ? formatTime(durationSec) : '—'
+                        })()}
+                      </p>
                     </div>
-                    {(() => {
-                      // Use duration_ms as source of truth for WPM interpretation
-                      const durationMsForWPM = durationMs 
-                        || (run.duration_ms !== null ? run.duration_ms : null)
-                        || (run.audio_seconds ? Math.round(run.audio_seconds * 1000) : null)
-                      const wpm = calculateWPM(run.transcript, durationMsForWPM)
-                      if (wpm !== null) {
-                        return (
-                          <p className="text-xs text-[#9AA4B2] text-center mt-3">
-                            {getWPMInterpretation(wpm)}
-                          </p>
-                        )
-                      } else if (durationMsForWPM && durationMsForWPM < 5000) {
-                        return (
-                          <p className="text-xs text-[#9AA4B2] text-center mt-3">
-                            Record 20–60s for accurate pacing.
-                          </p>
-                        )
-                      }
-                      return null
-                    })()}
-                  </Card>
-                )}
+                    <div>
+                      <p className="text-xs text-[#6B7280] mb-2 uppercase tracking-wide">Words</p>
+                      <p className="text-2xl font-bold text-[#E6E8EB]">
+                        {run.word_count || (run.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : null) || '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#6B7280] mb-2 uppercase tracking-wide">WPM</p>
+                      <p className="text-2xl font-bold text-[#E6E8EB]">
+                        {(() => {
+                          const durationMsForWPM = durationMs 
+                            || (run.duration_ms !== null ? run.duration_ms : null)
+                            || (run.audio_seconds ? Math.round(run.audio_seconds * 1000) : null)
+                          const wpm = calculateWPM(run.transcript, durationMsForWPM)
+                          return wpm !== null ? wpm : '—'
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              )}
 
-                {/* Transcript-First UI */}
-                {run.transcript && run.transcript.trim().length > 0 && (() => {
-                  const feedbackData = feedback || run.analysis_json
-                  const serverChunks = feedbackData?.chunks || []
-                  
-                  // Create sentence feedback map
-                  const sentences = splitIntoSentences(run.transcript)
-                  const sentenceFeedbackMap = createSentenceFeedbackMap(run.transcript, serverChunks)
-                  const paragraphs = groupSentencesIntoParagraphs(sentences, sentenceFeedbackMap)
-                  
-                  // Sentence span component - use CSS hover instead of hooks
-                  const SentenceSpan = ({ sentence, idx }: { sentence: string; idx: number }) => {
-                    const feedback = sentenceFeedbackMap.get(idx)
-                    const isPinned = pinnedSentenceIdx === idx
-                    const isHighlighted = highlightedCriterion && feedback?.purpose_label === highlightedCriterion
-                    
-                    const getStatusColor = (status: string) => {
-                      if (status === 'strong') return 'hover:border-[#22C55E]/50 hover:bg-[#22C55E]/5'
-                      if (status === 'needs_work') return 'hover:border-[#F97316]/50 hover:bg-[#F97316]/5'
-                      return 'hover:border-[#6B7280]/50 hover:bg-[#6B7280]/5'
-                    }
-                    
-                    return (
-                      <span
-                        id={`sentence-${idx}`}
-                        className={`group relative inline cursor-pointer transition-all rounded px-1 py-0.5 border border-transparent ${
-                          isHighlighted ? 'bg-[#F59E0B]/20 border-[#F59E0B]/50 animate-pulse' : getStatusColor(feedback?.status || 'unscored')
-                        }`}
-                        onClick={() => {
-                          setPinnedSentenceIdx(isPinned ? null : idx)
-                        }}
-                      >
-                        {sentence}
-                        {feedback && (
-                          <div className={`absolute z-50 mt-2 p-3 bg-[#0B0F14] border border-[#22283A] rounded-lg shadow-xl min-w-[280px] max-w-[400px] ${
-                            isPinned ? 'block' : 'hidden group-hover:block'
-                          }`}
-                          style={{ left: '50%', transform: 'translateX(-50%)', top: '100%' }}
-                          >
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium px-2 py-1 rounded border bg-[#121826] text-[#9AA4B2]">
-                                  {feedback.purpose_label}
-                                </span>
-                                {feedback.score !== null && (
-                                  <span className="text-xs text-[#E6E8EB]">
-                                    {feedback.score}/10
-                                  </span>
-                                )}
-                              </div>
-                              {feedback.why && (
-                                <p className="text-sm text-[#E6E8EB]">{feedback.why}</p>
-                              )}
-                              {feedback.suggestion && (
-                                <p className="text-sm text-[#9AA4B2]">{feedback.suggestion}</p>
-                              )}
-                              {feedback.rewrite && (
-                                <div>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      setExpandedRewrites(prev => {
-                                        const next = new Set(prev)
-                                        if (next.has(idx)) {
-                                          next.delete(idx)
-                                        } else {
-                                          next.add(idx)
-                                        }
-                                        return next
-                                      })
-                                    }}
-                                    className="text-xs text-[#F59E0B] hover:text-[#F97316]"
-                                  >
-                                    {expandedRewrites.has(idx) ? 'Hide rewrite' : 'Show rewrite'}
-                                  </button>
-                                  {expandedRewrites.has(idx) && (
-                                    <p className="text-sm text-[#E6E8EB] italic mt-1">{feedback.rewrite}</p>
-                                  )}
-                                </div>
-                              )}
-                              {isPinned && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setPinnedSentenceIdx(null)
-                                  }}
-                                  className="text-xs text-[#6B7280] hover:text-[#9AA4B2]"
-                                >
-                                  Close
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </span>
-                    )
-                  }
-                  
+              {/* Transcript Panel - Show simple version if no feedback, interactive if feedback exists */}
+              {run.transcript && run.transcript.trim().length > 0 && (() => {
+                const feedbackData = feedback || run.analysis_json
+                
+                // Simple transcript if no feedback yet
+                if (!feedbackData) {
                   return (
                     <Card className="p-6 bg-[#121826] border-[#22283A]">
                       <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Transcript</h3>
-                      <div className="max-h-[600px] overflow-y-auto">
-                        <div className="max-w-[72ch] mx-auto" style={{ lineHeight: '1.7' }}>
-                          {paragraphs.map((paragraph, pIdx) => {
-                            let globalSentenceIdx = paragraphs.slice(0, pIdx).reduce((sum, p) => sum + p.length, 0)
-                            return (
-                              <p key={pIdx} className="mb-4 text-[#E6E8EB] text-base">
-                                {paragraph.map((sentence, sIdx) => {
-                                  const globalIdx = globalSentenceIdx++
-                                  return (
-                                    <React.Fragment key={globalIdx}>
-                                      <SentenceSpan sentence={sentence} idx={globalIdx} />
-                                      {sIdx < paragraph.length - 1 && ' '}
-                                    </React.Fragment>
-                                  )
-                                })}
-                              </p>
-                            )
-                          })}
+                      <div className="max-h-[400px] overflow-y-auto">
+                        <div className="prose prose-invert max-w-none" style={{ lineHeight: '1.7', color: colors.text.primary }}>
+                          <p className="text-[#E6E8EB] whitespace-pre-wrap">{run.transcript}</p>
                         </div>
                       </div>
                     </Card>
                   )
-                })()}
+                }
 
-                {/* Your Evaluation - Rubric Breakdown */}
+                // Interactive transcript with feedback
+                const serverChunks = feedbackData?.chunks || []
+                const sentences = splitIntoSentences(run.transcript)
+                const sentenceFeedbackMap = createSentenceFeedbackMap(run.transcript, serverChunks)
+                const paragraphs = groupSentencesIntoParagraphs(sentences, sentenceFeedbackMap)
+                
+                // Sentence span component - use CSS hover instead of hooks
+                const SentenceSpan = ({ sentence, idx }: { sentence: string; idx: number }) => {
+                  const feedback = sentenceFeedbackMap.get(idx)
+                  const isPinned = pinnedSentenceIdx === idx
+                  const isHighlighted = highlightedCriterion && feedback?.purpose_label === highlightedCriterion
+                  
+                  const getStatusColor = (status: string) => {
+                    if (status === 'strong') return 'hover:border-[#22C55E]/50 hover:bg-[#22C55E]/5'
+                    if (status === 'needs_work') return 'hover:border-[#F59E0B]/50 hover:bg-[#F59E0B]/5'
+                    return 'hover:border-[#6B7280]/50 hover:bg-[#6B7280]/5'
+                  }
+                  
+                  return (
+                    <span
+                      id={`sentence-${idx}`}
+                      className={`group relative inline cursor-pointer transition-all rounded px-1 py-0.5 border border-transparent ${
+                        isHighlighted ? 'bg-[#F59E0B]/20 border-[#F59E0B]/50 animate-pulse' : getStatusColor(feedback?.status || 'unscored')
+                      }`}
+                      onClick={() => {
+                        setPinnedSentenceIdx(isPinned ? null : idx)
+                      }}
+                    >
+                      {sentence}
+                      {feedback && (
+                        <div className={`absolute z-50 mt-2 p-3 bg-[#0B0F14] border border-[#22283A] rounded-lg shadow-xl min-w-[280px] max-w-[400px] ${
+                          isPinned ? 'block' : 'hidden group-hover:block'
+                        }`}
+                        style={{ left: '50%', transform: 'translateX(-50%)', top: '100%' }}
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium px-2 py-1 rounded border bg-[#121826] text-[#9AA4B2]">
+                                {feedback.purpose_label}
+                              </span>
+                              {feedback.score !== null && (
+                                <span className="text-xs text-[#E6E8EB]">
+                                  {feedback.score}/10
+                                </span>
+                              )}
+                            </div>
+                            {feedback.why && (
+                              <p className="text-sm text-[#E6E8EB]">{feedback.why}</p>
+                            )}
+                            {feedback.suggestion && (
+                              <p className="text-sm text-[#9AA4B2]">{feedback.suggestion}</p>
+                            )}
+                            {feedback.rewrite && (
+                              <div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setExpandedRewrites(prev => {
+                                      const next = new Set(prev)
+                                      if (next.has(idx)) {
+                                        next.delete(idx)
+                                      } else {
+                                        next.add(idx)
+                                      }
+                                      return next
+                                    })
+                                  }}
+                                  className="text-xs text-[#F59E0B] hover:text-[#D97706]"
+                                >
+                                  {expandedRewrites.has(idx) ? 'Hide rewrite' : 'Show rewrite'}
+                                </button>
+                                {expandedRewrites.has(idx) && (
+                                  <p className="text-sm text-[#E6E8EB] italic mt-1">{feedback.rewrite}</p>
+                                )}
+                              </div>
+                            )}
+                            {isPinned && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPinnedSentenceIdx(null)
+                                }}
+                                className="text-xs text-[#6B7280] hover:text-[#9AA4B2]"
+                              >
+                                Close
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </span>
+                  )
+                }
+                
+                return (
+                  <Card className="p-6 bg-[#121826] border-[#22283A]">
+                    <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Transcript</h3>
+                    <div className="max-h-[600px] overflow-y-auto">
+                      <div className="max-w-[72ch] mx-auto" style={{ lineHeight: '1.7' }}>
+                        {paragraphs.map((paragraph, pIdx) => {
+                          let globalSentenceIdx = paragraphs.slice(0, pIdx).reduce((sum, p) => sum + p.length, 0)
+                          return (
+                            <p key={pIdx} className="mb-4 text-[#E6E8EB] text-base">
+                              {paragraph.map((sentence, sIdx) => {
+                                const globalIdx = globalSentenceIdx++
+                                return (
+                                  <React.Fragment key={globalIdx}>
+                                    <SentenceSpan sentence={sentence} idx={globalIdx} />
+                                    {sIdx < paragraph.length - 1 && ' '}
+                                  </React.Fragment>
+                                )
+                              })}
+                            </p>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </Card>
+                )
+              })()}
+
+              {/* Generate Feedback Button */}
+              {run && run.transcript && !feedback && !run.analysis_json && !isTranscribing && !isGettingFeedback && (
+                <div className="text-center">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={() => {
+                      if (run.id) {
+                        setIsGettingFeedback(true)
+                        getFeedback(run.id)
+                      }
+                    }}
+                    disabled={!selectedRubricId}
+                  >
+                    Generate feedback
+                  </Button>
+                </div>
+              )}
+
+              {/* Feedback Section - Rubric Breakdown */}
                 {(() => {
                   // Use feedback state if available, otherwise fall back to run.analysis_json
                   const feedbackData = feedback || run.analysis_json
@@ -2018,10 +1934,21 @@ export default function TryPage() {
               </>
             )}
 
-            {/* Debug panel (temporary) */}
+            {/* Debug panel (collapsible, dev only) */}
             {DEBUG && (
               <Card className="p-4 bg-[#0B0F14] border-[#22283A] mt-6">
-                <h4 className="text-sm font-bold text-[#E6E8EB] mb-2">Debug Panel</h4>
+                <button
+                  onClick={() => setDebugPanelOpen(!debugPanelOpen)}
+                  className="flex items-center justify-between w-full text-left"
+                >
+                  <h4 className="text-sm font-bold text-[#E6E8EB]">Debug Panel</h4>
+                  {debugPanelOpen ? (
+                    <ChevronUp className="h-4 w-4 text-[#9AA4B2]" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-[#9AA4B2]" />
+                  )}
+                </button>
+                {debugPanelOpen && (
                 <div className="space-y-2 text-xs text-[#9AA4B2]">
                   <div className="grid grid-cols-2 gap-2">
                     <div>Active Run ID:</div>
@@ -2201,6 +2128,7 @@ export default function TryPage() {
                     Test run creation
                   </Button>
                 </div>
+                )}
               </Card>
             )}
           </div>

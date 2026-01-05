@@ -26,21 +26,6 @@ export default function LandingPage() {
     { quote: "This caught things I wouldn't have thought to fix.", author: "Elena, Graduate Student" },
   ]
 
-  const useCases = [
-    {
-      situation: 'Before class',
-      description: 'Nail your presentations. Get confident before you step in front of the room.',
-    },
-    {
-      situation: 'Before the pitch',
-      description: 'Perfect your investor pitches. Make every minute count.',
-    },
-    {
-      situation: 'Before the meeting',
-      description: 'Refine your client pitches. Every word counts when closing deals.',
-    },
-  ]
-
   const narrativeTranscript = [
     { text: "Hi, I'm excited to share our product with you today.", type: null },
     { text: "We've built something that will revolutionize how teams collaborate.", type: 'strength' },
@@ -176,41 +161,6 @@ export default function LandingPage() {
                 </div>
               ))}
             </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* Situational Use Cases */}
-      <section className="py-32 px-4">
-        <div className="max-w-4xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="mb-20"
-          >
-            <h2 className="text-4xl font-bold text-[#E5E7EB] mb-4">When you need it</h2>
-            <p className="text-xl text-[#9CA3AF]">Practice before it matters</p>
-          </motion.div>
-
-          <div className="space-y-12">
-            {useCases.map((useCase, idx) => (
-              <motion.div
-                key={idx}
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: idx * 0.1 }}
-                className="flex items-start gap-6"
-              >
-                <div className="flex-shrink-0 w-2 h-2 rounded-full bg-[#F59E0B] mt-3"></div>
-                <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-[#E5E7EB] mb-2">{useCase.situation}</h3>
-                  <p className="text-lg text-[#9CA3AF] leading-relaxed">{useCase.description}</p>
-                </div>
-              </motion.div>
-            ))}
           </div>
         </div>
       </section>

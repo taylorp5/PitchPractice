@@ -123,26 +123,41 @@ export default function RunPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run?.status, runId])
 
-  const handleTranscribe = async () => {
+  const handleTranscribe = async (force: boolean = false) => {
     if (!runId || isTranscribing) return
 
     setIsTranscribing(true)
     setError(null)
 
     try {
-      const response = await fetch(`/api/runs/${runId}/transcribe`, {
+      const url = force 
+        ? `/api/runs/${runId}/transcribe?force=1`
+        : `/api/runs/${runId}/transcribe`
+      
+      const response = await fetch(url, {
         method: 'POST',
       })
 
+      const responseData = await response.json()
+
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Transcription failed')
+        // Show exact error message from API
+        const errorMsg = responseData.error || responseData.message || 'Transcription failed'
+        const details = responseData.details ? `: ${responseData.details}` : ''
+        const statusCode = responseData.statusCode ? ` (Status: ${responseData.statusCode})` : ''
+        throw new Error(`${errorMsg}${details}${statusCode}`)
+      }
+
+      // Check response format
+      if (!responseData.ok) {
+        throw new Error(responseData.error || responseData.message || 'Transcription failed')
       }
 
       // Refresh run data to get updated transcript and timing
       await fetchRun()
     } catch (err) {
       console.error('Transcription error:', err)
+      // Show exact error message from API response
       setError(err instanceof Error ? err.message : 'Failed to transcribe audio')
       // Refresh to get updated error status
       await fetchRun()
@@ -646,6 +661,40 @@ export default function RunPage() {
             </div>
           )}
 
+          {/* Transcription Action - if status is transcribed but no transcript, or if error */}
+          {(run.status === 'transcribed' && !run.transcript) || run.status === 'error' ? (
+            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-yellow-800 font-medium mb-1">
+                    {run.status === 'error' ? 'Transcription Failed' : 'Transcription Missing'}
+                  </p>
+                  <p className="text-sm text-yellow-700">
+                    {run.status === 'error' 
+                      ? run.error_message || 'Transcription encountered an error.'
+                      : 'The run is marked as transcribed but no transcript was found.'}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleTranscribe(true)}
+                    disabled={isTranscribing}
+                    className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isTranscribing ? (
+                      <>
+                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Transcribing...
+                      </>
+                    ) : (
+                      '⚡ Force Transcribe'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {/* Reset & Re-transcribe button - if already transcribed */}
           {run.transcript && run.transcript.trim().length > 0 && (run.status === 'transcribed' || run.status === 'analyzed') && (
             <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
@@ -658,20 +707,36 @@ export default function RunPage() {
                     This run has been transcribed. Click to reset and re-transcribe.
                   </p>
                 </div>
-                <button
-                  onClick={handleResetTranscription}
-                  disabled={isTranscribing}
-                  className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {isTranscribing ? (
-                    <>
-                      <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Resetting...
-                    </>
-                  ) : (
-                    '🔄 Reset & Re-transcribe'
-                  )}
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleTranscribe(true)}
+                    disabled={isTranscribing}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isTranscribing ? (
+                      <>
+                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Transcribing...
+                      </>
+                    ) : (
+                      '⚡ Force Transcribe'
+                    )}
+                  </button>
+                  <button
+                    onClick={handleResetTranscription}
+                    disabled={isTranscribing}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isTranscribing ? (
+                      <>
+                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Resetting...
+                      </>
+                    ) : (
+                      '🔄 Reset & Re-transcribe'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           )}

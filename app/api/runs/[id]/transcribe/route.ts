@@ -41,8 +41,19 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const startTime = Date.now()
+  const { id } = params
+  
+  // Check for force parameter
+  const { searchParams } = new URL(request.url)
+  const force = searchParams.get('force') === '1'
+
   try {
-    const { id } = params
+    console.log('[Transcribe] Starting transcription:', {
+      runId: id,
+      force,
+      timestamp: new Date().toISOString(),
+    })
 
     // Fetch the run to get audio_path, status, and transcript
     const { data: run, error: fetchError } = await supabaseAdmin
@@ -52,46 +63,86 @@ export async function POST(
       .single()
 
     if (fetchError || !run) {
+      console.error('[Transcribe] Run not found:', {
+        runId: id,
+        error: fetchError,
+      })
       return NextResponse.json(
-        { error: 'Run not found' },
+        { ok: false, error: 'Run not found' },
         { status: 404 }
       )
     }
 
-    // Only block if transcript exists AND is non-empty (regardless of status)
+    console.log('[Transcribe] Run details:', {
+      runId: id,
+      status: run.status,
+      transcriptLength: run.transcript?.length || 0,
+      audioPath: run.audio_path,
+    })
+
+    // Check guard: only block if transcript exists AND is non-empty (unless force=1)
     const hasValidTranscript = run.transcript && run.transcript.trim().length > 0
     
-    if (hasValidTranscript) {
+    if (hasValidTranscript && !force) {
+      console.log('[Transcribe] Already transcribed, blocking:', {
+        runId: id,
+        transcriptLength: run.transcript.length,
+      })
       return NextResponse.json(
-        { error: 'Run is already transcribed. Use reset-transcription endpoint to re-transcribe.' },
+        { 
+          ok: false,
+          error: 'Run is already transcribed. Use ?force=1 to re-transcribe.',
+        },
         { status: 400 }
       )
     }
 
     // If status is not 'uploaded', reset it (allows retry)
     if (run.status !== 'uploaded') {
+      console.log('[Transcribe] Resetting status to uploaded:', {
+        runId: id,
+        oldStatus: run.status,
+      })
       await supabaseAdmin
         .from('pitch_runs')
         .update({ status: 'uploaded' })
         .eq('id', id)
     }
 
-    // Download audio from Supabase Storage
+    // Download audio from Supabase Storage using service role key
+    console.log('[Transcribe] Downloading audio from storage:', {
+      runId: id,
+      audioPath: run.audio_path,
+      bucket: 'pitchpractice-audio',
+    })
+
     const { data: audioData, error: downloadError } = await supabaseAdmin.storage
       .from('pitchpractice-audio')
       .download(run.audio_path)
 
     if (downloadError || !audioData) {
+      console.error('[Transcribe] Storage download failed:', {
+        runId: id,
+        audioPath: run.audio_path,
+        error: downloadError,
+        errorMessage: downloadError?.message,
+        errorStatus: (downloadError as any)?.statusCode,
+      })
+      
       await supabaseAdmin
         .from('pitch_runs')
         .update({
           status: 'error',
-          error_message: 'Failed to download audio file',
+          error_message: `Failed to download audio file: ${downloadError?.message || 'Unknown error'}`,
         })
         .eq('id', id)
 
       return NextResponse.json(
-        { error: 'Failed to download audio file' },
+        { 
+          ok: false,
+          error: 'Failed to download audio file',
+          details: downloadError?.message || 'Unknown storage error',
+        },
         { status: 500 }
       )
     }
@@ -99,8 +150,17 @@ export async function POST(
     // Convert Blob to Buffer
     const arrayBuffer = await audioData.arrayBuffer()
     const audioBuffer = Buffer.from(arrayBuffer)
+    const bytes = audioBuffer.length
 
-    // Determine MIME type from file extension
+    console.log('[Transcribe] Audio downloaded:', {
+      runId: id,
+      bytes,
+      bytesKB: (bytes / 1024).toFixed(2),
+      blobType: audioData.type,
+      blobSize: audioData.size,
+    })
+
+    // Determine file extension and MIME type
     const fileExt = run.audio_path.split('.').pop()?.toLowerCase() || 'webm'
     const mimeTypeMap: Record<string, string> = {
       webm: 'audio/webm',
@@ -109,57 +169,128 @@ export async function POST(
       m4a: 'audio/mp4',
       ogg: 'audio/ogg',
     }
-    const mimeType = mimeTypeMap[fileExt] || 'audio/webm'
-
-    // Get audio duration - in serverless, we can't easily extract this
-    // Duration will be null initially and can be updated from client-side audio element
-    // or we can estimate from file size (rough approximation)
-    let audioSeconds: number | null = null
     
-    // Rough estimation: webm files are typically ~1KB per second for speech
-    // This is very approximate and should be replaced with client-side measurement
+    // Use blob.type if available, otherwise infer from extension
+    const detectedMime = audioData.type || mimeTypeMap[fileExt] || 'audio/webm'
+    const mimeType = detectedMime
+
+    console.log('[Transcribe] Audio file details:', {
+      runId: id,
+      fileExt,
+      detectedMime,
+      mimeType,
+      bytes,
+    })
+
+    // Get audio duration estimate
+    let audioSeconds: number | null = null
     try {
-      const fileSizeKB = audioBuffer.length / 1024
-      // Very rough estimate: ~1KB per second for compressed speech audio
-      // This is just a fallback - actual duration should come from client
-      audioSeconds = Math.round(fileSizeKB / 1.0) // Will be updated by client
+      const fileSizeKB = bytes / 1024
+      // Rough estimate: ~1KB per second for compressed speech audio
+      audioSeconds = Math.round(fileSizeKB / 1.0)
     } catch (error) {
-      console.warn('Could not estimate audio duration:', error)
+      console.warn('[Transcribe] Could not estimate audio duration:', error)
     }
 
     // Transcribe with OpenAI Whisper
     let transcript: string
     try {
-      // Create a File-like object for OpenAI
-      const audioFile = new File([audioBuffer], `audio.${fileExt}`, { type: mimeType })
+      // Create File object with correct name and type
+      const fileName = `${id}.${fileExt}`
+      const audioFile = new File([audioBuffer], fileName, { 
+        type: mimeType 
+      })
+
+      console.log('[Transcribe] Calling OpenAI Whisper:', {
+        runId: id,
+        fileName,
+        fileSize: audioFile.size,
+        fileType: audioFile.type,
+        model: 'whisper-1',
+      })
 
       const transcription = await openai.audio.transcriptions.create({
         file: audioFile,
         model: 'whisper-1',
-        language: 'en', // Optional: specify language
+        language: 'en',
       })
 
       transcript = transcription.text
+
+      console.log('[Transcribe] OpenAI response received:', {
+        runId: id,
+        transcriptLength: transcript.length,
+        transcriptPreview: transcript.substring(0, 100),
+      })
+
+      // Validate transcript is not empty
+      if (!transcript || transcript.trim().length === 0) {
+        console.error('[Transcribe] Empty transcript returned:', {
+          runId: id,
+        })
+        
+        await supabaseAdmin
+          .from('pitch_runs')
+          .update({
+            status: 'error',
+            error_message: 'Empty transcript returned from OpenAI',
+          })
+          .eq('id', id)
+
+        return NextResponse.json(
+          { 
+            ok: false,
+            error: 'Empty transcript returned',
+            message: 'OpenAI returned an empty transcript. The audio file may be corrupted or silent.',
+          },
+          { status: 500 }
+        )
+      }
+
     } catch (error: any) {
-      console.error('OpenAI transcription error:', error)
+      const statusCode = error?.status || error?.response?.status || 500
+      const errorMessage = error?.message || 'Unknown OpenAI error'
+      const errorDetails = error?.error?.message || error?.response?.data || errorMessage
+
+      console.error('[Transcribe] OpenAI transcription error:', {
+        runId: id,
+        statusCode,
+        errorMessage,
+        errorDetails,
+        error: JSON.stringify(error, null, 2),
+      })
       
       await supabaseAdmin
         .from('pitch_runs')
         .update({
           status: 'error',
-          error_message: error.message || 'Transcription failed',
+          error_message: `OpenAI transcription failed: ${errorMessage} (status: ${statusCode})`,
         })
         .eq('id', id)
 
       return NextResponse.json(
-        { error: 'Transcription failed', details: error.message },
-        { status: 500 }
+        { 
+          ok: false,
+          error: 'Transcription failed',
+          message: errorMessage,
+          statusCode,
+          details: errorDetails,
+        },
+        { status: statusCode >= 400 && statusCode < 600 ? statusCode : 500 }
       )
     }
 
     // Calculate word count and WPM
     const wordCount = countWords(transcript)
     const wpm = calculateWPM(wordCount, audioSeconds)
+
+    console.log('[Transcribe] Calculated metrics:', {
+      runId: id,
+      wordCount,
+      wpm,
+      audioSeconds,
+      transcriptLength: transcript.length,
+    })
 
     // Update the run with transcript and timing data
     // IMPORTANT: Only update status to 'transcribed' AFTER successful transcription is saved
@@ -176,22 +307,48 @@ export async function POST(
       .eq('id', id)
 
     if (updateError) {
-      console.error('Database update error:', updateError)
+      console.error('[Transcribe] Database update error:', {
+        runId: id,
+        error: updateError,
+        message: updateError.message,
+      })
       return NextResponse.json(
-        { error: 'Failed to update run with transcript' },
+        { 
+          ok: false,
+          error: 'Failed to update run with transcript',
+          details: updateError.message,
+        },
         { status: 500 }
       )
     }
 
+    const duration = Date.now() - startTime
+    console.log('[Transcribe] Success:', {
+      runId: id,
+      transcriptLength: transcript.length,
+      wordCount,
+      wpm,
+      durationMs: duration,
+    })
+
     return NextResponse.json({
-      success: true,
-      transcript,
-      audio_seconds: audioSeconds,
+      ok: true,
+      transcript_length: transcript.length,
+      bytes,
+      mime: mimeType,
       word_count: wordCount,
       wpm,
+      audio_seconds: audioSeconds,
     })
   } catch (error: any) {
-    console.error('Unexpected error:', error)
+    const duration = Date.now() - startTime
+    console.error('[Transcribe] Unexpected error:', {
+      runId: id,
+      error,
+      message: error?.message,
+      stack: error?.stack,
+      durationMs: duration,
+    })
 
     // Try to update status to error
     try {
@@ -199,15 +356,19 @@ export async function POST(
         .from('pitch_runs')
         .update({
           status: 'error',
-          error_message: error.message || 'Unexpected error during transcription',
+          error_message: error?.message || 'Unexpected error during transcription',
         })
-        .eq('id', params.id)
+        .eq('id', id)
     } catch (updateErr) {
-      console.error('Failed to update error status:', updateErr)
+      console.error('[Transcribe] Failed to update error status:', updateErr)
     }
 
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      { 
+        ok: false,
+        error: 'Internal server error',
+        message: error?.message || 'An unexpected error occurred',
+      },
       { status: 500 }
     )
   }

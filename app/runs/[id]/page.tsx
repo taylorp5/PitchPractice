@@ -3,13 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { SectionHeader } from '@/components/ui/SectionHeader'
-import { StatPill } from '@/components/ui/StatPill'
-import { Divider } from '@/components/ui/Divider'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { Copy, Check, ArrowLeft, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Mic, FileText } from 'lucide-react'
 
 // Helper function to log fetch errors with full details
 async function logFetchError(url: string, response: Response, error?: any) {
@@ -24,7 +24,7 @@ async function logFetchError(url: string, response: Response, error?: any) {
     url,
     status: response.status,
     statusText: response.statusText,
-    responseText: responseText.substring(0, 500), // Limit to first 500 chars
+    responseText: responseText.substring(0, 500),
     error,
   })
 }
@@ -64,11 +64,9 @@ export default function RunPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [copied, setCopied] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
-  const [debugInfo, setDebugInfo] = useState<any>(null)
-  const [transcribeDebug, setTranscribeDebug] = useState<string>('')
+  const [showDebug, setShowDebug] = useState(false)
   const [lastTranscribeResponse, setLastTranscribeResponse] = useState<any>(null)
   const [lastTranscript, setLastTranscript] = useState<string | null>(null)
-  const [lastGetResponse, setLastGetResponse] = useState<any>(null)
   const [lastAction, setLastAction] = useState<string | null>(null)
 
   const fetchRun = async () => {
@@ -85,10 +83,6 @@ export default function RunPage() {
       }
       const responseData = await res.json()
       
-      // Store raw GET response for debug panel
-      setLastGetResponse(responseData)
-      
-      // Handle new response format: { ok: true, run }
       let runData: Run | null = null
       if (responseData.ok && responseData.run) {
         runData = responseData.run
@@ -96,275 +90,222 @@ export default function RunPage() {
       } else if (!responseData.ok) {
         throw new Error(responseData.error || 'Failed to fetch run')
       } else {
-        // Fallback for old format (direct run object)
         runData = responseData
         setRun(runData)
       }
-      
-      // Fetch fresh audio URL
-      if (runData && runData.audio_path) {
-        const audioUrl = `/api/runs/${routeRunId}/audio-url`
-        try {
-          const audioRes = await fetch(audioUrl)
-          if (!audioRes.ok) {
-            await logFetchError(audioUrl, audioRes)
-          } else {
-            const audioData = await audioRes.json()
-            setAudioUrl(audioData.url)
-          }
-        } catch (err) {
-          console.error('[Fetch Error] Failed to fetch audio URL:', {
-            url: audioUrl,
-            error: err,
-          })
-        }
-      }
-      
-      setLoading(false)
-    } catch (err) {
-      console.error('[Fetch Error] Error fetching run:', {
-        url,
-        error: err,
-      })
-      setError('Failed to load run details')
+
+      setError(null)
+    } catch (err: any) {
+      console.error('Error fetching run:', err)
+      setError(err.message || 'Failed to load pitch run')
+    } finally {
       setLoading(false)
     }
   }
-  
+
+  const fetchAudioUrl = async () => {
+    if (!routeRunId || !run?.audio_path) return
+
+    try {
+      const res = await fetch(`/api/runs/${routeRunId}/audio-url`, {
+        cache: 'no-store',
+      })
+      if (!res.ok) {
+        await logFetchError(`/api/runs/${routeRunId}/audio-url`, res)
+        return
+      }
+      const data = await res.json()
+      if (data.url) {
+        setAudioUrl(data.url)
+      }
+    } catch (err) {
+      console.error('Error fetching audio URL:', err)
+    }
+  }
 
   useEffect(() => {
     fetchRun()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeRunId])
 
-  // Auto-start transcription if status is 'uploaded' and no transcript exists
   useEffect(() => {
-    if (run && run.status === 'uploaded' && !run.transcript && !isTranscribing) {
-      // Auto-transcribe (will overwrite if already transcribed)
-      handleTranscribe()
+    if (run?.audio_path) {
+      fetchAudioUrl()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run?.status, run?.transcript, routeRunId])
-
-  // Auto-start analysis if status is 'transcribed'
-  useEffect(() => {
-    if (run && run.status === 'transcribed' && !isAnalyzing && !run.analysis_json) {
-      handleAnalyze()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run?.status, routeRunId])
+  }, [run?.audio_path, routeRunId])
 
   const handleTranscribe = async () => {
-    if (!routeRunId || isTranscribing) return
+    if (!routeRunId) return
 
     setIsTranscribing(true)
     setError(null)
-    setTranscribeDebug('')
+    setLastAction(null)
 
     const url = `/api/runs/${routeRunId}/transcribe`
-    
     try {
-      // Log and display the exact URL
-      const debugMsg = `Calling: ${url}`
-      console.log('[Client] Transcribe request:', debugMsg)
-      setTranscribeDebug(debugMsg)
-
-      const response = await fetch(url, {
+      const res = await fetch(url, {
         method: 'POST',
+        cache: 'no-store',
       })
 
-      // Log error if non-2xx
-      if (!response.ok) {
-        await logFetchError(url, response)
+      if (!res.ok) {
+        await logFetchError(url, res)
+        const errorData = await res.json()
+        const errorMsg = errorData.message || errorData.error || 'Transcription failed'
+        setError(errorMsg)
+        setLastAction(`Transcription failed: ${errorMsg}`)
+        setIsTranscribing(false)
+        return
       }
 
-      const responseData = await response.json()
-      
-      // Log full JSON response
-      console.log('[Client] Transcribe response (full JSON):', JSON.stringify(responseData, null, 2))
-      
-      // Store last transcribe response for debug panel
+      const responseData = await res.json()
+      console.log('[Transcribe Response]', JSON.stringify(responseData, null, 2))
       setLastTranscribeResponse(responseData)
-      
-      // Always display response JSON in debug area
-      const responseDebug = `Response: ${JSON.stringify(responseData, null, 2)}`
-      console.log('[Client] Transcribe response:', responseData)
-      setTranscribeDebug(prev => prev + '\n\n' + responseDebug)
 
-      // Check if ok=false and show message prominently
-      if (!responseData.ok) {
-        const errorMsg = responseData.message || responseData.error || 'Transcription failed'
-        setError(errorMsg)
-        setLastAction(`Transcription failed: ${errorMsg}`)
-        // Don't throw - let the UI show the error message
-        await fetchRun()
+      const responseRunId = responseData.runId
+      console.log({ routeRunId, responseRunId: responseRunId })
+
+      if (responseRunId && responseRunId !== routeRunId) {
+        console.log(`[ID Mismatch] Redirecting from ${routeRunId} to ${responseRunId}`)
+        router.replace(`/runs/${responseRunId}`)
         return
       }
 
-      if (!response.ok) {
-        // Show exact error message from API
-        const errorMsg = responseData.message || responseData.error || 'Transcription failed'
-        setError(errorMsg)
-        setLastAction(`Transcription failed: ${errorMsg}`)
-        await fetchRun()
-        return
-      }
-
-      // Update local state immediately with response data - NO REDIRECT/REFRESH
       if (responseData.ok && responseData.run) {
         setRun(responseData.run)
-        setLastAction('Transcribed successfully')
+        if (responseData.transcript) {
+          setLastTranscript(responseData.transcript)
+        }
+        setLastAction('Transcription completed successfully')
+      } else {
+        setError(responseData.message || 'Transcription failed')
+        setLastAction(`Transcription failed: ${responseData.message || 'Unknown error'}`)
       }
-      
-      // Store transcript from response
-      if (responseData.transcript) {
-        setLastTranscript(responseData.transcript)
-      }
-      
-      // DO NOT call fetchRun() or router.refresh() - keep state stable
-    } catch (err) {
-      console.error('[Fetch Error] Transcription error:', {
-        url,
-        error: err,
-      })
-      // Show exact error message from API response
-      setError(err instanceof Error ? err.message : 'Failed to transcribe audio')
-      // Refresh to get updated error status
-      await fetchRun()
+    } catch (err: any) {
+      console.error('Transcription error:', err)
+      const errorMsg = err.message || 'Failed to transcribe audio'
+      setError(errorMsg)
+      setLastAction(`Transcription failed: ${errorMsg}`)
     } finally {
       setIsTranscribing(false)
+      await fetchRun()
     }
   }
-  
-  const handleReset = async () => {
-    if (!routeRunId || isTranscribing) return
 
-    setIsTranscribing(true)
+  const handleReset = async () => {
+    if (!routeRunId) return
+
     setError(null)
-    setTranscribeDebug('')
+    setLastAction(null)
 
     const url = `/api/runs/${routeRunId}/reset`
-    
     try {
-      const debugMsg = `Calling: ${url}`
-      console.log('[Client] Reset request:', debugMsg)
-      setTranscribeDebug(debugMsg)
-
-      const response = await fetch(url, {
+      const res = await fetch(url, {
         method: 'POST',
+        cache: 'no-store',
       })
 
-      // Log error if non-2xx
-      if (!response.ok) {
-        await logFetchError(url, response)
+      if (!res.ok) {
+        await logFetchError(url, res)
+        const errorData = await res.json()
+        setError(errorData.message || errorData.error || 'Reset failed')
+        setLastAction(`Reset failed: ${errorData.message || 'Unknown error'}`)
+        return
       }
 
-      const responseData = await response.json()
-      
-      const responseDebug = `Response: ${JSON.stringify(responseData, null, 2)}`
-      console.log('[Client] Reset response:', responseData)
-      setTranscribeDebug(prev => prev + '\n\n' + responseDebug)
-
-      if (!response.ok) {
-        const errorMsg = responseData.error || responseData.message || 'Reset failed'
-        throw new Error(errorMsg)
+      const responseData = await res.json()
+      if (responseData.ok && responseData.run) {
+        setRun(responseData.run)
+        setLastTranscript(null)
+        setLastAction('Run reset successfully')
       }
-
-      // Refresh run data
-      await fetchRun()
-    } catch (err) {
-      console.error('[Fetch Error] Reset error:', {
-        url,
-        error: err,
-      })
-      setError(err instanceof Error ? err.message : 'Failed to reset')
-      await fetchRun()
+    } catch (err: any) {
+      console.error('Reset error:', err)
+      setError(err.message || 'Failed to reset run')
+      setLastAction(`Reset failed: ${err.message || 'Unknown error'}`)
     } finally {
-      setIsTranscribing(false)
+      await fetchRun()
     }
   }
 
   const handleAnalyze = async () => {
-    if (!routeRunId || isAnalyzing) return
+    if (!routeRunId) return
 
     setIsAnalyzing(true)
     setError(null)
+    setLastAction(null)
 
+    const url = `/api/runs/${routeRunId}/analyze`
     try {
-      const url = `/api/runs/${routeRunId}/analyze`
-      const response = await fetch(url, {
+      const res = await fetch(url, {
         method: 'POST',
+        cache: 'no-store',
       })
 
-      // Log error if non-2xx
-      if (!response.ok) {
-        await logFetchError(url, response)
+      if (!res.ok) {
+        await logFetchError(url, res)
+        const errorData = await res.json()
+        const errorMsg = errorData.message || errorData.error || 'Analysis failed'
+        setError(errorMsg)
+        setLastAction(`Analysis failed: ${errorMsg}`)
+        return
       }
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Analysis failed')
-      }
-
-      const responseData = await response.json()
-      
-      // Update local state immediately - NO REDIRECT/REFRESH
-      if (responseData.run) {
+      const responseData = await res.json()
+      if (responseData.ok && responseData.run) {
         setRun(responseData.run)
         setLastAction('Analysis completed successfully')
-      } else if (responseData.ok) {
-        // If response doesn't include run, fetch it
-        await fetchRun()
-        setLastAction('Analysis completed successfully')
+      } else {
+        setError(responseData.message || 'Analysis failed')
+        setLastAction(`Analysis failed: ${responseData.message || 'Unknown error'}`)
       }
-    } catch (err) {
-      console.error('[Fetch Error] Analysis error:', {
-        url: `/api/runs/${routeRunId}/analyze`,
-        error: err,
-      })
-      setError(err instanceof Error ? err.message : 'Failed to analyze pitch')
-      setLastAction(`Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-      // Refresh to get updated error status
-      await fetchRun()
+    } catch (err: any) {
+      console.error('Analysis error:', err)
+      const errorMsg = err.message || 'Failed to analyze pitch'
+      setError(errorMsg)
+      setLastAction(`Analysis failed: ${errorMsg}`)
     } finally {
       setIsAnalyzing(false)
+      await fetchRun()
     }
   }
 
   const copyShareSummary = () => {
-    if (!run || !run.analysis_json) return
+    if (!run) return
 
-    const analysis = run.analysis_json
     const duration = run.audio_seconds
       ? `${Math.floor(run.audio_seconds / 60)}:${String(Math.floor(run.audio_seconds % 60)).padStart(2, '0')}`
       : 'N/A'
     const wpm = run.words_per_minute ? `${run.words_per_minute} WPM` : 'N/A'
-    const score = analysis.summary?.overall_score || 'N/A'
-    const improvements = analysis.summary?.top_improvements?.slice(0, 3) || []
-    const strengths = analysis.summary?.top_strengths?.slice(0, 2) || []
 
-    // LinkedIn-friendly format (short and clean)
     let summary = `🎯 Pitch Practice Results\n\n`
     summary += `Duration: ${duration} | Pace: ${wpm}\n`
-    summary += `Overall Score: ${score}/10\n\n`
-    
-    if (strengths.length > 0) {
-      summary += `✅ Top Strengths:\n`
-      strengths.forEach((s: string) => {
-        // Clean up the strength text (remove quotes if present, keep concise)
-        const cleanStrength = s.replace(/^["']|["']$/g, '').trim()
-        summary += `• ${cleanStrength}\n`
-      })
-      summary += `\n`
-    }
-    
-    if (improvements.length > 0) {
-      summary += `📈 Top Improvements:\n`
-      improvements.forEach((i: string) => {
-        // Clean up the improvement text (remove quotes if present, keep concise)
-        const cleanImprovement = i.replace(/^["']|["']$/g, '').trim()
-        summary += `• ${cleanImprovement}\n`
-      })
+
+    if (run.analysis_json) {
+      const analysis = run.analysis_json
+      const score = analysis.summary?.overall_score || 'N/A'
+      summary += `Overall Score: ${score}/10\n\n`
+      
+      const strengths = analysis.summary?.top_strengths?.slice(0, 2) || []
+      const improvements = analysis.summary?.top_improvements?.slice(0, 2) || []
+
+      if (strengths.length > 0) {
+        summary += `✅ Top Strengths:\n`
+        strengths.forEach((s: string) => {
+          const cleanStrength = s.replace(/^["']|["']$/g, '').trim()
+          summary += `• ${cleanStrength}\n`
+        })
+        summary += `\n`
+      }
+      
+      if (improvements.length > 0) {
+        summary += `📈 Top Improvements:\n`
+        improvements.forEach((i: string) => {
+          const cleanImprovement = i.replace(/^["']|["']$/g, '').trim()
+          summary += `• ${cleanImprovement}\n`
+        })
+      }
+    } else if (run.transcript) {
+      summary += `\nTranscript available. Analysis pending.`
     }
 
     navigator.clipboard.writeText(summary).then(() => {
@@ -375,24 +316,28 @@ export default function RunPage() {
     })
   }
 
-  const downloadJSON = () => {
-    if (!run || !run.analysis_json) return
+  const formatDuration = (seconds: number | null): string => {
+    if (seconds === null || seconds === undefined) return '—'
+    return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
+  }
 
-    const dataStr = JSON.stringify(run.analysis_json, null, 2)
-    const dataBlob = new Blob([dataStr], { type: 'application/json' })
-    const url = URL.createObjectURL(dataBlob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `pitch-analysis-${run.id}.json`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+  const formatLastUpdated = (dateString: string): string => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins} min ago`
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `${diffHours} hr ago`
+    const diffDays = Math.floor(diffHours / 24)
+    return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center py-20">
+      <div className="min-h-screen flex items-center justify-center py-20 bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
         <LoadingSpinner size="lg" text="Loading pitch run..." />
       </div>
     )
@@ -400,7 +345,7 @@ export default function RunPage() {
 
   if (error || !run) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
         <Card className="max-w-2xl w-full text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-4">Error</h1>
           <p className="text-gray-600 mb-6">{error || 'Run not found'}</p>
@@ -414,335 +359,167 @@ export default function RunPage() {
     )
   }
 
+  const transcript = run.transcript ?? lastTranscript ?? ""
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 py-8 px-4">
-      <div className="max-w-5xl mx-auto">
-        <div className="mb-6">
-          <Link href="/">
-            <Button variant="ghost" size="sm">
-              ← Back to Home
-            </Button>
-          </Link>
-        </div>
-
-        <Card padding="lg" className="mb-6">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                {run.title || 'Untitled Pitch'}
-              </h1>
-              <p className="text-sm text-gray-500">
-                Created {new Date(run.created_at).toLocaleString()}
-              </p>
-            </div>
-            <StatusBadge status={run.status} />
-          </div>
-
-          {run.rubrics && (
-            <div className="mb-4 p-4 border border-blue-200 bg-blue-50 rounded-lg">
-              <h3 className="font-semibold text-blue-900 mb-2">
-                Rubric: {run.rubrics.name}
-              </h3>
-              {run.rubrics.description && (
-                <p className="text-sm text-blue-800 mb-2">{run.rubrics.description}</p>
-              )}
-              {run.rubrics.target_duration_seconds && (
-                <p className="text-sm text-blue-800">
-                  Target Duration: {Math.floor(run.rubrics.target_duration_seconds / 60)} min
-                  {run.rubrics.max_duration_seconds && (
-                    <span> (Max: {Math.floor(run.rubrics.max_duration_seconds / 60)} min)</span>
-                  )}
-                </p>
-              )}
-            </div>
+      <div className="max-w-7xl mx-auto">
+        {/* Error Messages */}
+        <AnimatePresence>
+          {run.error_message && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg"
+            >
+              <div className="flex items-start gap-2">
+                <span className="text-red-600 text-xl">⚠️</span>
+                <div className="flex-1">
+                  <strong className="text-red-800 text-lg block mb-1">Error</strong>
+                  <p className="text-red-700">{run.error_message}</p>
+                </div>
+              </div>
+            </motion.div>
           )}
-        </Card>
 
-        {run.error_message && (
-          <div className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg">
-            <div className="flex items-start gap-2">
-              <span className="text-red-600 text-xl">⚠️</span>
-              <div className="flex-1">
-                <strong className="text-red-800 text-lg block mb-1">Error</strong>
-                <p className="text-red-700">{run.error_message}</p>
+          {lastTranscribeResponse && !lastTranscribeResponse.ok && lastTranscribeResponse.message && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg"
+            >
+              <div className="flex items-start gap-2">
+                <span className="text-red-600 text-xl">⚠️</span>
+                <div className="flex-1">
+                  <strong className="text-red-800 text-lg block mb-1">Transcription Failed</strong>
+                  <p className="text-red-700">{lastTranscribeResponse.message}</p>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Show API error message prominently if transcribe failed */}
-        {lastTranscribeResponse && !lastTranscribeResponse.ok && lastTranscribeResponse.message && (
-          <div className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg">
-            <div className="flex items-start gap-2">
-              <span className="text-red-600 text-xl">⚠️</span>
-              <div className="flex-1">
-                <strong className="text-red-800 text-lg block mb-1">Transcription Failed</strong>
-                <p className="text-red-700">{lastTranscribeResponse.message}</p>
-              </div>
-            </div>
-          </div>
-        )}
+            </motion.div>
+          )}
 
-        {/* Last Action Log */}
-        {lastAction && (
-          <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center justify-between">
+          {lastAction && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="mb-6 p-3 bg-green-50 border border-green-200 rounded-lg"
+            >
               <p className="text-green-800 text-sm font-medium">{lastAction}</p>
-              {lastTranscribeResponse && (
-                <details className="text-xs">
-                  <summary className="cursor-pointer text-green-600 hover:text-green-700">
-                    View response JSON
-                  </summary>
-                  <pre className="mt-2 p-2 bg-white border border-green-200 rounded text-xs overflow-auto max-h-40 font-mono">
-                    {JSON.stringify(lastTranscribeResponse, null, 2)}
-                  </pre>
-                </details>
-              )}
-            </div>
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {run.audio_path && (
-          <Card className="mb-6">
-            <SectionHeader title="Audio" />
-              {audioUrl ? (
-                <div>
-                  <audio 
-                    controls 
-                    className="w-full"
-                    preload="metadata"
-                    onError={(e) => {
-                      console.error('Audio playback error:', e)
-                      setError('Failed to load audio. The file may be corrupted or the URL expired.')
-                    }}
-                    onLoadedMetadata={(e) => {
-                      console.log('Audio loaded:', {
-                        duration: (e.target as HTMLAudioElement).duration,
-                        readyState: (e.target as HTMLAudioElement).readyState,
-                      })
-                    }}
+        {/* Two Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Column - Transcript + Feedback */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Transcript Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+            >
+              <Card>
+                <SectionHeader title="Transcript" />
+                
+                {/* Audio Player */}
+                {run.audio_path && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.3, delay: 0.1 }}
+                    className="mb-6"
                   >
-                    <source src={audioUrl} type="audio/webm" />
-                    <source src={audioUrl} type="audio/webm;codecs=opus" />
-                    <source src={audioUrl} type="audio/mpeg" />
-                    <source src={audioUrl} type="audio/wav" />
-                    <source src={audioUrl} type="audio/ogg" />
-                    Your browser does not support the audio element.
-                  </audio>
-                  <p className="mt-2 text-xs text-gray-500">
-                    If audio doesn't play, try refreshing the page to get a new signed URL.
-                  </p>
-                </div>
-              ) : (
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-yellow-800 text-sm">
-                    ⚠️ Audio URL could not be generated. This may be a temporary issue. Please refresh the page.
-                  </p>
-                </div>
-              )}
-              
-              {/* Debug Panel */}
-              <details className="mt-4 p-3 bg-gray-100 rounded text-xs">
-                <summary className="cursor-pointer font-semibold text-gray-700">Debug Info</summary>
-                <div className="mt-2 space-y-2 text-gray-600">
-                  <div><strong>routeRunId:</strong> {routeRunId}</div>
-                  <div><strong>run.id:</strong> {run.id || 'null'}</div>
-                  <div><strong>status:</strong> {run.status}</div>
-                  <div><strong>transcript length:</strong> {run.transcript ? `${run.transcript.length} chars` : 'null'}</div>
-                  <div><strong>audio_path:</strong> {run.audio_path || 'null'}</div>
-                  <div><strong>error_message:</strong> {run.error_message || 'null'}</div>
-                </div>
-              </details>
-              
-              {/* Raw Run JSON Panel (dev-only) */}
-              {process.env.NODE_ENV === 'development' && (
-                <details className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded">
-                  <summary className="cursor-pointer font-semibold text-purple-800 mb-2">Raw Run JSON & GET Response</summary>
-                  <div className="mt-2 space-y-2">
-                    {run && (
-                      <div className="p-2 bg-purple-100 rounded text-xs">
-                        <strong>run state transcriptPreview:</strong> {run.transcript?.slice(0, 200) ?? 'null'}
+                    {audioUrl ? (
+                      <audio 
+                        controls 
+                        className="w-full"
+                        preload="metadata"
+                        onError={(e) => {
+                          console.error('Audio playback error:', e)
+                          setError('Failed to load audio. The file may be corrupted or the URL expired.')
+                        }}
+                      >
+                        <source src={audioUrl} type="audio/webm" />
+                        <source src={audioUrl} type="audio/webm;codecs=opus" />
+                        <source src={audioUrl} type="audio/mpeg" />
+                        <source src={audioUrl} type="audio/wav" />
+                        <source src={audioUrl} type="audio/ogg" />
+                        Your browser does not support the audio element.
+                      </audio>
+                    ) : (
+                      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p className="text-yellow-800 text-sm">
+                          ⚠️ Loading audio URL...
+                        </p>
                       </div>
                     )}
-                    {run && (
-                      <div>
-                        <strong className="text-xs">run state:</strong>
-                        <pre className="p-3 bg-white border border-purple-200 rounded text-xs overflow-auto max-h-60 font-mono">
-                          {JSON.stringify(run, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                    {lastGetResponse && (
-                      <div>
-                        <strong className="text-xs">GET /api/runs/[id] response:</strong>
-                        <pre className="p-3 bg-white border border-purple-200 rounded text-xs overflow-auto max-h-60 font-mono">
-                          {JSON.stringify(lastGetResponse, null, 2)}
-                        </pre>
-                        <div className="p-2 bg-purple-100 rounded text-xs mt-2">
-                          <strong>GET response transcriptPreview:</strong> {lastGetResponse.run?.transcript?.slice(0, 200) ?? lastGetResponse.transcript?.slice(0, 200) ?? 'null'}
+                  </motion.div>
+                )}
+
+                {/* Transcript Text */}
+                <AnimatePresence mode="wait">
+                  {transcript.trim().length > 0 ? (
+                    <motion.div
+                      key="transcript"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="p-6 bg-gray-50 rounded-lg border border-gray-200"
+                    >
+                      <pre className="text-gray-700 whitespace-pre-wrap font-sans text-sm leading-relaxed font-normal">
+                        {transcript}
+                      </pre>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="empty"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="p-12 bg-gray-50 rounded-lg border border-gray-200 text-center"
+                    >
+                      <div className="max-w-md mx-auto">
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
+                          <FileText className="h-8 w-8 text-gray-400" />
                         </div>
+                        <p className="text-gray-600 font-medium mb-2">No transcript yet</p>
+                        <p className="text-sm text-gray-500 mb-6">
+                          Click "Re-transcribe" in the sidebar to generate a transcript from your audio.
+                        </p>
+                        <Button
+                          onClick={handleTranscribe}
+                          variant="primary"
+                          disabled={isTranscribing}
+                          isLoading={isTranscribing}
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Generate Transcript
+                        </Button>
                       </div>
-                    )}
-                  </div>
-                </details>
-              )}
-              
-              {/* Last API Response Panel */}
-              {lastTranscribeResponse && (
-                <details className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded" open={!lastTranscribeResponse.ok}>
-                  <summary className="cursor-pointer font-semibold text-blue-800 mb-2">
-                    Last API Response {!lastTranscribeResponse.ok && <span className="text-red-600">(Error)</span>}
-                  </summary>
-                  <pre className="mt-2 p-3 bg-white border border-blue-200 rounded text-xs overflow-auto max-h-60 font-mono">
-                    {JSON.stringify(lastTranscribeResponse, null, 2)}
-                  </pre>
-                </details>
-              )}
-            </Card>
-          )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </Card>
+            </motion.div>
 
-          {/* Metrics Card - Always visible */}
-          {run && (
-            <Card className="mb-6">
-              <SectionHeader title="Metrics" />
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatPill
-                  label="Duration"
-                  value={run.audio_seconds !== null && run.audio_seconds !== undefined
-                    ? `${Math.floor(run.audio_seconds / 60)}:${String(Math.floor(run.audio_seconds % 60)).padStart(2, '0')}`
-                    : '—'}
-                />
-                <StatPill
-                  label="Word Count"
-                  value={run.word_count !== null && run.word_count !== undefined
-                    ? run.word_count.toLocaleString()
-                    : '—'}
-                />
-                <StatPill
-                  label="WPM"
-                  value={run.words_per_minute !== null && run.words_per_minute !== undefined
-                    ? `${run.words_per_minute}`
-                    : '—'}
-                />
-              </div>
-            </Card>
-          )}
-
-          {/* Transcript Section */}
-          <Card className="mb-6">
-            <SectionHeader title="Transcript" />
-            {(() => {
-              const t = run?.transcript ?? lastTranscript ?? ""
-              return t.trim().length > 0 ? (
-                <div className="p-6 bg-gray-50 rounded-lg border border-gray-200">
-                  <pre className="text-gray-700 whitespace-pre-wrap font-sans text-sm leading-relaxed">{t}</pre>
-                </div>
-              ) : (
-                <div className="p-6 bg-yellow-50 rounded-lg border border-yellow-200 text-center">
-                  <p className="text-yellow-800 text-sm">No transcript yet</p>
-                </div>
-              )
-            })()}
-          </Card>
-
-          {/* Analysis Section */}
-          {run.analysis_json && (
-            <div className="mb-6 space-y-6">
-              <SectionHeader 
-                title="Feedback & Analysis"
+            {/* Line-by-Line Feedback (placeholder for later) */}
+            {run.analysis_json?.line_by_line && run.analysis_json.line_by_line.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
               >
-                <div className="flex gap-2">
-                  <Button
-                    onClick={copyShareSummary}
-                    variant="primary"
-                    size="sm"
-                  >
-                    {copied ? '✓ Copied!' : '📋 Copy Share Summary'}
-                  </Button>
-                  <Button
-                    onClick={downloadJSON}
-                    variant="secondary"
-                    size="sm"
-                  >
-                    💾 Download JSON
-                  </Button>
-                </div>
-              </SectionHeader>
-
-              {/* Scorecard */}
-              {run.analysis_json.summary && (
-                <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-semibold text-gray-900">Overall Score</h3>
-                    <div className="text-4xl font-bold text-blue-600">
-                      {run.analysis_json.summary.overall_score}/10
-                    </div>
-                  </div>
-                  {run.analysis_json.summary.overall_notes && (
-                    <p className="text-gray-700 mb-4">{run.analysis_json.summary.overall_notes}</p>
-                  )}
-
-                  {/* Rubric Scores */}
-                  {run.analysis_json.rubric_scores && run.analysis_json.rubric_scores.length > 0 && (
-                    <div className="mt-6 space-y-3">
-                      <h4 className="font-semibold text-gray-900">Rubric Scores</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {run.analysis_json.rubric_scores.map((item: any, idx: number) => (
-                          <div key={idx} className="p-3 bg-white rounded border border-gray-200">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="font-medium text-gray-900">{item.criterion}</span>
-                              <span className="text-lg font-semibold text-blue-600">
-                                {item.score}/10
-                              </span>
-                            </div>
-                            {item.notes && (
-                              <p className="text-sm text-gray-600">{item.notes}</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Top Strengths & Improvements */}
-              {(run.analysis_json.summary?.top_strengths?.length > 0 || 
-                run.analysis_json.summary?.top_improvements?.length > 0) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {run.analysis_json.summary.top_strengths?.length > 0 && (
-                    <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-                      <h3 className="font-semibold text-green-900 mb-3">Top Strengths</h3>
-                      <ul className="space-y-2">
-                        {run.analysis_json.summary.top_strengths.map((strength: string, idx: number) => (
-                          <li key={idx} className="text-sm text-green-800 flex items-start">
-                            <span className="mr-2">✓</span>
-                            <span>{strength}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  {run.analysis_json.summary.top_improvements?.length > 0 && (
-                    <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
-                      <h3 className="font-semibold text-amber-900 mb-3">Top Improvements</h3>
-                      <ul className="space-y-2">
-                        {run.analysis_json.summary.top_improvements.map((improvement: string, idx: number) => (
-                          <li key={idx} className="text-sm text-amber-800 flex items-start">
-                            <span className="mr-2">→</span>
-                            <span>{improvement}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Line-by-Line Feedback */}
-              {run.analysis_json.line_by_line && run.analysis_json.line_by_line.length > 0 && (
-                <div className="p-6 bg-gray-50 rounded-lg border border-gray-200">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-4">Line-by-Line Feedback</h3>
+                <Card>
+                  <SectionHeader title="Line-by-Line Feedback" />
                   <div className="space-y-4">
                     {run.analysis_json.line_by_line.map((item: any, idx: number) => {
                       const typeColors = {
@@ -756,8 +533,11 @@ export default function RunPage() {
                         low: 'text-gray-600',
                       }
                       return (
-                        <div
+                        <motion.div
                           key={idx}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.3, delay: idx * 0.05 }}
                           className={`p-4 rounded-lg border ${typeColors[item.type as keyof typeof typeColors] || 'bg-gray-50 border-gray-200'}`}
                         >
                           <div className="flex items-start justify-between mb-2">
@@ -776,243 +556,196 @@ export default function RunPage() {
                               <strong>Action:</strong> {item.action}
                             </p>
                           )}
-                        </div>
+                        </motion.div>
                       )
                     })}
                   </div>
-                </div>
-              )}
+                </Card>
+              </motion.div>
+            )}
 
-              {/* Suggested Pauses */}
-              {run.analysis_json.pause_suggestions && run.analysis_json.pause_suggestions.length > 0 && (
-                <div className="p-6 bg-purple-50 rounded-lg border border-purple-200">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-4">Suggested Pauses</h3>
-                  <div className="space-y-3">
-                    {run.analysis_json.pause_suggestions.map((pause: any, idx: number) => (
-                      <div key={idx} className="p-3 bg-white rounded border border-purple-200">
-                        <p className="text-sm font-medium text-gray-800 mb-1">
-                          After: <span className="italic">"{pause.after_quote}"</span>
-                        </p>
-                        <p className="text-sm text-gray-600 mb-1">{pause.why}</p>
-                        <p className="text-xs text-gray-500">
-                          Suggested duration: {pause.duration_ms}ms
-                        </p>
+            {/* Debug Panel */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, delay: 0.2 }}
+            >
+              <Card>
+                <button
+                  onClick={() => setShowDebug(!showDebug)}
+                  className="flex items-center justify-between w-full text-left hover:bg-gray-50 -m-2 p-2 rounded transition-colors"
+                >
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Debug</h3>
+                  {showDebug ? (
+                    <ChevronUp className="h-4 w-4 text-gray-400" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                  )}
+                </button>
+                <AnimatePresence>
+                  {showDebug && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="mt-4 space-y-4 overflow-hidden"
+                    >
+                      <div>
+                        <p className="text-xs font-semibold text-gray-600 mb-2">Raw Run JSON:</p>
+                        <pre className="p-3 bg-gray-100 rounded text-xs overflow-auto max-h-60 font-mono">
+                          {JSON.stringify(run, null, 2)}
+                        </pre>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Cut Suggestions */}
-              {run.analysis_json.cut_suggestions && run.analysis_json.cut_suggestions.length > 0 && (
-                <div className="p-6 bg-orange-50 rounded-lg border border-orange-200">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-4">Suggested Cuts</h3>
-                  <div className="space-y-3">
-                    {run.analysis_json.cut_suggestions.map((cut: any, idx: number) => (
-                      <div key={idx} className="p-3 bg-white rounded border border-orange-200">
-                        <p className="text-sm font-medium text-gray-800 mb-1">
-                          Remove: <span className="italic line-through">"{cut.quote}"</span>
-                        </p>
-                        <p className="text-sm text-gray-600 mb-1">{cut.why}</p>
-                        {cut.replacement && (
-                          <p className="text-sm text-green-700 mt-2">
-                            <strong>Replace with:</strong> "{cut.replacement}"
-                          </p>
-                        )}
+                      <div>
+                        <p className="text-xs font-semibold text-gray-600 mb-2">Audio Path:</p>
+                        <p className="text-xs text-gray-700 font-mono break-all">{run.audio_path || 'N/A'}</p>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                      {lastTranscribeResponse && (
+                        <div>
+                          <p className="text-xs font-semibold text-gray-600 mb-2">Last Transcribe Response:</p>
+                          <pre className="p-3 bg-gray-100 rounded text-xs overflow-auto max-h-60 font-mono">
+                            {JSON.stringify(lastTranscribeResponse, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </Card>
+            </motion.div>
+          </div>
 
-              {/* Timing Analysis */}
-              {run.analysis_json.timing && (
-                <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-200">
-                  <h3 className="font-semibold text-gray-900 mb-2">Timing Analysis</h3>
-                  {run.analysis_json.timing.notes && (
-                    <p className="text-sm text-gray-700">{run.analysis_json.timing.notes}</p>
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Status Card */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+            >
+              <Card>
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Status</h3>
+                  <div className="flex items-center gap-2 mb-3">
+                    <StatusBadge status={run.status} />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Updated {formatLastUpdated(run.created_at)}
+                  </p>
+                </div>
+                <div className="space-y-2 pt-4 border-t border-gray-200">
+                  <Button
+                    onClick={handleTranscribe}
+                    variant="primary"
+                    size="sm"
+                    className="w-full"
+                    disabled={isTranscribing}
+                    isLoading={isTranscribing}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Re-transcribe (overwrite)
+                  </Button>
+                  <Button
+                    onClick={handleReset}
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Reset
+                  </Button>
+                  <Link href="/app" className="block">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full"
+                    >
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Back to /app
+                    </Button>
+                  </Link>
+                </div>
+              </Card>
+            </motion.div>
+
+            {/* Metrics Card */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
+            >
+              <Card>
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Metrics</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                    <span className="text-sm text-gray-600">Duration</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {formatDuration(run.audio_seconds)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                    <span className="text-sm text-gray-600">Word Count</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {run.word_count !== null && run.word_count !== undefined
+                        ? run.word_count.toLocaleString()
+                        : '—'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-gray-200">
+                    <span className="text-sm text-gray-600">WPM</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {run.words_per_minute !== null && run.words_per_minute !== undefined
+                        ? `${run.words_per_minute}`
+                        : '—'}
+                    </span>
+                  </div>
+                  {run.rubrics?.target_duration_seconds && (
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-sm text-gray-600">Target</span>
+                      <span className="text-sm font-semibold text-blue-600">
+                        {formatDuration(run.rubrics.target_duration_seconds)}
+                      </span>
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          )}
+              </Card>
+            </motion.div>
 
-          {/* Transcription Action */}
-          {run.status === 'uploaded' && (
-            <Card className="mb-6 border-yellow-200 bg-yellow-50">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <p className="text-yellow-900 font-semibold mb-1">
-                    Ready for Transcription
-                  </p>
-                  <p className="text-sm text-yellow-800">
-                    Click "Transcribe" to transcribe your audio and get timing metrics.
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleTranscribe}
-                    disabled={isTranscribing}
-                    isLoading={isTranscribing}
-                    variant="primary"
-                  >
-                    🎤 Transcribe (overwrite)
-                  </Button>
-                  <Button
-                    onClick={handleReset}
-                    disabled={isTranscribing}
-                    variant="secondary"
-                    size="sm"
-                  >
-                    🔄 Reset
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Transcription Action - if status is transcribed but no transcript, or if error */}
-          {(run.status === 'transcribed' && !run.transcript) || run.status === 'error' ? (
-            <Card className="mb-6 border-yellow-200 bg-yellow-50">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <p className="text-yellow-900 font-semibold mb-1">
-                    {run.status === 'error' ? 'Transcription Failed' : 'Transcription Missing'}
-                  </p>
-                  <p className="text-sm text-yellow-800">
-                    {run.status === 'error' 
-                      ? run.error_message || 'Transcription encountered an error.'
-                      : 'The run is marked as transcribed but no transcript was found.'}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleTranscribe}
-                    disabled={isTranscribing}
-                    isLoading={isTranscribing}
-                    variant="primary"
-                    size="sm"
-                  >
-                    🎤 Transcribe (overwrite)
-                  </Button>
-                  <Button
-                    onClick={handleReset}
-                    disabled={isTranscribing}
-                    variant="secondary"
-                    size="sm"
-                  >
-                    🔄 Reset
-                  </Button>
-                </div>
-              </div>
-              
-              {/* Debug output */}
-              {transcribeDebug && (
-                <details className="mt-3 p-2 bg-gray-100 rounded text-xs">
-                  <summary className="cursor-pointer font-semibold text-gray-700">Debug Info</summary>
-                  <pre className="mt-2 text-gray-600 whitespace-pre-wrap break-all">{transcribeDebug}</pre>
-                </details>
-              )}
-            </Card>
-          ) : null}
-
-          {/* Reset & Re-transcribe button - if already transcribed */}
-          {run.transcript && run.transcript.trim().length > 0 && (run.status === 'transcribed' || run.status === 'analyzed') && (
-            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-amber-800 font-medium mb-1">
-                    Already Transcribed
-                  </p>
-                  <p className="text-sm text-amber-700">
-                    This run has been transcribed. Click to reset and re-transcribe.
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleTranscribe}
-                    disabled={isTranscribing}
-                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {isTranscribing ? (
-                      <>
-                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Transcribing...
-                      </>
-                    ) : (
-                      '🎤 Transcribe (overwrite)'
-                    )}
-                  </button>
-                  <button
-                    onClick={handleReset}
-                    disabled={isTranscribing}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {isTranscribing ? (
-                      <>
-                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Resetting...
-                      </>
-                    ) : (
-                      '🔄 Reset'
-                    )}
-                  </button>
-                </div>
-                
-                {/* Debug output */}
-                {transcribeDebug && (
-                  <details className="mt-3 p-2 bg-gray-100 rounded text-xs">
-                    <summary className="cursor-pointer font-semibold text-gray-700">Debug Info</summary>
-                    <pre className="mt-2 text-gray-600 whitespace-pre-wrap break-all">{transcribeDebug}</pre>
-                  </details>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Analysis Action */}
-          {run.status === 'transcribed' && run.transcript && !run.analysis_json && (
-            <Card className="mb-6 border-blue-200 bg-blue-50">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <p className="text-blue-900 font-semibold mb-1">
-                    Ready for Analysis
-                  </p>
-                  <p className="text-sm text-blue-800">
-                    Get detailed rubric-based feedback on your pitch.
-                  </p>
-                </div>
+            {/* Share Card */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
+            >
+              <Card>
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Share</h3>
                 <Button
-                  onClick={handleAnalyze}
-                  disabled={isAnalyzing}
-                  isLoading={isAnalyzing}
+                  onClick={copyShareSummary}
                   variant="primary"
+                  size="sm"
+                  className="w-full"
                 >
-                  ✨ Analyze
+                  {copied ? (
+                    <>
+                      <Check className="mr-2 h-4 w-4" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copy Share Summary
+                    </>
+                  )}
                 </Button>
-              </div>
-            </Card>
-          )}
-
-          {isTranscribing && run.status !== 'uploaded' && (
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                <p className="text-blue-800">Transcribing audio...</p>
-              </div>
-            </div>
-          )}
-
-          {isAnalyzing && run.status === 'transcribed' && (
-            <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
-                <p className="text-indigo-800">Analyzing pitch and generating feedback...</p>
-              </div>
-            </div>
-          )}
+                <p className="text-xs text-gray-500 mt-3">
+                  Copies a LinkedIn-friendly summary with metrics and key feedback.
+                </p>
+              </Card>
+            </motion.div>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
-

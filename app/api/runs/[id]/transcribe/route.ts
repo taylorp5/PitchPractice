@@ -272,7 +272,8 @@ export async function POST(
 
     // Update the run with transcript and timing data
     // IMPORTANT: Only update status to 'transcribed' AFTER successful transcription is saved
-    const { error: updateError } = await supabaseAdmin
+    // Use service role client (supabaseAdmin) which bypasses RLS
+    const { data: updatedRun, error: updateError } = await supabaseAdmin
       .from('pitch_runs')
       .update({
         transcript,
@@ -283,12 +284,24 @@ export async function POST(
         error_message: null,
       })
       .eq('id', id)
+      .select('*')
+      .single()
+
+    // Log update result for debugging
+    console.log('TRANSCRIBE UPDATE RESULT', {
+      id,
+      error: updateError,
+      saved: !!updatedRun,
+      status: updatedRun?.status,
+      transcriptLen: updatedRun?.transcript?.length,
+    })
 
     if (updateError) {
       console.error('[Transcribe] Database update error:', {
         runId: id,
         error: updateError,
         message: updateError.message,
+        code: updateError.code,
       })
       return NextResponse.json(
         { 
@@ -296,9 +309,27 @@ export async function POST(
           transcriptLen: transcript.length,
           bytesDownloaded: bytes,
           mime: mimeType,
-          message: `Failed to update run with transcript: ${updateError.message}`,
+          message: 'DB update failed',
+          error: updateError,
         },
         { status: 500 }
+      )
+    }
+
+    if (!updatedRun) {
+      console.error('[Transcribe] Run not found after update:', {
+        runId: id,
+      })
+      return NextResponse.json(
+        { 
+          ok: false,
+          transcriptLen: transcript.length,
+          bytesDownloaded: bytes,
+          mime: mimeType,
+          message: 'Run not found for update',
+          id,
+        },
+        { status: 404 }
       )
     }
 
@@ -313,6 +344,8 @@ export async function POST(
       durationMs: duration,
       statusBefore,
       statusAfter,
+      savedStatus: updatedRun.status,
+      savedTranscriptLen: updatedRun.transcript?.length,
     })
 
     return NextResponse.json({
@@ -321,6 +354,9 @@ export async function POST(
       bytesDownloaded: bytes,
       mime: mimeType,
       message: 'Transcription completed successfully',
+      savedStatus: updatedRun.status,
+      savedTranscriptLen: updatedRun.transcript?.length,
+      runId: updatedRun.id,
     })
   } catch (error: any) {
     const duration = Date.now() - startTime

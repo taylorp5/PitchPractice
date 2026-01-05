@@ -412,7 +412,9 @@ export default function RunPage() {
 
   const statusColors: Record<string, string> = {
     uploaded: 'bg-yellow-100 text-yellow-800',
+    transcribing: 'bg-blue-100 text-blue-800',
     transcribed: 'bg-blue-100 text-blue-800',
+    analyzing: 'bg-indigo-100 text-indigo-800',
     analyzed: 'bg-green-100 text-green-800',
     error: 'bg-red-100 text-red-800',
   }

@@ -20,11 +20,10 @@ export function Navbar() {
 
   return (
     <nav 
-      className="sticky top-0 z-50 backdrop-blur-xl border-b shadow-xl"
+      className="sticky top-0 z-50 backdrop-blur-xl border-b"
       style={{ 
-        backgroundColor: `${colors.background.primary}E6`, // ~90% opacity
-        borderColor: colors.border.primary,
-        boxShadow: `0 4px 20px rgba(0, 0, 0, 0.3)`,
+        backgroundColor: `${colors.background.primary}F5`, // ~96% opacity
+        borderColor: `${colors.border.primary}40`, // Faint border
       }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -36,10 +35,9 @@ export function Navbar() {
             aria-label="PitchPractice Home"
           >
             <div 
-              className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105"
+              className="w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 group-hover:scale-105"
               style={{
                 backgroundColor: colors.accent.primary,
-                boxShadow: `0 4px 12px ${colors.accent.primary}40`,
               }}
             >
               <span 
@@ -58,24 +56,15 @@ export function Navbar() {
           </Link>
 
           {/* Right side: Upgrade + Sign in */}
-          <div className="flex items-center gap-5 md:gap-6">
+          <div className="flex items-center gap-6 md:gap-8">
             <Link 
               href="/upgrade" 
-              className="text-sm font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 rounded-lg px-3 py-2 hover:bg-[#121826]"
+              className="text-sm font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0B0F14] rounded-md px-3 py-2 focus:ring-[#F59E0B]/50"
               style={{ 
                 color: colors.text.secondary,
               }}
-              onMouseEnter={(e) => e.currentTarget.style.color = colors.accent.primary}
+              onMouseEnter={(e) => e.currentTarget.style.color = colors.text.primary}
               onMouseLeave={(e) => e.currentTarget.style.color = colors.text.secondary}
-              onFocus={(e) => {
-                e.currentTarget.style.color = colors.accent.primary
-                e.currentTarget.style.outline = `2px solid ${colors.accent.primary}`
-                e.currentTarget.style.outlineOffset = '2px'
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.color = colors.text.secondary
-                e.currentTarget.style.outline = 'none'
-              }}
               aria-label="Upgrade to premium"
             >
               Upgrade
@@ -86,7 +75,7 @@ export function Navbar() {
               href={isSignedIn ? "/app" : "/app"}
               asChild
               aria-label={isSignedIn ? "Go to dashboard" : "Sign in"}
-              className="border border-[#22283A] hover:border-[#F59E0B]/30"
+              className="border border-[#1E293B] hover:border-[#334155] hover:bg-[#0F172A]/50 transition-all"
             >
               {isSignedIn ? "Dashboard" : "Sign in"}
             </Button>

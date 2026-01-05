@@ -86,8 +86,8 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: colors.background.primary }}>
       {/* Hero Section */}
-      <section className="relative overflow-hidden py-28 md:py-40 px-4">
-        {/* Background gradient and vignette */}
+      <section className="relative overflow-hidden py-32 md:py-48 lg:py-56 px-4">
+        {/* Background gradient - deep navy */}
         <div 
           className="absolute inset-0"
           style={{
@@ -100,18 +100,18 @@ export default function LandingPage() {
             background: gradients.vignette,
           }}
         />
-        {/* Subtle noise overlay (CSS only) */}
+        {/* Subtle noise overlay */}
         <div 
-          className="absolute inset-0 opacity-[0.03]"
+          className="absolute inset-0 opacity-[0.02]"
           style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
           }}
         />
-        {/* Accent glow effect */}
+        {/* Very subtle glow behind hero text */}
         <div 
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-20 blur-3xl"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] rounded-full opacity-[0.08] blur-3xl pointer-events-none"
           style={{
-            background: `radial-gradient(circle, ${colors.accent.primary} 0%, transparent 70%)`,
+            background: `radial-gradient(ellipse, ${colors.accent.primary} 0%, transparent 70%)`,
           }}
         />
         
@@ -121,55 +121,33 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <div className="mb-6 inline-block">
-              <span 
-                className="text-xs md:text-sm font-semibold uppercase tracking-wider px-4 py-2 rounded-full border"
-                style={{
-                  color: colors.accent.primary,
-                  borderColor: `${colors.accent.primary}30`,
-                  backgroundColor: `${colors.accent.primary}10`,
-                }}
-              >
-                AI-Powered Pitch Practice
-              </span>
-            </div>
-            <h1 className="text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-extrabold mb-8 md:mb-10 leading-[1.05] tracking-tight">
-              <span 
-                className="block mb-2 bg-gradient-to-r from-[#E6E8EB] via-[#F59E0B] to-[#E6E8EB] bg-clip-text text-transparent"
-                style={{
-                  backgroundImage: `linear-gradient(135deg, ${colors.text.primary} 0%, ${colors.accent.primary} 50%, ${colors.text.primary} 100%)`,
-                }}
-              >
-                Practice once.
-              </span>
-              <span style={{ color: colors.text.primary }}>Perform better everywhere.</span>
+            <h1 className="text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-bold mb-10 md:mb-12 leading-[1.1] tracking-tight" style={{ color: colors.text.primary }}>
+              <span className="block mb-3">Practice once.</span>
+              <span className="block">Perform better everywhere.</span>
             </h1>
-            <p className="text-xl md:text-2xl lg:text-3xl mb-12 md:mb-16 max-w-3xl mx-auto leading-relaxed font-light" style={{ color: colors.text.secondary }}>
+            <p className="text-xl md:text-2xl lg:text-3xl mb-16 md:mb-20 max-w-3xl mx-auto leading-relaxed font-normal" style={{ color: colors.text.secondary }}>
               Get instant, actionable feedback on clarity, pacing, and structure—before your next big moment.
             </p>
-            <div className="flex flex-col sm:flex-row gap-5 justify-center items-center mb-6">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-8">
               <motion.div
-                whileHover={{ scale: 1.05, y: -2 }}
+                whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
               >
                 <Button
                   variant="primary"
                   size="lg"
                   asChild
                   href="/try"
-                  className="shadow-lg shadow-[#F59E0B]/20 hover:shadow-xl hover:shadow-[#F59E0B]/30 transition-shadow"
+                  className="shadow-md shadow-[#F59E0B]/15 hover:shadow-lg hover:shadow-[#F59E0B]/25 transition-all"
                 >
-                  <span className="flex items-center gap-2">
-                    Start practicing
-                    <ArrowRight className="w-5 h-5" />
-                  </span>
+                  Start practicing
                 </Button>
               </motion.div>
               <motion.div
-                whileHover={{ scale: 1.05, y: -2 }}
+                whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
               >
                 <Button
                   variant="ghost"
@@ -177,30 +155,25 @@ export default function LandingPage() {
                   onClick={() => {
                     document.getElementById('interactive-example')?.scrollIntoView({ behavior: 'smooth' })
                   }}
-                  className="border border-[#22283A] hover:border-[#F59E0B]/30"
+                  className="border border-[#1E293B] hover:border-[#334155] hover:bg-[#0F172A]/50 transition-all"
                 >
                   See how it works
                 </Button>
               </motion.div>
             </div>
-            <div className="flex items-center justify-center gap-2 text-sm" style={{ color: colors.text.tertiary }}>
-              <CheckCircle2 className="w-4 h-4" style={{ color: colors.success.primary }} />
-              <span>Free practice run</span>
-              <span className="mx-2">·</span>
-              <span>No signup required</span>
-              <span className="mx-2">·</span>
-              <span>Instant feedback</span>
-            </div>
+            <p className="text-sm md:text-base" style={{ color: colors.text.tertiary }}>
+              Free practice run · No signup required
+            </p>
           </motion.div>
         </div>
       </section>
 
       {/* Moving Testimonial Banner */}
       <section 
-        className="py-14 px-4 border-y overflow-hidden relative"
+        className="py-16 px-4 border-y overflow-hidden relative"
         style={{
-          borderColor: colors.border.secondary,
-          backgroundColor: colors.background.secondary,
+          borderColor: `${colors.border.primary}30`,
+          backgroundColor: colors.background.primary,
         }}
       >
         <div className="absolute inset-0 opacity-5" style={{ background: `linear-gradient(90deg, ${colors.accent.primary} 0%, transparent 50%, ${colors.accent.primary} 100%)` }} />
@@ -239,8 +212,8 @@ export default function LandingPage() {
                   <div 
                     className="p-6 rounded-xl border backdrop-blur-sm"
                     style={{
-                      backgroundColor: `${colors.background.primary}80`,
-                      borderColor: colors.border.primary,
+                      backgroundColor: `${colors.background.secondary}60`,
+                      borderColor: `${colors.border.primary}40`,
                     }}
                   >
                     <p 
@@ -266,7 +239,7 @@ export default function LandingPage() {
       {/* Interactive Example Section */}
       <section 
         id="interactive-example" 
-        className="py-32 md:py-40 px-4"
+        className="py-40 md:py-48 px-4"
         style={{ backgroundColor: colors.background.primary }}
       >
         <div className="max-w-5xl mx-auto">
@@ -275,22 +248,10 @@ export default function LandingPage() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="mb-20 text-center"
+            className="mb-24 text-center"
           >
-            <div className="inline-block mb-6">
-              <span 
-                className="text-xs font-semibold uppercase tracking-wider px-4 py-2 rounded-full border"
-                style={{
-                  color: colors.accent.primary,
-                  borderColor: `${colors.accent.primary}30`,
-                  backgroundColor: `${colors.accent.primary}10`,
-                }}
-              >
-                Interactive Demo
-              </span>
-            </div>
             <h2 
-              className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-6 leading-tight"
+              className="text-4xl md:text-5xl lg:text-6xl font-bold mb-8 leading-tight"
               style={{ color: colors.text.primary }}
             >
               See what feedback looks like
@@ -304,11 +265,10 @@ export default function LandingPage() {
           </motion.div>
 
           <div 
-            className="p-8 md:p-12 rounded-2xl border shadow-2xl"
+            className="p-8 md:p-12 rounded-2xl border"
             style={{
-              backgroundColor: colors.background.tertiary,
-              borderColor: colors.border.primary,
-              boxShadow: `0 20px 60px -15px rgba(0, 0, 0, 0.5)`,
+              backgroundColor: colors.background.secondary,
+              borderColor: `${colors.border.primary}40`,
             }}
           >
             {/* Default state: Show transcript only */}
@@ -337,8 +297,8 @@ export default function LandingPage() {
                     <div 
                       className="px-3 py-1.5 rounded-lg border"
                       style={{
-                        backgroundColor: `${colors.accent.primary}10`,
-                        borderColor: `${colors.accent.primary}30`,
+                        backgroundColor: `${colors.accent.primary}08`,
+                        borderColor: `${colors.accent.primary}25`,
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -351,10 +311,10 @@ export default function LandingPage() {
                     {exampleTranscript.map((line, idx) => (
                       <div
                         key={idx}
-                        className="p-5 rounded-xl border transition-all hover:border-[#F59E0B]/20"
+                        className="p-5 rounded-xl border transition-all hover:border-[#334155]"
                         style={{
                           backgroundColor: colors.background.primary,
-                          borderColor: colors.border.primary,
+                          borderColor: `${colors.border.primary}40`,
                           color: colors.text.primary,
                         }}
                       >
@@ -405,8 +365,8 @@ export default function LandingPage() {
                     <div 
                       className="px-3 py-1.5 rounded-lg border"
                       style={{
-                        backgroundColor: `${colors.accent.primary}10`,
-                        borderColor: `${colors.accent.primary}30`,
+                        backgroundColor: `${colors.accent.primary}08`,
+                        borderColor: `${colors.accent.primary}25`,
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -465,7 +425,7 @@ export default function LandingPage() {
                               : colors.background.primary,
                             borderColor: highlight
                               ? (highlight.type === 'strength' ? colors.success.border : highlight.type === 'pacing' ? colors.warning.border : colors.error.border)
-                              : colors.border.primary,
+                              : `${colors.border.primary}40`,
                             color: highlight
                               ? (highlight.type === 'strength' ? colors.success.primary : highlight.type === 'pacing' ? colors.warning.primary : colors.error.primary)
                               : colors.text.primary,
@@ -498,10 +458,10 @@ export default function LandingPage() {
                   className="mb-8"
                 >
                   <div 
-                    className="p-8 rounded-xl border shadow-lg"
+                    className="p-8 rounded-xl border"
                     style={{
                       backgroundColor: colors.background.secondary,
-                      borderColor: colors.border.primary,
+                      borderColor: `${colors.border.primary}40`,
                     }}
                   >
                     <div className="flex items-center gap-3 mb-6">
@@ -533,7 +493,7 @@ export default function LandingPage() {
                         className={`p-5 rounded-xl border transition-all cursor-pointer ${
                           focusedInsight === 'strength'
                             ? 'bg-[#22C55E]/10 border-[#22C55E]/40 ring-2 ring-[#22C55E]/20 shadow-lg'
-                            : 'bg-[#0B0F14] border-[#22283A] hover:border-[#22C55E]/20'
+                            : 'bg-[#0B0F14] border-[#1E293B] hover:border-[#22C55E]/20'
                         }`}
                       >
                         <div className="flex items-center gap-3 mb-3">
@@ -562,7 +522,7 @@ export default function LandingPage() {
                         className={`p-5 rounded-xl border transition-all cursor-pointer ${
                           focusedInsight === 'pacing'
                             ? 'bg-[#F59E0B]/10 border-[#F59E0B]/40 ring-2 ring-[#F59E0B]/20 shadow-lg'
-                            : 'bg-[#0B0F14] border-[#22283A] hover:border-[#F59E0B]/20'
+                            : 'bg-[#0B0F14] border-[#1E293B] hover:border-[#F59E0B]/20'
                         }`}
                       >
                         <div className="flex items-center gap-3 mb-3">
@@ -591,7 +551,7 @@ export default function LandingPage() {
                         className={`p-5 rounded-xl border transition-all cursor-pointer ${
                           focusedInsight === 'cut'
                             ? 'bg-[#EF4444]/10 border-[#EF4444]/40 ring-2 ring-[#EF4444]/20 shadow-lg'
-                            : 'bg-[#0B0F14] border-[#22283A] hover:border-[#EF4444]/20'
+                            : 'bg-[#0B0F14] border-[#1E293B] hover:border-[#EF4444]/20'
                         }`}
                       >
                         <div className="flex items-center gap-3 mb-3">
@@ -629,8 +589,8 @@ export default function LandingPage() {
       <footer 
         className="border-t py-16 px-4"
         style={{
-          backgroundColor: colors.background.secondary,
-          borderColor: colors.border.primary,
+          backgroundColor: colors.background.primary,
+          borderColor: `${colors.border.primary}30`,
           color: colors.text.secondary,
         }}
       >
@@ -683,7 +643,7 @@ export default function LandingPage() {
           <div 
             className="pt-8 border-t text-center text-sm"
             style={{
-              borderColor: colors.border.primary,
+              borderColor: `${colors.border.primary}30`,
               color: colors.text.tertiary,
             }}
           >

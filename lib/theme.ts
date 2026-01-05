@@ -52,9 +52,7 @@ export const colors = {
 } as const
 
 export const gradients = {
-  // Subtle gradient: dark charcoal → deep navy
-  hero: 'linear-gradient(135deg, #0B0F14 0%, #0F172A 50%, #0B0F14 100%)',
-  // Soft vignette for depth
-  vignette: 'radial-gradient(ellipse 80% 50% at center, transparent 0%, rgba(11, 15, 20, 0.6) 100%)',
+  hero: 'linear-gradient(135deg, #0B0F14 0%, #0F172A 30%, #1E293B 60%, #0B0F14 100%)',
+  vignette: 'radial-gradient(ellipse at center, transparent 0%, rgba(11, 15, 20, 0.6) 100%)',
 } as const
 

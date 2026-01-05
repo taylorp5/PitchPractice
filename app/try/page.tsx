@@ -1626,7 +1626,7 @@ export default function TryPage() {
                       <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Annotated Transcript</h3>
                       <div className="space-y-3 max-h-96 overflow-y-auto">
                         {chunks.map((chunk: any, idx: number) => {
-                          const [isExpanded, setIsExpanded] = useState(false)
+                          const isExpanded = expandedChunks.has(idx)
                           
                           const getStatusInfo = (status: string) => {
                             if (status === 'strong') {

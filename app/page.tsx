@@ -435,9 +435,16 @@ export default function LandingPage() {
                       <div className="space-y-6">
                         {/* What's working */}
                         <div
-                          onMouseEnter={() => setFocusedInsight('strength')}
-                          onMouseLeave={() => setFocusedInsight(null)}
-                          className={`p-4 rounded-lg border transition-all ${
+                          onMouseEnter={() => {
+                            setFocusedInsight('strength')
+                            // Highlight the corresponding transcript line (line 1)
+                            setHoveredHighlight(1)
+                          }}
+                          onMouseLeave={() => {
+                            setFocusedInsight(null)
+                            setHoveredHighlight(null)
+                          }}
+                          className={`p-4 rounded-lg border transition-all cursor-pointer ${
                             focusedInsight === 'strength'
                               ? 'bg-[#84CC16]/10 border-[#84CC16]/30 ring-2 ring-[#84CC16]/20'
                               : 'bg-[#0B0E14] border-[#181F2F]'
@@ -456,9 +463,16 @@ export default function LandingPage() {
 
                         {/* What to improve */}
                         <div
-                          onMouseEnter={() => setFocusedInsight('pacing')}
-                          onMouseLeave={() => setFocusedInsight(null)}
-                          className={`p-4 rounded-lg border transition-all ${
+                          onMouseEnter={() => {
+                            setFocusedInsight('pacing')
+                            // Highlight the corresponding transcript line (line 5)
+                            setHoveredHighlight(5)
+                          }}
+                          onMouseLeave={() => {
+                            setFocusedInsight(null)
+                            setHoveredHighlight(null)
+                          }}
+                          className={`p-4 rounded-lg border transition-all cursor-pointer ${
                             focusedInsight === 'pacing'
                               ? 'bg-[#F3B34C]/10 border-[#F3B34C]/30 ring-2 ring-[#F3B34C]/20'
                               : 'bg-[#0B0E14] border-[#181F2F]'
@@ -477,9 +491,16 @@ export default function LandingPage() {
 
                         {/* Suggested focus */}
                         <div
-                          onMouseEnter={() => setFocusedInsight('cut')}
-                          onMouseLeave={() => setFocusedInsight(null)}
-                          className={`p-4 rounded-lg border transition-all ${
+                          onMouseEnter={() => {
+                            setFocusedInsight('cut')
+                            // Highlight the corresponding transcript line (line 3)
+                            setHoveredHighlight(3)
+                          }}
+                          onMouseLeave={() => {
+                            setFocusedInsight(null)
+                            setHoveredHighlight(null)
+                          }}
+                          className={`p-4 rounded-lg border transition-all cursor-pointer ${
                             focusedInsight === 'cut'
                               ? 'bg-[#FB7185]/10 border-[#FB7185]/30 ring-2 ring-[#FB7185]/20'
                               : 'bg-[#0B0E14] border-[#181F2F]'

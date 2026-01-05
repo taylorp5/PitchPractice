@@ -314,6 +314,11 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
+          forceUsed,
+          blocked: false,
+          transcriptLen: run.transcript?.length || 0,
+          statusBefore: run.status,
+          statusAfter: 'error',
           error: 'Transcription failed',
           message: errorMessage,
           statusCode,

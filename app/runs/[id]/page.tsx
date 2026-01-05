@@ -60,6 +60,8 @@ export default function RunPage() {
   const [debugInfo, setDebugInfo] = useState<any>(null)
   const [transcribeDebug, setTranscribeDebug] = useState<string>('')
   const [lastTranscribeResponse, setLastTranscribeResponse] = useState<any>(null)
+  const [lastTranscript, setLastTranscript] = useState<string | null>(null)
+  const [lastGetResponse, setLastGetResponse] = useState<any>(null)
 
   const fetchRun = async () => {
     if (!routeRunId) return
@@ -74,6 +76,9 @@ export default function RunPage() {
         throw new Error('Failed to fetch run')
       }
       const responseData = await res.json()
+      
+      // Store raw GET response for debug panel
+      setLastGetResponse(responseData)
       
       // Handle new response format: { ok: true, run }
       let runData: Run | null = null
@@ -207,7 +212,17 @@ export default function RunPage() {
         return
       }
 
-      // Refresh run data to get updated transcript and timing
+      // Update local state immediately with response data
+      if (responseData.ok && responseData.run) {
+        setRun(prev => ({ ...prev, ...responseData.run }))
+      }
+      
+      // Store transcript from response
+      if (responseData.transcript) {
+        setLastTranscript(responseData.transcript)
+      }
+
+      // Also refresh run data to ensure consistency
       await fetchRun()
     } catch (err) {
       console.error('[Fetch Error] Transcription error:', {
@@ -595,11 +610,14 @@ export default function RunPage() {
           {/* Transcript Section */}
           <div className="mb-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-3">Transcript</h2>
-            {run?.transcript ? (
-              <pre className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-gray-700 whitespace-pre-wrap font-sans text-sm">{run.transcript}</pre>
-            ) : (
-              <p className="p-4 bg-yellow-50 rounded-lg border border-yellow-200 text-yellow-800 text-sm">No transcript yet</p>
-            )}
+            {(() => {
+              const t = run?.transcript ?? lastTranscript ?? ""
+              return t.trim().length > 0 ? (
+                <pre className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-gray-700 whitespace-pre-wrap font-sans text-sm">{t}</pre>
+              ) : (
+                <p className="p-4 bg-yellow-50 rounded-lg border border-yellow-200 text-yellow-800 text-sm">No transcript yet</p>
+              )
+            })()}
           </div>
 
           {/* Analysis Section */}

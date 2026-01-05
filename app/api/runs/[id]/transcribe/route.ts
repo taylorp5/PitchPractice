@@ -336,6 +336,8 @@ export async function POST(
     const statusAfter = 'transcribed'
     const duration = Date.now() - startTime
     
+    console.log("UPDATED ROW TRANSCRIPT PREVIEW", updatedRun.transcript?.slice(0, 80))
+    
     console.log('[Transcribe] Success:', {
       runId: id,
       transcriptLength: transcript.length,
@@ -350,7 +352,9 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
-      transcriptLen: transcript.length,
+      run: updatedRun,
+      transcript: updatedRun.transcript,
+      transcriptLen: updatedRun.transcript?.length || 0,
       bytesDownloaded: bytes,
       mime: mimeType,
       message: 'Transcription completed successfully',

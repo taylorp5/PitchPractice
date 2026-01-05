@@ -100,10 +100,12 @@ export default function HomePage() {
       const sessionId = getSessionId()
       const formData = new FormData()
       
-      // Convert Blob to File if needed
+      // Convert Blob to File if needed - ensure .webm extension and correct type
       const file = audioFile instanceof File 
         ? audioFile 
-        : new File([audioFile], 'recording.webm', { type: 'audio/webm' })
+        : new File([audioFile], 'recording.webm', { 
+            type: audioFile.type || 'audio/webm;codecs=opus' 
+          })
       
       formData.append('audio', file)
       formData.append('rubric_id', selectedRubric)

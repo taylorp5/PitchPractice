@@ -261,7 +261,7 @@ export async function POST(
     }
 
     // Update the run with analysis
-    const { error: updateError } = await supabaseAdmin
+    const { data: updatedRun, error: updateError } = await supabaseAdmin
       .from('pitch_runs')
       .update({
         analysis_json: analysisJson,
@@ -269,16 +269,20 @@ export async function POST(
         error_message: null,
       })
       .eq('id', id)
+      .select('*')
+      .single()
 
     if (updateError) {
       console.error('Database update error:', updateError)
       return NextResponse.json(
-        { error: 'Failed to save analysis' },
+        { error: 'Failed to save analysis', details: updateError.message },
         { status: 500 }
       )
     }
 
     return NextResponse.json({
+      ok: true,
+      run: updatedRun,
       success: true,
       analysis: analysisJson,
     })

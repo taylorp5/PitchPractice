@@ -33,11 +33,12 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(word => word.length > 0).length
 }
 
-function calculateWPM(wordCount: number, durationSeconds: number | null): number | null {
-  if (!durationSeconds || durationSeconds === 0) {
+function calculateWPM(wordCount: number, durationMs: number | null): number | null {
+  if (!durationMs || durationMs === 0) {
     return null
   }
-  return Math.round((wordCount / durationSeconds) * 60)
+  // WPM = word_count / (duration_ms / 60000)
+  return Math.round(wordCount / (durationMs / 60000))
 }
 
 export async function POST(
@@ -292,10 +293,10 @@ export async function POST(
     }
 
     // Calculate word count and WPM
-    // Use duration_ms as source of truth if available, otherwise use audioSeconds
-    const durationForWPM = run.duration_ms ? run.duration_ms / 1000 : audioSeconds
+    // Use duration_ms as source of truth if available, otherwise fallback to audioSeconds
+    const durationMsForWPM = run.duration_ms || (audioSeconds ? Math.round(audioSeconds * 1000) : null)
     const wordCount = countWords(transcript)
-    const wpm = calculateWPM(wordCount, durationForWPM)
+    const wpm = calculateWPM(wordCount, durationMsForWPM)
 
     console.log('[Transcribe] Calculated metrics:', {
       runId: id,

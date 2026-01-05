@@ -347,13 +347,14 @@ export default function TryPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Calculate WPM from transcript and duration
-  const calculateWPM = (transcript: string | null, durationSeconds: number | null): number | null => {
-    if (!transcript || !durationSeconds || durationSeconds < 5) {
-      return null // Too short to estimate (minimum 5 seconds)
+  // Calculate WPM from transcript and duration_ms
+  const calculateWPM = (transcript: string | null, durationMs: number | null): number | null => {
+    if (!transcript || !durationMs || durationMs < 5000) {
+      return null // Too short to estimate (minimum 5 seconds = 5000ms)
     }
     const words = transcript.trim().split(/\s+/).filter(w => w.length > 0).length
-    const wpm = Math.round(words / (durationSeconds / 60))
+    // WPM = word_count / (duration_ms / 60000)
+    const wpm = Math.round(words / (durationMs / 60000))
     return wpm
   }
 
@@ -454,32 +455,6 @@ export default function TryPage() {
       mediaRecorder.onstop = async () => {
         stopMicLevelMeter()
         
-        // Calculate accurate duration_ms
-        const stopTime = Date.now()
-        let finalPausedTotal = pausedTotalMs
-        if (pauseStartTime) {
-          // If still paused, add the current pause duration
-          finalPausedTotal += stopTime - pauseStartTime
-        }
-        const calculatedDurationMs = recordingStartedAt 
-          ? stopTime - recordingStartedAt - finalPausedTotal
-          : null
-        
-        if (DEBUG) {
-          console.log('[Try] Recording stopped - duration calculation:', {
-            recordingStartedAt,
-            stopTime,
-            pausedTotalMs: finalPausedTotal,
-            calculatedDurationMs,
-            calculatedDurationSeconds: calculatedDurationMs ? (calculatedDurationMs / 1000).toFixed(2) : null,
-          })
-        }
-        
-        // Store duration_ms in state immediately
-        if (calculatedDurationMs !== null && calculatedDurationMs > 0) {
-          setDurationMs(calculatedDurationMs)
-        }
-        
         const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
         const actualMimeType = mediaRecorder.mimeType || mimeType
         
@@ -489,7 +464,6 @@ export default function TryPage() {
             totalSizeKB: (totalSize / 1024).toFixed(2),
             chunkSizes: chunkSizesRef.current,
             mimeType: actualMimeType,
-            durationMs: calculatedDurationMs,
           })
         }
 
@@ -512,10 +486,63 @@ export default function TryPage() {
           type: actualMimeType
         })
         
+        // Compute exact duration from audio blob using Web Audio API
+        let calculatedDurationMs: number | null = null
+        let isEstimated = false
+        
+        try {
+          const arrayBuffer = await audioBlob.arrayBuffer()
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0))
+          calculatedDurationMs = Math.round(audioBuffer.duration * 1000)
+          
+          if (DEBUG) {
+            console.log('[Try] Duration computed from audio blob:', {
+              durationSeconds: audioBuffer.duration,
+              durationMs: calculatedDurationMs,
+              sampleRate: audioBuffer.sampleRate,
+              numberOfChannels: audioBuffer.numberOfChannels,
+              length: audioBuffer.length,
+            })
+          }
+          
+          audioContext.close()
+        } catch (decodeError) {
+          // Fallback to timer-based calculation if decode fails
+          console.warn('[Try] Failed to decode audio for duration, using timer fallback:', decodeError)
+          isEstimated = true
+          
+          const stopTime = Date.now()
+          let finalPausedTotal = pausedTotalMs
+          if (pauseStartTime) {
+            // If still paused, add the current pause duration
+            finalPausedTotal += stopTime - pauseStartTime
+          }
+          calculatedDurationMs = recordingStartedAt 
+            ? stopTime - recordingStartedAt - finalPausedTotal
+            : null
+          
+          if (DEBUG) {
+            console.log('[Try] Using timer-based duration (estimated):', {
+              recordingStartedAt,
+              stopTime,
+              pausedTotalMs: finalPausedTotal,
+              calculatedDurationMs,
+              isEstimated: true,
+            })
+          }
+        }
+        
+        // Store duration_ms in state immediately
+        if (calculatedDurationMs !== null && calculatedDurationMs > 0) {
+          setDurationMs(calculatedDurationMs)
+        }
+        
         // Store mimeType and duration_ms for upload
         ;(audioBlob as any).__mimeType = actualMimeType
         if (calculatedDurationMs !== null) {
           ;(audioBlob as any).__durationMs = calculatedDurationMs
+          ;(audioBlob as any).__isEstimated = isEstimated
         }
         
         // Upload audio
@@ -1497,12 +1524,10 @@ export default function TryPage() {
                         <p className="text-lg font-bold text-[#E6E8EB]">
                           {(() => {
                             // Use duration_ms as source of truth for WPM calculation
-                            const durationSec = durationMs 
-                              ? durationMs / 1000 
-                              : (run.duration_ms 
-                                ? run.duration_ms / 1000 
-                                : (run.audio_seconds || null))
-                            const wpm = calculateWPM(run.transcript, durationSec)
+                            const durationMsForWPM = durationMs 
+                              || (run.duration_ms !== null ? run.duration_ms : null)
+                              || (run.audio_seconds ? Math.round(run.audio_seconds * 1000) : null)
+                            const wpm = calculateWPM(run.transcript, durationMsForWPM)
                             return wpm !== null ? wpm : '—'
                           })()}
                         </p>
@@ -1510,19 +1535,17 @@ export default function TryPage() {
                     </div>
                     {(() => {
                       // Use duration_ms as source of truth for WPM interpretation
-                      const durationSec = durationMs 
-                        ? durationMs / 1000 
-                        : (run.duration_ms 
-                          ? run.duration_ms / 1000 
-                          : (run.audio_seconds || null))
-                      const wpm = calculateWPM(run.transcript, durationSec)
+                      const durationMsForWPM = durationMs 
+                        || (run.duration_ms !== null ? run.duration_ms : null)
+                        || (run.audio_seconds ? Math.round(run.audio_seconds * 1000) : null)
+                      const wpm = calculateWPM(run.transcript, durationMsForWPM)
                       if (wpm !== null) {
                         return (
                           <p className="text-xs text-[#9AA4B2] text-center mt-3">
                             {getWPMInterpretation(wpm)}
                           </p>
                         )
-                      } else if (durationSec && durationSec < 5) {
+                      } else if (durationMsForWPM && durationMsForWPM < 5000) {
                         return (
                           <p className="text-xs text-[#9AA4B2] text-center mt-3">
                             Record 20–60s for accurate pacing.
@@ -1809,8 +1832,9 @@ export default function TryPage() {
                     <div>{run?.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : '—'}</div>
                     <div>WPM (computed):</div>
                     <div>{(() => {
-                      const durationSec = run?.duration_ms ? run.duration_ms / 1000 : (run?.audio_seconds || null)
-                      const wpm = calculateWPM(run?.transcript || null, durationSec)
+                      if (!run) return '—'
+                      const durationMsForWPM = run.duration_ms !== null ? run.duration_ms : (run.audio_seconds ? Math.round(run.audio_seconds * 1000) : null)
+                      const wpm = calculateWPM(run.transcript || null, durationMsForWPM)
                       return wpm !== null ? `${wpm} (${getWPMInterpretation(wpm)})` : '—'
                     })()}</div>
                     <div>Feedback Status:</div>

@@ -44,14 +44,30 @@ export async function POST(
   const startTime = Date.now()
   const { id } = params
   
-  // Check for force parameter
-  const { searchParams } = new URL(request.url)
-  const force = searchParams.get('force') === '1'
+  // Check for force parameter - use request.nextUrl if available, otherwise construct URL
+  let forceUsed = false
+  try {
+    if (request.nextUrl) {
+      forceUsed = request.nextUrl.searchParams.get('force') === '1'
+    } else {
+      const url = new URL(request.url)
+      forceUsed = url.searchParams.get('force') === '1'
+    }
+  } catch (err) {
+    console.warn('[Transcribe] Could not parse force parameter:', err)
+  }
+
+  console.log('TRANSCRIBE', { 
+    id, 
+    forceUsed, 
+    url: request.url,
+    nextUrl: request.nextUrl?.toString(),
+  })
 
   try {
     console.log('[Transcribe] Starting transcription:', {
       runId: id,
-      force,
+      forceUsed,
       timestamp: new Date().toISOString(),
     })
 
@@ -73,29 +89,56 @@ export async function POST(
       )
     }
 
+    const transcriptLen = run.transcript?.length || 0
+    const statusBefore = run.status
+    
+    console.log('TRANSCRIBE', { 
+      id, 
+      forceUsed, 
+      transcriptLen, 
+      status: statusBefore,
+      hasTranscript: !!run.transcript,
+      transcriptTrimmed: run.transcript?.trim().length || 0,
+    })
+
     console.log('[Transcribe] Run details:', {
       runId: id,
-      status: run.status,
-      transcriptLength: run.transcript?.length || 0,
+      status: statusBefore,
+      transcriptLength: transcriptLen,
       audioPath: run.audio_path,
     })
 
-    // Check guard: only block if transcript exists AND is non-empty (unless force=1)
+    // Guard logic: if (!forceUsed && transcript && transcript.trim().length > 0) => block
+    // If forceUsed is true, NEVER block. Even if transcript exists.
     const hasValidTranscript = run.transcript && run.transcript.trim().length > 0
+    const blocked = !forceUsed && hasValidTranscript
     
-    if (hasValidTranscript && !force) {
+    if (blocked) {
       console.log('[Transcribe] Already transcribed, blocking:', {
         runId: id,
         transcriptLength: run.transcript.length,
+        forceUsed,
       })
       return NextResponse.json(
         { 
           ok: false,
+          forceUsed: false,
+          blocked: true,
+          transcriptLen,
+          statusBefore,
+          statusAfter: statusBefore,
           error: 'Run is already transcribed. Use ?force=1 to re-transcribe.',
         },
         { status: 400 }
       )
     }
+
+    console.log('[Transcribe] Proceeding with transcription:', {
+      runId: id,
+      forceUsed,
+      hasValidTranscript,
+      willOverwrite: hasValidTranscript && forceUsed,
+    })
 
     // If status is not 'uploaded', reset it (allows retry)
     if (run.status !== 'uploaded') {
@@ -322,18 +365,34 @@ export async function POST(
       )
     }
 
+    const statusAfter = 'transcribed'
     const duration = Date.now() - startTime
+    
+    console.log('TRANSCRIBE', { 
+      id, 
+      forceUsed, 
+      blocked: false,
+      transcriptLen: transcript.length, 
+      statusBefore,
+      statusAfter,
+    })
+    
     console.log('[Transcribe] Success:', {
       runId: id,
       transcriptLength: transcript.length,
       wordCount,
       wpm,
       durationMs: duration,
+      forceUsed,
     })
 
     return NextResponse.json({
       ok: true,
-      transcript_length: transcript.length,
+      forceUsed,
+      blocked: false,
+      transcriptLen: transcript.length,
+      statusBefore,
+      statusAfter,
       bytes,
       mime: mimeType,
       word_count: wordCount,

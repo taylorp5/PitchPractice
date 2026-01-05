@@ -75,17 +75,20 @@ export default function RunPage() {
       const responseData = await res.json()
       
       // Handle new response format: { ok: true, run }
+      let runData: Run | null = null
       if (responseData.ok && responseData.run) {
-        setRun(responseData.run)
+        runData = responseData.run
+        setRun(runData)
       } else if (!responseData.ok) {
         throw new Error(responseData.error || 'Failed to fetch run')
       } else {
         // Fallback for old format (direct run object)
-        setRun(responseData)
+        runData = responseData
+        setRun(runData)
       }
       
       // Fetch fresh audio URL
-      if (data.audio_path) {
+      if (runData && runData.audio_path) {
         const audioUrl = `/api/runs/${runId}/audio-url`
         try {
           const audioRes = await fetch(audioUrl)

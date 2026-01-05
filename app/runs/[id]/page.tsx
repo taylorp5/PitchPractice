@@ -251,9 +251,15 @@ export default function RunPage() {
     setError(null)
 
     try {
-      const response = await fetch(`/api/runs/${runId}/analyze`, {
+      const url = `/api/runs/${runId}/analyze`
+      const response = await fetch(url, {
         method: 'POST',
       })
+
+      // Log error if non-2xx
+      if (!response.ok) {
+        await logFetchError(url, response)
+      }
 
       if (!response.ok) {
         const errorData = await response.json()
@@ -263,7 +269,10 @@ export default function RunPage() {
       // Refresh run data to get updated analysis
       await fetchRun()
     } catch (err) {
-      console.error('Analysis error:', err)
+      console.error('[Fetch Error] Analysis error:', {
+        url: `/api/runs/${runId}/analyze`,
+        error: err,
+      })
       setError(err instanceof Error ? err.message : 'Failed to analyze pitch')
       // Refresh to get updated error status
       await fetchRun()

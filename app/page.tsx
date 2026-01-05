@@ -86,7 +86,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: colors.background.primary }}>
       {/* Hero Section */}
-      <section className="relative overflow-hidden py-32 md:py-40 px-4">
+      <section className="relative overflow-hidden py-28 md:py-40 px-4">
         {/* Background gradient and vignette */}
         <div 
           className="absolute inset-0"
@@ -107,39 +107,69 @@ export default function LandingPage() {
             backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
           }}
         />
+        {/* Accent glow effect */}
+        <div 
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-20 blur-3xl"
+          style={{
+            background: `radial-gradient(circle, ${colors.accent.primary} 0%, transparent 70%)`,
+          }}
+        />
         
-        <div className="relative max-w-5xl mx-auto text-center">
+        <div className="relative max-w-6xl mx-auto text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <h1 className="text-7xl md:text-8xl lg:text-9xl font-bold mb-8 md:mb-10 leading-[1.05] tracking-tight" style={{ color: colors.text.primary }}>
-              <span>Practice once.</span>
-              <br />
-              <span>Perform better everywhere.</span>
+            <div className="mb-6 inline-block">
+              <span 
+                className="text-xs md:text-sm font-semibold uppercase tracking-wider px-4 py-2 rounded-full border"
+                style={{
+                  color: colors.accent.primary,
+                  borderColor: `${colors.accent.primary}30`,
+                  backgroundColor: `${colors.accent.primary}10`,
+                }}
+              >
+                AI-Powered Pitch Practice
+              </span>
+            </div>
+            <h1 className="text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-extrabold mb-8 md:mb-10 leading-[1.05] tracking-tight">
+              <span 
+                className="block mb-2 bg-gradient-to-r from-[#E6E8EB] via-[#F59E0B] to-[#E6E8EB] bg-clip-text text-transparent"
+                style={{
+                  backgroundImage: `linear-gradient(135deg, ${colors.text.primary} 0%, ${colors.accent.primary} 50%, ${colors.text.primary} 100%)`,
+                }}
+              >
+                Practice once.
+              </span>
+              <span style={{ color: colors.text.primary }}>Perform better everywhere.</span>
             </h1>
-            <p className="text-xl md:text-2xl lg:text-3xl mb-12 md:mb-16 max-w-2xl mx-auto leading-relaxed" style={{ color: colors.text.secondary }}>
-              Get instant feedback on clarity, pacing, and structure.
+            <p className="text-xl md:text-2xl lg:text-3xl mb-12 md:mb-16 max-w-3xl mx-auto leading-relaxed font-light" style={{ color: colors.text.secondary }}>
+              Get instant, actionable feedback on clarity, pacing, and structure—before your next big moment.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-6">
+            <div className="flex flex-col sm:flex-row gap-5 justify-center items-center mb-6">
               <motion.div
-                whileHover={{ scale: 1.02 }}
+                whileHover={{ scale: 1.05, y: -2 }}
                 whileTap={{ scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 400, damping: 17 }}
               >
                 <Button
                   variant="primary"
                   size="lg"
                   asChild
                   href="/try"
-                  aria-label="Try PitchPractice free"
+                  className="shadow-lg shadow-[#F59E0B]/20 hover:shadow-xl hover:shadow-[#F59E0B]/30 transition-shadow"
                 >
-                  Try it free
+                  <span className="flex items-center gap-2">
+                    Start practicing
+                    <ArrowRight className="w-5 h-5" />
+                  </span>
                 </Button>
               </motion.div>
               <motion.div
-                whileHover={{ scale: 1.02 }}
+                whileHover={{ scale: 1.05, y: -2 }}
                 whileTap={{ scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 400, damping: 17 }}
               >
                 <Button
                   variant="ghost"
@@ -147,35 +177,45 @@ export default function LandingPage() {
                   onClick={() => {
                     document.getElementById('interactive-example')?.scrollIntoView({ behavior: 'smooth' })
                   }}
-                  aria-label="See an example of PitchPractice feedback"
+                  className="border border-[#22283A] hover:border-[#F59E0B]/30"
                 >
-                  See an example ↓
+                  See how it works
                 </Button>
               </motion.div>
             </div>
-            <p className="text-sm md:text-base" style={{ color: colors.text.tertiary }}>Free practice run · No signup required</p>
+            <div className="flex items-center justify-center gap-2 text-sm" style={{ color: colors.text.tertiary }}>
+              <CheckCircle2 className="w-4 h-4" style={{ color: colors.success.primary }} />
+              <span>Free practice run</span>
+              <span className="mx-2">·</span>
+              <span>No signup required</span>
+              <span className="mx-2">·</span>
+              <span>Instant feedback</span>
+            </div>
           </motion.div>
         </div>
       </section>
 
       {/* Moving Testimonial Banner */}
       <section 
-        className="py-10 px-4 border-y overflow-hidden"
+        className="py-14 px-4 border-y overflow-hidden relative"
         style={{
           borderColor: colors.border.secondary,
-          backgroundColor: colors.background.primary,
+          backgroundColor: colors.background.secondary,
         }}
       >
-        <div className="relative">
-          <p 
-            className="text-xs text-center mb-6 tracking-wide uppercase"
-            style={{ color: colors.text.tertiary }}
-          >
-            Trusted by students, professionals, and founders preparing for real moments.
-          </p>
+        <div className="absolute inset-0 opacity-5" style={{ background: `linear-gradient(90deg, ${colors.accent.primary} 0%, transparent 50%, ${colors.accent.primary} 100%)` }} />
+        <div className="relative max-w-7xl mx-auto">
+          <div className="text-center mb-10">
+            <p 
+              className="text-sm md:text-base font-medium tracking-wide"
+              style={{ color: colors.text.secondary }}
+            >
+              Trusted by students, professionals, and founders preparing for real moments
+            </p>
+          </div>
           <div className="relative overflow-hidden">
             <motion.div
-              className="flex gap-16"
+              className="flex gap-20"
               animate={{
                 x: [0, -50 * testimonials.length + '%'],
               }}
@@ -194,20 +234,28 @@ export default function LandingPage() {
               {[...testimonials, ...testimonials, ...testimonials].map((testimonial, idx) => (
                 <div
                   key={idx}
-                  className="flex-shrink-0 text-center opacity-70 hover:opacity-100 transition-opacity min-w-[300px]"
+                  className="flex-shrink-0 text-center opacity-75 hover:opacity-100 transition-all duration-300 min-w-[320px] px-4"
                 >
-                  <p 
-                    className="text-sm italic"
-                    style={{ color: colors.text.secondary }}
+                  <div 
+                    className="p-6 rounded-xl border backdrop-blur-sm"
+                    style={{
+                      backgroundColor: `${colors.background.primary}80`,
+                      borderColor: colors.border.primary,
+                    }}
                   >
-                    "{testimonial.quote}"
-                  </p>
-                  <p 
-                    className="text-xs mt-2"
-                    style={{ color: colors.text.tertiary }}
-                  >
-                    — {testimonial.author}
-                  </p>
+                    <p 
+                      className="text-base italic mb-3 leading-relaxed"
+                      style={{ color: colors.text.primary }}
+                    >
+                      "{testimonial.quote}"
+                    </p>
+                    <p 
+                      className="text-xs font-medium"
+                      style={{ color: colors.text.tertiary }}
+                    >
+                      — {testimonial.author}
+                    </p>
+                  </div>
                 </div>
               ))}
             </motion.div>
@@ -218,36 +266,49 @@ export default function LandingPage() {
       {/* Interactive Example Section */}
       <section 
         id="interactive-example" 
-        className="py-32 px-4"
+        className="py-32 md:py-40 px-4"
         style={{ backgroundColor: colors.background.primary }}
       >
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-5xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="mb-16 text-center"
+            className="mb-20 text-center"
           >
+            <div className="inline-block mb-6">
+              <span 
+                className="text-xs font-semibold uppercase tracking-wider px-4 py-2 rounded-full border"
+                style={{
+                  color: colors.accent.primary,
+                  borderColor: `${colors.accent.primary}30`,
+                  backgroundColor: `${colors.accent.primary}10`,
+                }}
+              >
+                Interactive Demo
+              </span>
+            </div>
             <h2 
-              className="text-4xl font-bold mb-4"
+              className="text-4xl md:text-5xl lg:text-6xl font-extrabold mb-6 leading-tight"
               style={{ color: colors.text.primary }}
             >
               See what feedback looks like
             </h2>
             <p 
-              className="text-xl"
+              className="text-xl md:text-2xl max-w-2xl mx-auto leading-relaxed"
               style={{ color: colors.text.secondary }}
             >
-              Watch how a short practice run turns into clear, actionable feedback.
+              Watch how a short practice run transforms into clear, actionable insights you can use immediately.
             </p>
           </motion.div>
 
           <div 
-            className="p-8 rounded-lg border"
+            className="p-8 md:p-12 rounded-2xl border shadow-2xl"
             style={{
               backgroundColor: colors.background.tertiary,
               borderColor: colors.border.primary,
+              boxShadow: `0 20px 60px -15px rgba(0, 0, 0, 0.5)`,
             }}
           >
             {/* Default state: Show transcript only */}
@@ -257,25 +318,47 @@ export default function LandingPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4 }}
               >
-                <div className="mb-6">
-                  <p 
-                    className="text-xs uppercase tracking-wide mb-4"
-                    style={{ color: colors.text.tertiary }}
-                  >
-                    Example: Elevator pitch (45 seconds)
-                  </p>
-                  <div className="space-y-3 mb-6">
+                <div className="mb-8">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <p 
+                        className="text-sm font-semibold mb-1"
+                        style={{ color: colors.text.primary }}
+                      >
+                        Example: Elevator pitch
+                      </p>
+                      <p 
+                        className="text-xs"
+                        style={{ color: colors.text.tertiary }}
+                      >
+                        45 seconds · 6 sentences
+                      </p>
+                    </div>
+                    <div 
+                      className="px-3 py-1.5 rounded-lg border"
+                      style={{
+                        backgroundColor: `${colors.accent.primary}10`,
+                        borderColor: `${colors.accent.primary}30`,
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Mic className="w-4 h-4" style={{ color: colors.accent.primary }} />
+                        <span className="text-xs font-medium" style={{ color: colors.accent.primary }}>Recorded</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-3 mb-8">
                     {exampleTranscript.map((line, idx) => (
                       <div
                         key={idx}
-                        className="p-4 rounded-lg border"
+                        className="p-5 rounded-xl border transition-all hover:border-[#F59E0B]/20"
                         style={{
                           backgroundColor: colors.background.primary,
                           borderColor: colors.border.primary,
                           color: colors.text.primary,
                         }}
                       >
-                        {line.text}
+                        <span className="text-sm leading-relaxed">{line.text}</span>
                       </div>
                     ))}
                   </div>
@@ -285,8 +368,12 @@ export default function LandingPage() {
                     variant="primary"
                     size="lg"
                     onClick={handleGetFeedback}
+                    className="shadow-lg shadow-[#F59E0B]/20 hover:shadow-xl hover:shadow-[#F59E0B]/30"
                   >
-                    Get feedback on example
+                    <span className="flex items-center gap-2">
+                      Get feedback on example
+                      <ArrowRight className="w-5 h-5" />
+                    </span>
                   </Button>
                 </div>
               </motion.div>
@@ -299,21 +386,47 @@ export default function LandingPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4 }}
               >
-                <div className="mb-6">
-                  <p 
-                    className="text-xs uppercase tracking-wide mb-4"
-                    style={{ color: colors.text.tertiary }}
-                  >
-                    Example: Elevator pitch (45 seconds)
-                  </p>
-                  <div className="space-y-3 mb-6">
+                <div className="mb-8">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <p 
+                        className="text-sm font-semibold mb-1"
+                        style={{ color: colors.text.primary }}
+                      >
+                        Example: Elevator pitch
+                      </p>
+                      <p 
+                        className="text-xs"
+                        style={{ color: colors.text.tertiary }}
+                      >
+                        45 seconds · 6 sentences
+                      </p>
+                    </div>
+                    <div 
+                      className="px-3 py-1.5 rounded-lg border"
+                      style={{
+                        backgroundColor: `${colors.accent.primary}10`,
+                        borderColor: `${colors.accent.primary}30`,
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Mic className="w-4 h-4" style={{ color: colors.accent.primary }} />
+                        <span className="text-xs font-medium" style={{ color: colors.accent.primary }}>Analyzed</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-3 mb-8">
                     {exampleTranscript.map((line, idx) => {
                       const highlight = visibleHighlights.find(h => h.lineIdx === idx)
                       const isHovered = hoveredHighlight === idx
                       const insightKey = line.insightKey
                       const isInsightFocused = focusedInsight === insightKey && insightKey === line.insightKey
                       
-                      // Colors are handled via inline styles using theme tokens below
+                      const highlightClasses = {
+                        strength: 'bg-[#22C55E]/20 border-[#22C55E]/30 text-[#22C55E]',
+                        pacing: 'bg-[#F97316]/20 border-[#F97316]/30 text-[#F97316]',
+                        cut: 'bg-[#EF4444]/20 border-[#EF4444]/30 text-[#EF4444]',
+                      }
 
                       const highlightIcons = {
                         strength: CheckCircle2,
@@ -382,23 +495,31 @@ export default function LandingPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.2 }}
-                  className="mb-6"
+                  className="mb-8"
                 >
                   <div 
-                    className="p-6 rounded-lg border"
+                    className="p-8 rounded-xl border shadow-lg"
                     style={{
                       backgroundColor: colors.background.secondary,
                       borderColor: colors.border.primary,
                     }}
                   >
-                    <h4 
-                      className="text-lg font-bold mb-4"
-                      style={{ color: colors.text.primary }}
-                    >
-                      Analysis Summary
-                    </h4>
+                    <div className="flex items-center gap-3 mb-6">
+                      <div 
+                        className="w-10 h-10 rounded-lg flex items-center justify-center"
+                        style={{ backgroundColor: `${colors.accent.primary}20` }}
+                      >
+                        <CheckCircle2 className="w-5 h-5" style={{ color: colors.accent.primary }} />
+                      </div>
+                      <h4 
+                        className="text-2xl font-bold"
+                        style={{ color: colors.text.primary }}
+                      >
+                        Analysis Summary
+                      </h4>
+                    </div>
                     
-                    <div className="space-y-6">
+                    <div className="space-y-4">
                       {/* What's working */}
                       <div
                         onMouseEnter={() => {
@@ -409,20 +530,21 @@ export default function LandingPage() {
                           setFocusedInsight(null)
                           setHoveredHighlight(null)
                         }}
-                        className="p-4 rounded-lg border transition-all cursor-pointer"
-                        style={{
-                          backgroundColor: focusedInsight === 'strength' ? colors.success.light : colors.background.primary,
-                          borderColor: focusedInsight === 'strength' ? colors.success.border : colors.border.primary,
-                          boxShadow: focusedInsight === 'strength' ? `0 0 0 2px ${colors.success.border}` : 'none',
-                        }}
+                        className={`p-5 rounded-xl border transition-all cursor-pointer ${
+                          focusedInsight === 'strength'
+                            ? 'bg-[#22C55E]/10 border-[#22C55E]/40 ring-2 ring-[#22C55E]/20 shadow-lg'
+                            : 'bg-[#0B0F14] border-[#22283A] hover:border-[#22C55E]/20'
+                        }`}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          <CheckCircle2 className="h-4 w-4" style={{ color: colors.success.primary }} />
-                          <h5 className="text-sm font-semibold uppercase tracking-wide" style={{ color: colors.success.primary }}>
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className={`p-2 rounded-lg ${focusedInsight === 'strength' ? 'bg-[#22C55E]/20' : 'bg-[#22C55E]/10'}`}>
+                            <CheckCircle2 className="h-5 w-5 text-[#22C55E]" />
+                          </div>
+                          <h5 className="text-base font-bold text-[#22C55E]">
                             {analysisInsights.strength.title}
                           </h5>
                         </div>
-                        <p className="text-sm leading-relaxed" style={{ color: colors.text.primary }}>
+                        <p className="text-sm text-[#E6E8EB] leading-relaxed ml-11">
                           {analysisInsights.strength.text}
                         </p>
                       </div>
@@ -437,20 +559,21 @@ export default function LandingPage() {
                           setFocusedInsight(null)
                           setHoveredHighlight(null)
                         }}
-                        className="p-4 rounded-lg border transition-all cursor-pointer"
-                        style={{
-                          backgroundColor: focusedInsight === 'pacing' ? colors.warning.light : colors.background.primary,
-                          borderColor: focusedInsight === 'pacing' ? colors.warning.border : colors.border.primary,
-                          boxShadow: focusedInsight === 'pacing' ? `0 0 0 2px ${colors.warning.border}` : 'none',
-                        }}
+                        className={`p-5 rounded-xl border transition-all cursor-pointer ${
+                          focusedInsight === 'pacing'
+                            ? 'bg-[#F59E0B]/10 border-[#F59E0B]/40 ring-2 ring-[#F59E0B]/20 shadow-lg'
+                            : 'bg-[#0B0F14] border-[#22283A] hover:border-[#F59E0B]/20'
+                        }`}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          <Clock className="h-4 w-4" style={{ color: colors.warning.primary }} />
-                          <h5 className="text-sm font-semibold uppercase tracking-wide" style={{ color: colors.warning.primary }}>
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className={`p-2 rounded-lg ${focusedInsight === 'pacing' ? 'bg-[#F59E0B]/20' : 'bg-[#F59E0B]/10'}`}>
+                            <Clock className="h-5 w-5 text-[#F59E0B]" />
+                          </div>
+                          <h5 className="text-base font-bold text-[#F59E0B]">
                             {analysisInsights.pacing.title}
                           </h5>
                         </div>
-                        <p className="text-sm leading-relaxed" style={{ color: colors.text.primary }}>
+                        <p className="text-sm text-[#E6E8EB] leading-relaxed ml-11">
                           {analysisInsights.pacing.text}
                         </p>
                       </div>
@@ -465,20 +588,21 @@ export default function LandingPage() {
                           setFocusedInsight(null)
                           setHoveredHighlight(null)
                         }}
-                        className="p-4 rounded-lg border transition-all cursor-pointer"
-                        style={{
-                          backgroundColor: focusedInsight === 'cut' ? colors.error.light : colors.background.primary,
-                          borderColor: focusedInsight === 'cut' ? colors.error.border : colors.border.primary,
-                          boxShadow: focusedInsight === 'cut' ? `0 0 0 2px ${colors.error.border}` : 'none',
-                        }}
+                        className={`p-5 rounded-xl border transition-all cursor-pointer ${
+                          focusedInsight === 'cut'
+                            ? 'bg-[#EF4444]/10 border-[#EF4444]/40 ring-2 ring-[#EF4444]/20 shadow-lg'
+                            : 'bg-[#0B0F14] border-[#22283A] hover:border-[#EF4444]/20'
+                        }`}
                       >
-                        <div className="flex items-center gap-2 mb-2">
-                          <Scissors className="h-4 w-4" style={{ color: colors.error.primary }} />
-                          <h5 className="text-sm font-semibold uppercase tracking-wide" style={{ color: colors.error.primary }}>
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className={`p-2 rounded-lg ${focusedInsight === 'cut' ? 'bg-[#EF4444]/20' : 'bg-[#EF4444]/10'}`}>
+                            <Scissors className="h-5 w-5 text-[#EF4444]" />
+                          </div>
+                          <h5 className="text-base font-bold text-[#EF4444]">
                             {analysisInsights.cut.title}
                           </h5>
                         </div>
-                        <p className="text-sm leading-relaxed" style={{ color: colors.text.primary }}>
+                        <p className="text-sm text-[#E6E8EB] leading-relaxed ml-11">
                           {analysisInsights.cut.text}
                         </p>
                       </div>
@@ -503,46 +627,49 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer 
-        className="border-t py-12 px-4"
+        className="border-t py-16 px-4"
         style={{
-          backgroundColor: colors.background.primary,
+          backgroundColor: colors.background.secondary,
           borderColor: colors.border.primary,
           color: colors.text.secondary,
         }}
       >
         <div className="max-w-6xl mx-auto">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="mb-4 md:mb-0">
-              <div className="flex items-center gap-2 mb-2">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12">
+            <div className="mb-8 md:mb-0">
+              <div className="flex items-center gap-3 mb-4">
                 <div 
-                  className="w-8 h-8 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: colors.accent.primary }}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg"
+                  style={{ 
+                    backgroundColor: colors.accent.primary,
+                    boxShadow: `0 4px 12px ${colors.accent.primary}30`,
+                  }}
                 >
                   <span 
-                    className="font-bold text-lg"
+                    className="font-bold text-xl"
                     style={{ color: colors.background.primary }}
                   >
                     P
                   </span>
                 </div>
                 <span 
-                  className="font-bold text-lg"
+                  className="font-bold text-xl"
                   style={{ color: colors.text.primary }}
                 >
                   PitchPractice
                 </span>
               </div>
               <p 
-                className="text-sm"
-                style={{ color: colors.text.tertiary }}
+                className="text-base max-w-md leading-relaxed"
+                style={{ color: colors.text.secondary }}
               >
-                Practice your pitch. Get precise feedback.
+                Practice your pitch. Get precise feedback. Perform with confidence.
               </p>
             </div>
-            <div className="flex flex-wrap gap-6 text-sm">
+            <div className="flex flex-wrap gap-8 text-sm">
               <Link 
                 href="/try" 
-                className="transition-colors"
+                className="transition-all font-medium hover:scale-105 inline-block"
                 style={{ 
                   color: colors.text.secondary,
                 }}
@@ -554,7 +681,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div 
-            className="mt-8 pt-8 border-t text-center text-sm"
+            className="pt-8 border-t text-center text-sm"
             style={{
               borderColor: colors.border.primary,
               color: colors.text.tertiary,

@@ -44,10 +44,10 @@ export async function POST(
   try {
     const { id } = params
 
-    // Fetch the run to get audio_path
+    // Fetch the run to get audio_path, status, and transcript
     const { data: run, error: fetchError } = await supabaseAdmin
       .from('pitch_runs')
-      .select('audio_path, status')
+      .select('audio_path, status, transcript')
       .eq('id', id)
       .single()
 
@@ -58,29 +58,19 @@ export async function POST(
       )
     }
 
-    // Allow transcription if status is 'uploaded' OR if status is 'transcribed' but transcript is missing (retry case)
-    if (run.status !== 'uploaded' && run.status !== 'transcribed') {
+    // Check if already transcribed: transcript exists AND is non-empty AND status is 'transcribed' or 'analyzed'
+    const hasValidTranscript = run.transcript && run.transcript.trim().length > 0
+    const isTranscribedOrAnalyzed = run.status === 'transcribed' || run.status === 'analyzed'
+    
+    if (hasValidTranscript && isTranscribedOrAnalyzed) {
       return NextResponse.json(
-        { error: `Cannot transcribe run with status '${run.status}'. Only runs with status 'uploaded' or 'transcribed' (for retry) can be transcribed.` },
+        { error: 'Run is already transcribed. Use reset-transcription endpoint to re-transcribe.' },
         { status: 400 }
       )
     }
 
-    // If already transcribed, check if we have a transcript
-    if (run.status === 'transcribed') {
-      const { data: existingRun } = await supabaseAdmin
-        .from('pitch_runs')
-        .select('transcript')
-        .eq('id', id)
-        .single()
-      
-      if (existingRun?.transcript) {
-        return NextResponse.json(
-          { error: 'Run is already transcribed. Delete and recreate if you want to re-transcribe.' },
-          { status: 400 }
-        )
-      }
-      // If no transcript exists, allow retry by resetting status
+    // If status is not 'uploaded', reset it (allows retry)
+    if (run.status !== 'uploaded') {
       await supabaseAdmin
         .from('pitch_runs')
         .update({ status: 'uploaded' })
@@ -173,6 +163,7 @@ export async function POST(
     const wpm = calculateWPM(wordCount, audioSeconds)
 
     // Update the run with transcript and timing data
+    // IMPORTANT: Only update status to 'transcribed' AFTER successful transcription is saved
     const { error: updateError } = await supabaseAdmin
       .from('pitch_runs')
       .update({
@@ -180,7 +171,7 @@ export async function POST(
         audio_seconds: audioSeconds,
         word_count: wordCount,
         words_per_minute: wpm,
-        status: 'transcribed',
+        status: 'transcribed', // Status changes ONLY after successful save
         error_message: null,
       })
       .eq('id', id)

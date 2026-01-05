@@ -83,15 +83,26 @@ export async function POST(request: NextRequest) {
     let contentType = audioFile.type
     if (!contentType || contentType === 'application/octet-stream') {
       if (fileExt === 'webm') {
-        contentType = 'audio/webm'
+        // Prefer codecs=opus if it was recorded that way, otherwise use audio/webm
+        contentType = 'audio/webm;codecs=opus'
       } else if (fileExt === 'mp3') {
         contentType = 'audio/mpeg'
       } else if (fileExt === 'wav') {
         contentType = 'audio/wav'
+      } else if (fileExt === 'ogg') {
+        contentType = 'audio/ogg'
       } else {
         contentType = 'audio/webm' // Default fallback
       }
     }
+    
+    // Log content type for debugging
+    console.log('[Upload] Content type:', {
+      original: audioFile.type,
+      determined: contentType,
+      fileExt,
+      fileName: audioFile.name,
+    })
 
     // Check if bucket exists, create if missing
     const bucketName = 'pitchpractice-audio'

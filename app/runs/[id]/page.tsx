@@ -37,6 +37,8 @@ export default function RunPage() {
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
 
   const fetchRun = async () => {
     if (!runId) return
@@ -48,11 +50,56 @@ export default function RunPage() {
       }
       const data = await res.json()
       setRun(data)
+      
+      // Fetch fresh audio URL
+      if (data.audio_path) {
+        try {
+          const audioRes = await fetch(`/api/runs/${runId}/audio-url`)
+          if (audioRes.ok) {
+            const audioData = await audioRes.json()
+            setAudioUrl(audioData.audio_url)
+          }
+        } catch (err) {
+          console.error('Failed to fetch audio URL:', err)
+        }
+      }
+      
       setLoading(false)
     } catch (err) {
       console.error('Error fetching run:', err)
       setError('Failed to load run details')
       setLoading(false)
+    }
+  }
+  
+  const handleResetTranscription = async () => {
+    if (!runId || isTranscribing) return
+
+    setIsTranscribing(true)
+    setError(null)
+
+    try {
+      // Reset transcription
+      const resetRes = await fetch(`/api/runs/${runId}/reset-transcription`, {
+        method: 'POST',
+      })
+
+      if (!resetRes.ok) {
+        const errorData = await resetRes.json()
+        throw new Error(errorData.error || 'Failed to reset transcription')
+      }
+
+      // Refresh run data
+      await fetchRun()
+      
+      // Auto-start transcription
+      await handleTranscribe()
+    } catch (err) {
+      console.error('Reset transcription error:', err)
+      setError(err instanceof Error ? err.message : 'Failed to reset transcription')
+      await fetchRun()
+    } finally {
+      setIsTranscribing(false)
     }
   }
 
@@ -285,7 +332,7 @@ export default function RunPage() {
           {run.audio_path && (
             <div className="mb-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-3">Audio</h2>
-              {run.audio_url ? (
+              {audioUrl ? (
                 <div>
                   <audio 
                     controls 
@@ -295,12 +342,18 @@ export default function RunPage() {
                       console.error('Audio playback error:', e)
                       setError('Failed to load audio. The file may be corrupted or the URL expired.')
                     }}
+                    onLoadedMetadata={(e) => {
+                      console.log('Audio loaded:', {
+                        duration: (e.target as HTMLAudioElement).duration,
+                        readyState: (e.target as HTMLAudioElement).readyState,
+                      })
+                    }}
                   >
-                    <source src={run.audio_url} type="audio/webm" />
-                    <source src={run.audio_url} type="audio/webm;codecs=opus" />
-                    <source src={run.audio_url} type="audio/mpeg" />
-                    <source src={run.audio_url} type="audio/wav" />
-                    <source src={run.audio_url} type="audio/ogg" />
+                    <source src={audioUrl} type="audio/webm" />
+                    <source src={audioUrl} type="audio/webm;codecs=opus" />
+                    <source src={audioUrl} type="audio/mpeg" />
+                    <source src={audioUrl} type="audio/wav" />
+                    <source src={audioUrl} type="audio/ogg" />
                     Your browser does not support the audio element.
                   </audio>
                   <p className="mt-2 text-xs text-gray-500">
@@ -313,6 +366,20 @@ export default function RunPage() {
                     ⚠️ Audio URL could not be generated. This may be a temporary issue. Please refresh the page.
                   </p>
                 </div>
+              )}
+              
+              {/* Debug Panel (dev-only) */}
+              {process.env.NODE_ENV === 'development' && (
+                <details className="mt-4 p-3 bg-gray-100 rounded text-xs">
+                  <summary className="cursor-pointer font-semibold text-gray-700">Debug Info</summary>
+                  <div className="mt-2 space-y-1 text-gray-600">
+                    <div><strong>audio_path:</strong> {run.audio_path}</div>
+                    <div><strong>signed_audio_url:</strong> {audioUrl ? '✓ Generated' : '✗ Failed'}</div>
+                    {audioUrl && <div className="break-all"><strong>URL:</strong> {audioUrl.substring(0, 100)}...</div>}
+                    <div><strong>status:</strong> {run.status}</div>
+                    <div><strong>has_transcript:</strong> {run.transcript ? `Yes (${run.transcript.length} chars)` : 'No'}</div>
+                  </div>
+                </details>
               )}
             </div>
           )}
@@ -579,30 +646,30 @@ export default function RunPage() {
             </div>
           )}
 
-          {/* Transcription Retry - if status is transcribed but no transcript */}
-          {run.status === 'transcribed' && !run.transcript && (
-            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          {/* Reset & Re-transcribe button - if already transcribed */}
+          {run.transcript && run.transcript.trim().length > 0 && (run.status === 'transcribed' || run.status === 'analyzed') && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-yellow-800 font-medium mb-1">
-                    Transcription Missing
+                  <p className="text-amber-800 font-medium mb-1">
+                    Already Transcribed
                   </p>
-                  <p className="text-sm text-yellow-700">
-                    The run is marked as transcribed but no transcript was found. Click to retry transcription.
+                  <p className="text-sm text-amber-700">
+                    This run has been transcribed. Click to reset and re-transcribe.
                   </p>
                 </div>
                 <button
-                  onClick={handleTranscribe}
+                  onClick={handleResetTranscription}
                   disabled={isTranscribing}
-                  className="px-6 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="px-6 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isTranscribing ? (
                     <>
                       <div className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Transcribing...
+                      Resetting...
                     </>
                   ) : (
-                    '🔄 Retry Transcription'
+                    '🔄 Reset & Re-transcribe'
                   )}
                 </button>
               </div>

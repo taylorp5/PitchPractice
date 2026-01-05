@@ -46,7 +46,16 @@ export default function HomePage() {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
+      
+      // Determine best supported mimeType
+      let mimeType = 'audio/webm'
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus'
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/webm'
+      }
+      
+      const mediaRecorder = new MediaRecorder(stream, { mimeType })
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
@@ -57,10 +66,24 @@ export default function HomePage() {
       }
 
       mediaRecorder.onstop = () => {
-        // Ensure we create a proper WebM file with correct MIME type
+        const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
+        
+        // Validate recording is not empty
+        if (totalSize < 5 * 1024) { // Less than 5KB
+          setError('Recording was empty—check mic permissions.')
+          stream.getTracks().forEach(track => track.stop())
+          return
+        }
+        
+        // Create blob with the actual mimeType used
+        const actualMimeType = mediaRecorder.mimeType || mimeType
         const audioBlob = new Blob(audioChunksRef.current, { 
-          type: mediaRecorder.mimeType || 'audio/webm;codecs=opus' 
+          type: actualMimeType
         })
+        
+        // Store mimeType for upload
+        ;(audioBlob as any).__mimeType = actualMimeType
+        
         handleSubmit(audioBlob)
         stream.getTracks().forEach(track => track.stop())
       }
@@ -100,12 +123,28 @@ export default function HomePage() {
       const sessionId = getSessionId()
       const formData = new FormData()
       
-      // Convert Blob to File if needed - ensure .webm extension and correct type
-      const file = audioFile instanceof File 
-        ? audioFile 
-        : new File([audioFile], 'recording.webm', { 
-            type: audioFile.type || 'audio/webm;codecs=opus' 
-          })
+      // Convert Blob to File if needed - ensure correct extension based on mimeType
+      let file: File
+      if (audioFile instanceof File) {
+        file = audioFile
+      } else {
+        // Determine extension from mimeType
+        const mimeType = (audioFile as any).__mimeType || audioFile.type || 'audio/webm'
+        let extension = 'webm'
+        if (mimeType.includes('webm')) {
+          extension = 'webm'
+        } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
+          extension = 'mp3'
+        } else if (mimeType.includes('wav')) {
+          extension = 'wav'
+        } else if (mimeType.includes('ogg')) {
+          extension = 'ogg'
+        }
+        
+        file = new File([audioFile], `recording.${extension}`, { 
+          type: mimeType
+        })
+      }
       
       formData.append('audio', file)
       formData.append('rubric_id', selectedRubric)

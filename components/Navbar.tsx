@@ -32,18 +32,17 @@ export function Navbar() {
             </div>
           </Link>
 
-          {/* Navigation Links - Hidden on mobile, shown on desktop */}
-          <div className="hidden md:flex items-center gap-8">
+          {/* Right side: Upgrade + Auth grouped together */}
+          <div className="hidden md:flex items-center gap-6">
+            {/* Upgrade - subtle text link */}
             <Link 
               href="/upgrade" 
-              className="text-sm font-medium text-[#9AA4B2] hover:text-[#F59E0B] transition-colors"
+              className="text-sm font-medium text-[#9AA4B2] hover:text-[#E6E8EB] transition-colors"
             >
               Upgrade
             </Link>
-          </div>
-
-          {/* CTA Buttons */}
-          <div className="hidden md:flex items-center gap-3">
+            
+            {/* Auth button - ghost/outline style, slightly more prominent */}
             <Button 
               variant="ghost" 
               size="sm" 
@@ -54,10 +53,21 @@ export function Navbar() {
             </Button>
           </div>
 
-          {/* Mobile menu button */}
-          <div className="md:hidden">
-            <Button variant="ghost" size="sm">
-              Menu
+          {/* Mobile: simple menu */}
+          <div className="md:hidden flex items-center gap-4">
+            <Link 
+              href="/upgrade" 
+              className="text-sm font-medium text-[#9AA4B2] hover:text-[#E6E8EB] transition-colors"
+            >
+              Upgrade
+            </Link>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              href={isSignedIn ? "/app" : "/app"}
+              asChild
+            >
+              {isSignedIn ? "Dashboard" : "Sign in"}
             </Button>
           </div>
         </div>

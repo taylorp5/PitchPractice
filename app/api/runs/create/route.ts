@@ -21,17 +21,6 @@ export async function POST(request: NextRequest) {
     const durationMs = durationMsStr ? parseInt(durationMsStr, 10) : null
     const audioSeconds = durationMs ? durationMs / 1000 : null
 
-    if (DEBUG) {
-      console.log('[Create Run] Request data:', {
-        hasAudioFile: !!audioFile,
-        audioFileName: audioFile?.name,
-        audioFileSize: audioFile?.size,
-        rubricId,
-        sessionId,
-        title,
-      })
-    }
-
     if (!audioFile) {
       return NextResponse.json(
         { ok: false, error: 'Audio file is required' },
@@ -41,16 +30,51 @@ export async function POST(request: NextRequest) {
 
     if (!sessionId) {
       return NextResponse.json(
-        { ok: false, error: 'Session ID is required' },
+        { ok: false, error: 'Session ID is required', details: 'session_id is missing from request' },
         { status: 400 }
       )
     }
 
-    if (!rubricId) {
-      return NextResponse.json(
-        { ok: false, error: 'Rubric ID is required' },
-        { status: 400 }
-      )
+    // Handle missing rubric_id by getting the first available rubric
+    let finalRubricId = rubricId
+    if (!finalRubricId) {
+      if (DEBUG) {
+        console.log('[Create Run] No rubric_id provided, fetching first available rubric')
+      }
+      const { data: rubrics, error: rubricError } = await getSupabaseAdmin()
+        .from('rubrics')
+        .select('id')
+        .order('created_at', { ascending: false })
+        .limit(1)
+      
+      if (rubricError || !rubrics || rubrics.length === 0) {
+        console.error('[Create Run] Failed to get default rubric:', rubricError)
+        return NextResponse.json(
+          { 
+            ok: false, 
+            error: 'No rubric available',
+            details: rubricError?.message || 'No rubrics found in database',
+            fix: 'Please ensure at least one rubric exists in the database'
+          },
+          { status: 400 }
+        )
+      }
+      
+      finalRubricId = rubrics[0].id
+      if (DEBUG) {
+        console.log('[Create Run] Using default rubric:', finalRubricId)
+      }
+    }
+
+    if (DEBUG) {
+      console.log('[Create Run] Request data:', {
+        hasAudioFile: !!audioFile,
+        audioFileName: audioFile?.name,
+        audioFileSize: audioFile?.size,
+        rubricId: finalRubricId,
+        sessionId,
+        title,
+      })
     }
 
     // Generate run ID
@@ -64,7 +88,7 @@ export async function POST(request: NextRequest) {
       console.log('[Create Run] Creating database record:', {
         runId,
         sessionId,
-        rubricId,
+        rubricId: finalRubricId,
         audioPath,
         title,
       })
@@ -79,7 +103,7 @@ export async function POST(request: NextRequest) {
         title: title || null,
         audio_path: audioPath,
         status: 'uploaded',
-        rubric_id: rubricId,
+        rubric_id: finalRubricId,
         audio_seconds: audioSeconds, // Set from duration_ms if provided
         duration_ms: durationMs, // Store duration_ms as source of truth
       })
@@ -95,7 +119,7 @@ export async function POST(request: NextRequest) {
         hint: dbError.hint,
         runId,
         sessionId,
-        rubricId,
+        rubricId: finalRubricId,
       })
       return NextResponse.json(
         { 
@@ -143,8 +167,15 @@ export async function POST(request: NextRequest) {
     
     // Reject silent/empty recordings
     if (buffer.length < 8 * 1024) { // Less than 8KB
+      // Clean up database record
+      await getSupabaseAdmin()
+        .from('pitch_runs')
+        .delete()
+        .eq('id', runId)
+      
       return NextResponse.json(
         { 
+          ok: false,
           error: 'Recording was empty or silent.',
           details: `File size (${fileSizeKB.toFixed(2)} KB) is too small. Minimum size is 8 KB.`,
           fix: 'Check microphone permissions and ensure you are speaking during recording.',
@@ -221,6 +252,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json(
           { 
+            ok: false,
             error: 'Storage bucket not found',
             details: `Bucket '${bucketName}' does not exist and could not be created. Please create it manually in Supabase Storage.`,
             fix: 'Go to Supabase Dashboard → Storage → Create bucket named "pitchpractice-audio" (private)',
@@ -291,6 +323,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(
         { 
+          ok: false,
           error: userMessage,
           details: errorMessage,
           fix: fixSuggestion,

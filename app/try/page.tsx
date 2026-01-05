@@ -102,6 +102,7 @@ export default function TryPage() {
   const [isTestingMic, setIsTestingMic] = useState(false)
   const [isSilent, setIsSilent] = useState(false)
   const [hasMicPermission, setHasMicPermission] = useState(false)
+  const [lastError, setLastError] = useState<any>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -682,12 +683,49 @@ export default function TryPage() {
         body: formData,
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Upload failed')
+      // Capture full response for error handling
+      const responseText = await response.text()
+      let data: any = null
+      let errorData: any = null
+      
+      try {
+        data = JSON.parse(responseText)
+      } catch (e) {
+        // Response might not be JSON
+        if (DEBUG) {
+          console.warn('[Try] Could not parse response as JSON:', responseText.substring(0, 200))
+        }
       }
 
-      const data = await response.json()
+      if (!response.ok) {
+        errorData = data
+        const errorMessage = errorData?.error || 'Upload failed'
+        const errorDetails = errorData?.details ? ` Details: ${errorData.details}` : ''
+        const errorFix = errorData?.fix ? ` Fix: ${errorData.fix}` : ''
+        const fullError = {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData?.error || 'Unknown error',
+          details: errorData?.details || null,
+          fix: errorData?.fix || null,
+          code: errorData?.code || null,
+          fullResponse: errorData,
+          responseText: responseText.substring(0, 1000),
+        }
+        
+        setLastError(fullError)
+        
+        if (DEBUG) {
+          console.error('[Try] Create run failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            errorData,
+            responseText: responseText.substring(0, 500),
+          })
+        }
+        
+        throw new Error(`${errorMessage}${errorDetails}${errorFix}`)
+      }
 
       if (DEBUG) {
         console.log('[Try] Create run response:', data)
@@ -740,7 +778,11 @@ export default function TryPage() {
       setIsTranscribing(false)
       
       if (DEBUG) {
-        console.error('[Try] Upload failed:', err)
+        console.error('[Try] Upload failed:', {
+          error: err,
+          message: err.message,
+          lastError,
+        })
       }
     }
   }
@@ -1522,6 +1564,21 @@ export default function TryPage() {
                     <div>Selected Rubric:</div>
                     <div>{selectedRubricId || 'none'}</div>
                   </div>
+                  {lastError && (
+                    <div className="mt-2 pt-2 border-t border-[#22283A]">
+                      <div className="font-semibold text-[#E6E8EB] mb-1">Last Error:</div>
+                      <div className="text-xs space-y-1">
+                        <div>Status: {lastError.status} {lastError.statusText}</div>
+                        <div>Error: {lastError.error}</div>
+                        {lastError.details && <div>Details: {lastError.details}</div>}
+                        {lastError.fix && <div>Fix: {lastError.fix}</div>}
+                        {lastError.code && <div>Code: {lastError.code}</div>}
+                      </div>
+                      <pre className="mt-2 p-2 bg-[#0B0F14] rounded text-xs overflow-auto max-h-40 font-mono text-[#E6E8EB]">
+                        {JSON.stringify(lastError.fullResponse || lastError, null, 2)}
+                      </pre>
+                    </div>
+                  )}
                   {currentTrackInfo && (
                     <div className="mt-2 pt-2 border-t border-[#22283A]">
                       <div className="font-semibold text-[#E6E8EB] mb-1">Current Track:</div>
@@ -1552,30 +1609,71 @@ export default function TryPage() {
                     size="sm"
                     onClick={async () => {
                       try {
+                        setLastError(null)
                         const sessionId = getSessionId()
                         const formData = new FormData()
-                        // Create a dummy audio blob for testing
-                        const dummyBlob = new Blob(['test'], { type: 'audio/webm' })
+                        // Create a dummy audio blob for testing (8KB minimum)
+                        const dummyData = new Uint8Array(8 * 1024).fill(0)
+                        const dummyBlob = new Blob([dummyData], { type: 'audio/webm' })
                         formData.append('audio', dummyBlob, 'test.webm')
                         formData.append('session_id', sessionId)
-                        formData.append('rubric_id', selectedRubricId || '')
+                        if (selectedRubricId) {
+                          formData.append('rubric_id', selectedRubricId)
+                        }
                         formData.append('title', 'Test Run')
+                        formData.append('duration_ms', '6000') // 6 seconds
 
                         const response = await fetch('/api/runs/create', {
                           method: 'POST',
                           body: formData,
                         })
 
-                        const data = await response.json()
-                        console.log('[Try] Test run creation response:', data)
-                        alert(`Response: ${JSON.stringify(data, null, 2)}`)
+                        // Capture full response
+                        let responseText = ''
+                        let data: any = null
+                        
+                        try {
+                          responseText = await response.text()
+                          if (responseText) {
+                            data = JSON.parse(responseText)
+                          }
+                        } catch (e) {
+                          console.warn('[Try] Could not parse response as JSON:', responseText)
+                        }
+
+                        if (!response.ok) {
+                          const fullError = {
+                            status: response.status,
+                            statusText: response.statusText,
+                            error: data?.error || 'Unknown error',
+                            details: data?.details || null,
+                            fix: data?.fix || null,
+                            code: data?.code || null,
+                            fullResponse: data,
+                            responseText,
+                          }
+                          setLastError(fullError)
+                          console.error('[Try] Test run creation failed:', fullError)
+                          alert(`Test failed: ${data?.error || 'Unknown error'}\n\nSee debug panel for full error details.`)
+                        } else {
+                          console.log('[Try] Test run creation response:', data)
+                          alert(`Test succeeded!\n\nRun ID: ${data.runId || data.run?.id}\nStatus: ${data.run?.status}\n\nSee console for full response.`)
+                          if (data.runId) {
+                            setRun({ ...data.run, audio_url: null })
+                          }
+                        }
                       } catch (err: any) {
+                        const fullError = {
+                          error: err.message || 'Unknown error',
+                          details: err.stack || null,
+                          fullResponse: err,
+                        }
+                        setLastError(fullError)
                         console.error('[Try] Test run creation failed:', err)
-                        alert(`Error: ${err.message}`)
+                        alert(`Error: ${err.message}\n\nSee debug panel for full error details.`)
                       }
                     }}
                     className="mt-2"
-                    disabled={!selectedRubricId}
                   >
                     Test run creation
                   </Button>

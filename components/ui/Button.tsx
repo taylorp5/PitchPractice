@@ -21,12 +21,12 @@ export function Button({
   href,
   ...props
 }: ButtonProps) {
-  const baseClasses = 'font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0B0E14] disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center'
+  const baseClasses = 'font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0B0F14] disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center'
   
   const variantClasses = {
-    primary: 'bg-[#F59E0B] hover:bg-[#D97706] text-[#0B0E14] focus:ring-[#F59E0B]',
-    secondary: 'bg-transparent hover:bg-[#121826] border border-[#64748B] text-[#9CA3AF] hover:text-[#E5E7EB] hover:border-[#9CA3AF] focus:ring-[#64748B]',
-    ghost: 'bg-transparent hover:bg-[#121826] text-[#E5E7EB] hover:text-[#F59E0B] focus:ring-[#64748B]',
+    primary: 'bg-[#F59E0B] hover:bg-[#D97706] text-[#0B0F14] focus:ring-[#F59E0B]',
+    secondary: 'bg-transparent hover:bg-[#121826] border border-[#6B7280] text-[#9AA4B2] hover:text-[#E6E8EB] hover:border-[#9AA4B2] focus:ring-[#6B7280]',
+    ghost: 'bg-transparent hover:bg-[#121826] text-[#E6E8EB] hover:text-[#F59E0B] focus:ring-[#6B7280]',
     danger: 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-md hover:shadow-lg focus:ring-red-500',
   }
   

@@ -17,7 +17,7 @@ export async function GET(
     if (error) {
       console.error('Database error:', error)
       return NextResponse.json(
-        { error: 'Run not found' },
+        { ok: false, error: 'Run not found' },
         { 
           status: 404,
           headers: {
@@ -50,8 +50,11 @@ export async function GET(
 
       return NextResponse.json(
         {
-          ...run,
-          audio_url: signedUrlData?.signedUrl || null,
+          ok: true,
+          run: {
+            ...run,
+            audio_url: signedUrlData?.signedUrl || null,
+          },
         },
         {
           headers: {
@@ -62,7 +65,10 @@ export async function GET(
     }
 
     return NextResponse.json(
-      run,
+      {
+        ok: true,
+        run,
+      },
       {
         headers: {
           'Cache-Control': 'no-store',

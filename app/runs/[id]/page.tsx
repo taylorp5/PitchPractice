@@ -72,8 +72,17 @@ export default function RunPage() {
         await logFetchError(url, res)
         throw new Error('Failed to fetch run')
       }
-      const data = await res.json()
-      setRun(data)
+      const responseData = await res.json()
+      
+      // Handle new response format: { ok: true, run }
+      if (responseData.ok && responseData.run) {
+        setRun(responseData.run)
+      } else if (!responseData.ok) {
+        throw new Error(responseData.error || 'Failed to fetch run')
+      } else {
+        // Fallback for old format (direct run object)
+        setRun(responseData)
+      }
       
       // Fetch fresh audio URL
       if (data.audio_path) {
@@ -501,6 +510,16 @@ export default function RunPage() {
                 </div>
               </details>
               
+              {/* Raw Run JSON Panel (dev-only) */}
+              {process.env.NODE_ENV === 'development' && (
+                <details className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded">
+                  <summary className="cursor-pointer font-semibold text-purple-800 mb-2">Raw Run JSON</summary>
+                  <pre className="mt-2 p-3 bg-white border border-purple-200 rounded text-xs overflow-auto max-h-60 font-mono">
+                    {JSON.stringify(run, null, 2)}
+                  </pre>
+                </details>
+              )}
+              
               {/* Last API Response Panel */}
               {lastTranscribeResponse && (
                 <details className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded" open={!lastTranscribeResponse.ok}>
@@ -549,14 +568,19 @@ export default function RunPage() {
             </div>
           )}
 
-          {run.transcript && (
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-3">Transcript</h2>
+          {/* Transcript Section */}
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold text-gray-900 mb-3">Transcript</h2>
+            {run.transcript && run.transcript.trim().length > 0 ? (
               <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <p className="text-gray-700 whitespace-pre-wrap">{run.transcript}</p>
+                <pre className="text-gray-700 whitespace-pre-wrap font-sans text-sm">{run.transcript}</pre>
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                <p className="text-yellow-800 text-sm">No transcript yet.</p>
+              </div>
+            )}
+          </div>
 
           {/* Analysis Section */}
           {run.analysis_json && (

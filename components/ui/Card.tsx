@@ -28,10 +28,10 @@ export function Card({
 
   return (
     <div className={`
-      bg-[#151A23] rounded-xl border border-[#22283A]
+      bg-[#121826] rounded-xl border border-[#181F2F]
       ${paddingClasses[padding]}
       ${shadowClasses[shadow]}
-      transition-all duration-200 hover:shadow-xl hover:shadow-black/40 hover:-translate-y-0.5
+      transition-all duration-200
       ${className}
     `}>
       {children}

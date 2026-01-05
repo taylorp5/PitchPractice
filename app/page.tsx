@@ -1,14 +1,17 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { motion, useInView } from 'framer-motion'
 import Link from 'next/link'
-import { Mic, FileText, TrendingUp, ArrowRight, GraduationCap, Briefcase, Rocket, Users } from 'lucide-react'
+import { ArrowRight, ArrowDown, Mic } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 
 export default function LandingPage() {
-  const [activeDemo, setActiveDemo] = useState<'pacing' | 'cuts' | 'strengths' | null>(null)
+  const [autoPlayStarted, setAutoPlayStarted] = useState(false)
+  const [highlightedLine, setHighlightedLine] = useState<number | null>(null)
+  const demoRef = useRef<HTMLDivElement>(null)
+  const isInView = useInView(demoRef, { once: true, margin: '-100px' })
 
   const testimonials = [
     { quote: "Helped me land my first client pitch", author: "Sarah, Founder" },
@@ -20,59 +23,68 @@ export default function LandingPage() {
 
   const useCases = [
     {
-      icon: GraduationCap,
-      title: 'Students',
-      description: 'Nail your presentations and class pitches. Get confident before you step in front of the room.',
-      outcome: 'Present with confidence',
+      situation: 'Before class',
+      description: 'Nail your presentations. Get confident before you step in front of the room.',
     },
     {
-      icon: Briefcase,
-      title: 'Sales & Business',
-      description: 'Refine your client pitches and team presentations. Every word counts when closing deals.',
-      outcome: 'Close more deals',
+      situation: 'Before the pitch',
+      description: 'Perfect your investor pitches. Make every minute count.',
     },
     {
-      icon: Rocket,
-      title: 'Founders',
-      description: 'Perfect your investor pitches and product demos. Make every minute count.',
-      outcome: 'Raise with clarity',
-    },
-    {
-      icon: Users,
-      title: 'Educators',
-      description: 'Improve your teaching presentations and conference talks. Engage your audience better.',
-      outcome: 'Inspire your audience',
+      situation: 'Before the meeting',
+      description: 'Refine your client pitches. Every word counts when closing deals.',
     },
   ]
 
   const demoTranscript = [
-    { text: "Hi, I'm excited to share our product with you today.", type: null },
-    { text: "We've built something that will revolutionize how teams collaborate.", type: 'strength' },
-    { text: "Let me tell you a story about how we got started...", type: null },
-    { text: "It was a rainy Tuesday in 2019 when our founder had this idea...", type: 'cut' },
-    { text: "So we decided to build a platform that solves this problem.", type: null },
-    { text: "Our solution is simple, powerful, and easy to use.", type: 'pacing' },
-    { text: "Would you like to see a demo?", type: null },
+    { text: "Hi, I'm excited to share our product with you today.", type: null, delay: 0 },
+    { text: "We've built something that will revolutionize how teams collaborate.", type: 'strength', delay: 0.5 },
+    { text: "Let me tell you a story about how we got started...", type: null, delay: 1 },
+    { text: "It was a rainy Tuesday in 2019 when our founder had this idea...", type: 'cut', delay: 1.5 },
+    { text: "So we decided to build a platform that solves this problem.", type: null, delay: 2 },
+    { text: "Our solution is simple, powerful, and easy to use.", type: 'pacing', delay: 2.5 },
+    { text: "Would you like to see a demo?", type: null, delay: 3 },
   ]
 
+  useEffect(() => {
+    if (isInView && !autoPlayStarted) {
+      setAutoPlayStarted(true)
+      // Animate lines appearing
+      demoTranscript.forEach((line, idx) => {
+        setTimeout(() => {
+          setHighlightedLine(idx)
+          if (line.type) {
+            // Keep highlight for a moment, then fade
+            setTimeout(() => {
+              if (idx === demoTranscript.length - 1) {
+                // Reset after full sequence
+                setTimeout(() => {
+                  setHighlightedLine(null)
+                  setAutoPlayStarted(false)
+                }, 2000)
+              }
+            }, 1500)
+          }
+        }, line.delay * 1000)
+      })
+    }
+  }, [isInView, autoPlayStarted])
+
   return (
-    <div className="min-h-screen bg-[#0E1117]">
+    <div className="min-h-screen bg-[#0B0E14]">
       {/* Hero Section */}
-      <section className="relative overflow-hidden py-24 px-4">
-        {/* Subtle gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0E1117] via-[#151A23] to-[#0E1117] opacity-50"></div>
-        
+      <section className="relative overflow-hidden py-32 px-4">
         <div className="relative max-w-5xl mx-auto text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <h1 className="text-5xl md:text-6xl font-bold text-[#E5E7EB] mb-6 leading-tight">
+            <h1 className="text-5xl md:text-6xl font-bold text-[#E5E7EB] mb-8 leading-tight">
               Practice once.<br />
-              <span className="text-[#D97706]">Perform better everywhere.</span>
+              <span className="text-[#F59E0B]">Perform better everywhere.</span>
             </h1>
-            <p className="text-xl md:text-2xl text-[#9CA3AF] mb-10 max-w-3xl mx-auto leading-relaxed">
+            <p className="text-xl md:text-2xl text-[#9CA3AF] mb-12 max-w-3xl mx-auto leading-relaxed">
               Whether you're a student presenting, a founder pitching investors, or a sales professional closing deals—get instant, actionable feedback on your pitch.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -108,7 +120,7 @@ export default function LandingPage() {
       </section>
 
       {/* Moving Testimonial Banner */}
-      <section className="py-8 px-4 border-y border-[#22283A] overflow-hidden">
+      <section className="py-8 px-4 border-y border-[#181F2F] overflow-hidden">
         <div className="relative">
           <motion.div
             className="flex gap-12"
@@ -133,193 +145,201 @@ export default function LandingPage() {
                 className="flex-shrink-0 text-center opacity-60 hover:opacity-100 transition-opacity"
               >
                 <p className="text-sm text-[#9CA3AF] italic">"{testimonial.quote}"</p>
-                <p className="text-xs text-[#6B7280] mt-1">— {testimonial.author}</p>
+                <p className="text-xs text-[#64748B] mt-1">— {testimonial.author}</p>
               </div>
             ))}
           </motion.div>
         </div>
       </section>
 
-      {/* Who uses this */}
-      <section className="py-20 px-4">
-        <div className="max-w-6xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-4xl font-bold text-[#E5E7EB] mb-4">Who uses this</h2>
-            <p className="text-xl text-[#9CA3AF]">Built for anyone who needs to communicate with confidence</p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {useCases.map((useCase, idx) => (
-              <motion.div
-                key={idx}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: idx * 0.1 }}
-                whileHover={{ y: -4 }}
-              >
-                <Card className="h-full text-center cursor-pointer group">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-[#D97706]/20 text-[#D97706] mb-4 group-hover:bg-[#D97706]/30 transition-colors">
-                    <useCase.icon className="h-7 w-7" />
-                  </div>
-                  <h3 className="text-xl font-bold text-[#E5E7EB] mb-2">{useCase.title}</h3>
-                  <p className="text-[#9CA3AF] text-sm mb-4 leading-relaxed">{useCase.description}</p>
-                  <p className="text-sm font-medium text-[#D97706]">{useCase.outcome}</p>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="py-20 px-4 bg-gradient-to-b from-[#0E1117] to-[#151A23]">
-        <div className="max-w-6xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-4xl font-bold text-[#E5E7EB] mb-4">How it works</h2>
-            <p className="text-xl text-[#9CA3AF]">Three simple steps to better pitches</p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Mic,
-                title: 'Record',
-                description: 'Record your pitch using your microphone or upload an audio file. We support up to 2 minutes for free.',
-              },
-              {
-                icon: FileText,
-                title: 'Get Transcript',
-                description: 'Get an instant, accurate transcript with word count, pacing metrics, and timing analysis.',
-              },
-              {
-                icon: TrendingUp,
-                title: 'Improve',
-                description: 'Receive actionable feedback with specific suggestions, pause recommendations, and areas to cut or strengthen.',
-              },
-            ].map((step, idx) => (
-              <motion.div
-                key={idx}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: idx * 0.1 }}
-              >
-                <Card className="text-center h-full">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[#D97706]/20 text-[#D97706] mb-6">
-                    <step.icon className="h-8 w-8" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-[#E5E7EB] mb-3">{step.title}</h3>
-                  <p className="text-[#9CA3AF] leading-relaxed">{step.description}</p>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Interactive Demo */}
-      <section className="py-20 px-4">
+      {/* Situational Use Cases */}
+      <section className="py-32 px-4">
         <div className="max-w-4xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="text-center mb-12"
+            className="mb-20"
           >
-            <h2 className="text-4xl font-bold text-[#E5E7EB] mb-4">See how feedback works</h2>
-            <p className="text-xl text-[#9CA3AF]">Toggle highlights to see different types of insights</p>
+            <h2 className="text-4xl font-bold text-[#E5E7EB] mb-4">When you need it</h2>
+            <p className="text-xl text-[#9CA3AF]">Practice before it matters</p>
           </motion.div>
 
+          <div className="space-y-12">
+            {useCases.map((useCase, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, x: -20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: idx * 0.1 }}
+                className="flex items-start gap-6"
+              >
+                <div className="flex-shrink-0 w-2 h-2 rounded-full bg-[#F59E0B] mt-3"></div>
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold text-[#E5E7EB] mb-2">{useCase.situation}</h3>
+                  <p className="text-lg text-[#9CA3AF] leading-relaxed">{useCase.description}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Typography-led Flow Section */}
+      <section className="py-32 px-4 bg-[#121826]">
+        <div className="max-w-4xl mx-auto">
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
+            className="space-y-16"
           >
-            <Card className="p-8">
-              {/* Toggle buttons */}
-              <div className="flex flex-wrap gap-3 mb-6 justify-center">
-                <button
-                  onClick={() => setActiveDemo(activeDemo === 'strengths' ? null : 'strengths')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeDemo === 'strengths'
-                      ? 'bg-green-500/20 text-green-400 border border-green-500/50'
-                      : 'bg-[#151A23] text-[#9CA3AF] border border-[#22283A] hover:border-[#D97706]/50'
-                  }`}
-                >
-                  Strengths
-                </button>
-                <button
-                  onClick={() => setActiveDemo(activeDemo === 'pacing' ? null : 'pacing')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeDemo === 'pacing'
-                      ? 'bg-[#F97316]/20 text-[#F97316] border border-[#F97316]/50'
-                      : 'bg-[#151A23] text-[#9CA3AF] border border-[#22283A] hover:border-[#D97706]/50'
-                  }`}
-                >
-                  Pacing
-                </button>
-                <button
-                  onClick={() => setActiveDemo(activeDemo === 'cuts' ? null : 'cuts')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeDemo === 'cuts'
-                      ? 'bg-red-500/20 text-red-400 border border-red-500/50'
-                      : 'bg-[#151A23] text-[#9CA3AF] border border-[#22283A] hover:border-[#D97706]/50'
-                  }`}
-                >
-                  Suggested Cuts
-                </button>
-              </div>
+            <div>
+              <h2 className="text-4xl font-bold text-[#E5E7EB] mb-6">How it works</h2>
+            </div>
 
-              {/* Transcript */}
-              <div className="space-y-3">
-                {demoTranscript.map((line, idx) => {
-                  const shouldHighlight = activeDemo && line.type === activeDemo
-                  const highlightClasses = {
-                    strength: 'bg-green-500/20 border-green-500/50 text-green-400',
-                    pacing: 'bg-[#F97316]/20 border-[#F97316]/50 text-[#F97316]',
-                    cut: 'bg-red-500/20 border-red-500/50 text-red-400 line-through',
-                  }
+            <div className="space-y-12">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6 }}
+                className="flex items-start gap-6"
+              >
+                <div className="flex-shrink-0 text-4xl font-bold text-[#64748B]">01</div>
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold text-[#E5E7EB] mb-3">Record</h3>
+                  <p className="text-lg text-[#9CA3AF] leading-relaxed">
+                    Record your pitch using your microphone or upload an audio file. We support up to 2 minutes for free.
+                  </p>
+                </div>
+                <ArrowDown className="flex-shrink-0 text-[#64748B] mt-2" />
+              </motion.div>
 
-                  return (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -10 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.3, delay: idx * 0.05 }}
-                      className={`p-4 rounded-lg border transition-all ${
-                        shouldHighlight
-                          ? highlightClasses[line.type as keyof typeof highlightClasses]
-                          : 'bg-[#151A23] border-[#22283A] text-[#E5E7EB]'
-                      }`}
-                    >
-                      {line.text}
-                    </motion.div>
-                  )
-                })}
-              </div>
-            </Card>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                className="flex items-start gap-6"
+              >
+                <div className="flex-shrink-0 text-4xl font-bold text-[#64748B]">02</div>
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold text-[#E5E7EB] mb-3">Get Transcript</h3>
+                  <p className="text-lg text-[#9CA3AF] leading-relaxed">
+                    Get an instant, accurate transcript with word count, pacing metrics, and timing analysis.
+                  </p>
+                </div>
+                <ArrowDown className="flex-shrink-0 text-[#64748B] mt-2" />
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                className="flex items-start gap-6"
+              >
+                <div className="flex-shrink-0 text-4xl font-bold text-[#64748B]">03</div>
+                <div className="flex-1">
+                  <h3 className="text-2xl font-bold text-[#E5E7EB] mb-3">Improve</h3>
+                  <p className="text-lg text-[#9CA3AF] leading-relaxed">
+                    Receive actionable feedback with specific suggestions, pause recommendations, and areas to cut or strengthen.
+                  </p>
+                </div>
+              </motion.div>
+            </div>
           </motion.div>
         </div>
       </section>
 
+      {/* Interactive Demo - Asymmetrical Section */}
+      <section className="py-32 px-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-16 items-center">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <h2 className="text-4xl font-bold text-[#E5E7EB] mb-6">See how feedback works</h2>
+              <p className="text-xl text-[#9CA3AF] leading-relaxed mb-8">
+                Watch as our system identifies strengths, pacing opportunities, and areas to cut—all in real-time.
+              </p>
+              <p className="text-[#64748B] text-sm">
+                Scroll to see the demo auto-play
+              </p>
+            </motion.div>
+
+            <motion.div
+              ref={demoRef}
+              initial={{ opacity: 0, x: 20 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <Card className="p-8 bg-[#181F2F]">
+                {/* Progress indicator */}
+                {autoPlayStarted && (
+                  <motion.div
+                    className="h-1 bg-[#64748B]/20 rounded-full mb-6 overflow-hidden"
+                    initial={{ width: 0 }}
+                    animate={{ width: '100%' }}
+                    transition={{ duration: 3.5, ease: 'linear' }}
+                  >
+                    <motion.div
+                      className="h-full bg-[#F59E0B]"
+                      initial={{ width: 0 }}
+                      animate={{ width: '100%' }}
+                      transition={{ duration: 3.5, ease: 'linear' }}
+                    />
+                  </motion.div>
+                )}
+
+                {/* Transcript */}
+                <div className="space-y-3">
+                  {demoTranscript.map((line, idx) => {
+                    const isVisible = highlightedLine !== null && idx <= highlightedLine
+                    const isHighlighted = highlightedLine === idx && line.type
+                    
+                    const highlightClasses = {
+                      strength: 'bg-[#84CC16]/20 border-[#84CC16]/50 text-[#84CC16]',
+                      pacing: 'bg-[#F59E0B]/20 border-[#F59E0B]/50 text-[#F59E0B]',
+                      cut: 'bg-[#FB7185]/20 border-[#FB7185]/50 text-[#FB7185] line-through',
+                    }
+
+                    return (
+                      <motion.div
+                        key={idx}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{
+                          opacity: isVisible ? 1 : 0.3,
+                          x: isVisible ? 0 : -10,
+                        }}
+                        transition={{ duration: 0.4 }}
+                        className={`p-4 rounded-lg border transition-all ${
+                          isHighlighted && line.type
+                            ? highlightClasses[line.type as keyof typeof highlightClasses]
+                            : 'bg-[#121826] border-[#181F2F] text-[#E5E7EB]'
+                        }`}
+                      >
+                        {line.text}
+                      </motion.div>
+                    )
+                  })}
+                </div>
+              </Card>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
       {/* Final CTA */}
-      <section id="try-it" className="py-24 px-4 bg-gradient-to-b from-[#151A23] to-[#0E1117]">
+      <section id="try-it" className="py-32 px-4 bg-[#121826]">
         <div className="max-w-3xl mx-auto text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -330,7 +350,7 @@ export default function LandingPage() {
             <h2 className="text-4xl md:text-5xl font-bold text-[#E5E7EB] mb-6">
               Ready to speak with confidence?
             </h2>
-            <p className="text-xl text-[#9CA3AF] mb-10 max-w-2xl mx-auto">
+            <p className="text-xl text-[#9CA3AF] mb-12 max-w-2xl mx-auto leading-relaxed">
               Stop wondering if your pitch hits. Record once, get instant feedback, and walk into your next presentation knowing you're ready.
             </p>
             <motion.div
@@ -348,37 +368,37 @@ export default function LandingPage() {
                 Start Recording
               </Button>
             </motion.div>
-            <p className="text-sm text-[#6B7280] mt-4">Free for up to 2 minutes • No sign-up required</p>
+            <p className="text-sm text-[#64748B] mt-6">Free for up to 2 minutes • No sign-up required</p>
           </motion.div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-[#151A23] border-t border-[#22283A] text-[#9CA3AF] py-12 px-4">
+      <footer className="bg-[#0B0E14] border-t border-[#181F2F] text-[#9CA3AF] py-12 px-4">
         <div className="max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="mb-4 md:mb-0">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 bg-[#D97706] rounded-lg flex items-center justify-center">
-                  <span className="text-[#0E1117] font-bold text-lg">P</span>
+                <div className="w-8 h-8 bg-[#F59E0B] rounded-lg flex items-center justify-center">
+                  <span className="text-[#0B0E14] font-bold text-lg">P</span>
                 </div>
                 <span className="font-bold text-[#E5E7EB] text-lg">PitchPractice</span>
               </div>
-              <p className="text-sm text-[#9CA3AF]">Practice your pitch. Get precise feedback.</p>
+              <p className="text-sm text-[#64748B]">Practice your pitch. Get precise feedback.</p>
             </div>
             <div className="flex flex-wrap gap-6 text-sm">
-              <Link href="/app" className="hover:text-[#D97706] transition-colors">
+              <Link href="/app" className="hover:text-[#F59E0B] transition-colors">
                 Try Free
               </Link>
-              <Link href="/example" className="hover:text-[#D97706] transition-colors">
+              <Link href="/example" className="hover:text-[#F59E0B] transition-colors">
                 Example
               </Link>
-              <Link href="/#try-it" className="hover:text-[#D97706] transition-colors">
+              <Link href="/#try-it" className="hover:text-[#F59E0B] transition-colors">
                 How it Works
               </Link>
             </div>
           </div>
-          <div className="mt-8 pt-8 border-t border-[#22283A] text-center text-sm text-[#9CA3AF]">
+          <div className="mt-8 pt-8 border-t border-[#181F2F] text-center text-sm text-[#64748B]">
             © {new Date().getFullYear()} PitchPractice. All rights reserved.
           </div>
         </div>

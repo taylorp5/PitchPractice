@@ -595,14 +595,10 @@ export default function RunPage() {
           {/* Transcript Section */}
           <div className="mb-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-3">Transcript</h2>
-            {run.transcript && run.transcript.trim().length > 0 ? (
-              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <pre className="text-gray-700 whitespace-pre-wrap font-sans text-sm">{run.transcript}</pre>
-              </div>
+            {run?.transcript ? (
+              <pre className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-gray-700 whitespace-pre-wrap font-sans text-sm">{run.transcript}</pre>
             ) : (
-              <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-                <p className="text-yellow-800 text-sm">No transcript yet.</p>
-              </div>
+              <p className="p-4 bg-yellow-50 rounded-lg border border-yellow-200 text-yellow-800 text-sm">No transcript yet</p>
             )}
           </div>
 

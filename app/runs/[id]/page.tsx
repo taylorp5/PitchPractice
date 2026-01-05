@@ -62,6 +62,7 @@ export default function RunPage() {
   const [lastTranscribeResponse, setLastTranscribeResponse] = useState<any>(null)
   const [lastTranscript, setLastTranscript] = useState<string | null>(null)
   const [lastGetResponse, setLastGetResponse] = useState<any>(null)
+  const [lastAction, setLastAction] = useState<string | null>(null)
 
   const fetchRun = async () => {
     if (!routeRunId) return

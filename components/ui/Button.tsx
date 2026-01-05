@@ -21,12 +21,12 @@ export function Button({
   href,
   ...props
 }: ButtonProps) {
-  const baseClasses = 'font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center'
+  const baseClasses = 'font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0E1117] disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center'
   
   const variantClasses = {
-    primary: 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-md hover:shadow-lg focus:ring-blue-500',
-    secondary: 'bg-gray-100 hover:bg-gray-200 text-gray-900 shadow-sm hover:shadow focus:ring-gray-500',
-    ghost: 'bg-transparent hover:bg-gray-100 text-gray-700 focus:ring-gray-500',
+    primary: 'bg-[#F97316] hover:bg-[#FB923C] text-[#0E1117] shadow-lg shadow-[#F97316]/20 hover:shadow-[#FB923C]/30 focus:ring-[#F97316]',
+    secondary: 'bg-[#151A23] hover:bg-[#1A202C] border border-[#F97316] text-[#F97316] hover:text-[#FB923C] focus:ring-[#F97316]',
+    ghost: 'bg-transparent hover:bg-[#151A23] text-[#E5E7EB] hover:text-[#F97316] focus:ring-[#F97316]',
     danger: 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white shadow-md hover:shadow-lg focus:ring-red-500',
   }
   
@@ -70,4 +70,3 @@ export function Button({
     </button>
   )
 }
-

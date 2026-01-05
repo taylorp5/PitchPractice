@@ -8,17 +8,17 @@ export function Navbar() {
   const pathname = usePathname()
 
   return (
-    <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm">
+    <nav className="sticky top-0 z-50 bg-[#0E1117]/80 backdrop-blur-md border-b border-[#22283A] shadow-lg shadow-black/20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow">
-              <span className="text-white font-bold text-lg">P</span>
+            <div className="w-8 h-8 bg-[#F97316] rounded-lg flex items-center justify-center shadow-md shadow-[#F97316]/30 group-hover:shadow-lg group-hover:shadow-[#F97316]/40 transition-shadow">
+              <span className="text-[#0E1117] font-bold text-lg">P</span>
             </div>
             <div>
-              <div className="font-bold text-gray-900 text-lg">PitchPractice</div>
-              <div className="text-xs text-gray-500 -mt-0.5">Practice your pitch. Get precise feedback.</div>
+              <div className="font-bold text-[#E5E7EB] text-lg">PitchPractice</div>
+              <div className="text-xs text-[#9CA3AF] -mt-0.5">Practice your pitch. Get precise feedback.</div>
             </div>
           </Link>
 
@@ -26,19 +26,19 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-8">
             <Link 
               href="/#try-it" 
-              className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              className="text-sm font-medium text-[#9CA3AF] hover:text-[#F97316] transition-colors"
             >
               How it Works
             </Link>
             <Link 
               href="/example" 
-              className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              className="text-sm font-medium text-[#9CA3AF] hover:text-[#F97316] transition-colors"
             >
               Example
             </Link>
             <Link 
               href="/app" 
-              className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
+              className="text-sm font-medium text-[#9CA3AF] hover:text-[#F97316] transition-colors"
             >
               Try Free
             </Link>
@@ -65,4 +65,3 @@ export function Navbar() {
     </nav>
   )
 }
-

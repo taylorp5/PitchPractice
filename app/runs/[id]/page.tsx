@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { StatPill } from '@/components/ui/StatPill'
 import { Copy, Check, ArrowLeft, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Mic, FileText } from 'lucide-react'
 
 // Helper function to log fetch errors with full details
@@ -337,7 +338,7 @@ export default function RunPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center py-20 bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
+      <div className="min-h-screen flex items-center justify-center py-20 bg-[#0E1117]">
         <LoadingSpinner size="lg" text="Loading pitch run..." />
       </div>
     )
@@ -345,10 +346,10 @@ export default function RunPage() {
 
   if (error || !run) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-[#0E1117]">
         <Card className="max-w-2xl w-full text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Error</h1>
-          <p className="text-gray-600 mb-6">{error || 'Run not found'}</p>
+          <h1 className="text-2xl font-bold text-[#E5E7EB] mb-4">Error</h1>
+          <p className="text-[#9CA3AF] mb-6">{error || 'Run not found'}</p>
           <Link href="/app">
             <Button variant="primary">
               Back to Home
@@ -362,7 +363,7 @@ export default function RunPage() {
   const transcript = run.transcript ?? lastTranscript ?? ""
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 py-8 px-4">
+    <div className="min-h-screen bg-[#0E1117] py-8 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Error Messages */}
         <AnimatePresence>
@@ -372,13 +373,13 @@ export default function RunPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg"
+              className="mb-6 p-4 bg-red-500/20 border-2 border-red-500/50 rounded-lg"
             >
               <div className="flex items-start gap-2">
-                <span className="text-red-600 text-xl">⚠️</span>
+                <span className="text-red-400 text-xl">⚠️</span>
                 <div className="flex-1">
-                  <strong className="text-red-800 text-lg block mb-1">Error</strong>
-                  <p className="text-red-700">{run.error_message}</p>
+                  <strong className="text-red-400 text-lg block mb-1">Error</strong>
+                  <p className="text-red-300">{run.error_message}</p>
                 </div>
               </div>
             </motion.div>
@@ -390,13 +391,13 @@ export default function RunPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="mb-6 p-4 bg-red-50 border-2 border-red-400 rounded-lg"
+              className="mb-6 p-4 bg-red-500/20 border-2 border-red-500/50 rounded-lg"
             >
               <div className="flex items-start gap-2">
-                <span className="text-red-600 text-xl">⚠️</span>
+                <span className="text-red-400 text-xl">⚠️</span>
                 <div className="flex-1">
-                  <strong className="text-red-800 text-lg block mb-1">Transcription Failed</strong>
-                  <p className="text-red-700">{lastTranscribeResponse.message}</p>
+                  <strong className="text-red-400 text-lg block mb-1">Transcription Failed</strong>
+                  <p className="text-red-300">{lastTranscribeResponse.message}</p>
                 </div>
               </div>
             </motion.div>
@@ -408,9 +409,9 @@ export default function RunPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
-              className="mb-6 p-3 bg-green-50 border border-green-200 rounded-lg"
+              className="mb-6 p-3 bg-green-500/20 border border-green-500/50 rounded-lg"
             >
-              <p className="text-green-800 text-sm font-medium">{lastAction}</p>
+              <p className="text-green-400 text-sm font-medium">{lastAction}</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -454,8 +455,8 @@ export default function RunPage() {
                         Your browser does not support the audio element.
                       </audio>
                     ) : (
-                      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p className="text-yellow-800 text-sm">
+                      <div className="p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
+                        <p className="text-yellow-400 text-sm">
                           ⚠️ Loading audio URL...
                         </p>
                       </div>
@@ -472,9 +473,9 @@ export default function RunPage() {
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="p-6 bg-gray-50 rounded-lg border border-gray-200"
+                      className="p-6 bg-[#151A23] rounded-lg border border-[#22283A]"
                     >
-                      <pre className="text-gray-700 whitespace-pre-wrap font-sans text-sm leading-relaxed font-normal">
+                      <pre className="text-[#E5E7EB] whitespace-pre-wrap font-sans text-sm leading-relaxed font-normal">
                         {transcript}
                       </pre>
                     </motion.div>
@@ -485,14 +486,14 @@ export default function RunPage() {
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="p-12 bg-gray-50 rounded-lg border border-gray-200 text-center"
+                      className="p-12 bg-[#151A23] rounded-lg border border-[#22283A] text-center"
                     >
                       <div className="max-w-md mx-auto">
-                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4">
-                          <FileText className="h-8 w-8 text-gray-400" />
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#22283A] mb-4">
+                          <FileText className="h-8 w-8 text-[#9CA3AF]" />
                         </div>
-                        <p className="text-gray-600 font-medium mb-2">No transcript yet</p>
-                        <p className="text-sm text-gray-500 mb-6">
+                        <p className="text-[#E5E7EB] font-medium mb-2">No transcript yet</p>
+                        <p className="text-sm text-[#9CA3AF] mb-6">
                           Click "Re-transcribe" in the sidebar to generate a transcript from your audio.
                         </p>
                         <Button
@@ -523,14 +524,14 @@ export default function RunPage() {
                   <div className="space-y-4">
                     {run.analysis_json.line_by_line.map((item: any, idx: number) => {
                       const typeColors = {
-                        praise: 'bg-green-50 border-green-200',
-                        issue: 'bg-red-50 border-red-200',
-                        suggestion: 'bg-blue-50 border-blue-200',
+                        praise: 'bg-green-500/20 border-green-500/50',
+                        issue: 'bg-red-500/20 border-red-500/50',
+                        suggestion: 'bg-[#F97316]/20 border-[#F97316]/50',
                       }
                       const priorityColors = {
-                        high: 'text-red-600',
-                        medium: 'text-amber-600',
-                        low: 'text-gray-600',
+                        high: 'text-red-400',
+                        medium: 'text-[#F97316]',
+                        low: 'text-[#9CA3AF]',
                       }
                       return (
                         <motion.div
@@ -538,21 +539,21 @@ export default function RunPage() {
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ duration: 0.3, delay: idx * 0.05 }}
-                          className={`p-4 rounded-lg border ${typeColors[item.type as keyof typeof typeColors] || 'bg-gray-50 border-gray-200'}`}
+                          className={`p-4 rounded-lg border ${typeColors[item.type as keyof typeof typeColors] || 'bg-[#151A23] border-[#22283A]'}`}
                         >
                           <div className="flex items-start justify-between mb-2">
-                            <blockquote className="text-sm font-medium text-gray-800 italic flex-1">
+                            <blockquote className="text-sm font-medium text-[#E5E7EB] italic flex-1">
                               "{item.quote}"
                             </blockquote>
-                            <span className={`text-xs font-semibold ml-2 ${priorityColors[item.priority as keyof typeof priorityColors] || 'text-gray-600'}`}>
+                            <span className={`text-xs font-semibold ml-2 ${priorityColors[item.priority as keyof typeof priorityColors] || 'text-[#9CA3AF]'}`}>
                               {item.priority?.toUpperCase()}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-700 mb-1">
+                          <p className="text-sm text-[#E5E7EB] mb-1">
                             <strong>Comment:</strong> {item.comment}
                           </p>
                           {item.action && (
-                            <p className="text-sm text-gray-700">
+                            <p className="text-sm text-[#E5E7EB]">
                               <strong>Action:</strong> {item.action}
                             </p>
                           )}
@@ -573,13 +574,13 @@ export default function RunPage() {
               <Card>
                 <button
                   onClick={() => setShowDebug(!showDebug)}
-                  className="flex items-center justify-between w-full text-left hover:bg-gray-50 -m-2 p-2 rounded transition-colors"
+                  className="flex items-center justify-between w-full text-left hover:bg-[#151A23] -m-2 p-2 rounded transition-colors"
                 >
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Debug</h3>
+                  <h3 className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide">Debug</h3>
                   {showDebug ? (
-                    <ChevronUp className="h-4 w-4 text-gray-400" />
+                    <ChevronUp className="h-4 w-4 text-[#9CA3AF]" />
                   ) : (
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                    <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
                   )}
                 </button>
                 <AnimatePresence>
@@ -592,19 +593,19 @@ export default function RunPage() {
                       className="mt-4 space-y-4 overflow-hidden"
                     >
                       <div>
-                        <p className="text-xs font-semibold text-gray-600 mb-2">Raw Run JSON:</p>
-                        <pre className="p-3 bg-gray-100 rounded text-xs overflow-auto max-h-60 font-mono">
+                        <p className="text-xs font-semibold text-[#9CA3AF] mb-2">Raw Run JSON:</p>
+                        <pre className="p-3 bg-[#0E1117] rounded text-xs overflow-auto max-h-60 font-mono text-[#E5E7EB]">
                           {JSON.stringify(run, null, 2)}
                         </pre>
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-gray-600 mb-2">Audio Path:</p>
-                        <p className="text-xs text-gray-700 font-mono break-all">{run.audio_path || 'N/A'}</p>
+                        <p className="text-xs font-semibold text-[#9CA3AF] mb-2">Audio Path:</p>
+                        <p className="text-xs text-[#E5E7EB] font-mono break-all">{run.audio_path || 'N/A'}</p>
                       </div>
                       {lastTranscribeResponse && (
                         <div>
-                          <p className="text-xs font-semibold text-gray-600 mb-2">Last Transcribe Response:</p>
-                          <pre className="p-3 bg-gray-100 rounded text-xs overflow-auto max-h-60 font-mono">
+                          <p className="text-xs font-semibold text-[#9CA3AF] mb-2">Last Transcribe Response:</p>
+                          <pre className="p-3 bg-[#0E1117] rounded text-xs overflow-auto max-h-60 font-mono text-[#E5E7EB]">
                             {JSON.stringify(lastTranscribeResponse, null, 2)}
                           </pre>
                         </div>
@@ -626,15 +627,15 @@ export default function RunPage() {
             >
               <Card>
                 <div className="mb-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Status</h3>
+                  <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Status</h3>
                   <div className="flex items-center gap-2 mb-3">
                     <StatusBadge status={run.status} />
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-[#9CA3AF]">
                     Updated {formatLastUpdated(run.created_at)}
                   </p>
                 </div>
-                <div className="space-y-2 pt-4 border-t border-gray-200">
+                <div className="space-y-2 pt-4 border-t border-[#22283A]">
                   <Button
                     onClick={handleTranscribe}
                     variant="primary"
@@ -676,37 +677,13 @@ export default function RunPage() {
               transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
             >
               <Card>
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Metrics</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                    <span className="text-sm text-gray-600">Duration</span>
-                    <span className="text-sm font-semibold text-gray-900">
-                      {formatDuration(run.audio_seconds)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                    <span className="text-sm text-gray-600">Word Count</span>
-                    <span className="text-sm font-semibold text-gray-900">
-                      {run.word_count !== null && run.word_count !== undefined
-                        ? run.word_count.toLocaleString()
-                        : '—'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b border-gray-200">
-                    <span className="text-sm text-gray-600">WPM</span>
-                    <span className="text-sm font-semibold text-gray-900">
-                      {run.words_per_minute !== null && run.words_per_minute !== undefined
-                        ? `${run.words_per_minute}`
-                        : '—'}
-                    </span>
-                  </div>
+                <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Metrics</h3>
+                <div className="flex flex-wrap gap-3">
+                  <StatPill label="Duration" value={formatDuration(run.audio_seconds)} />
+                  <StatPill label="Word Count" value={run.word_count !== null && run.word_count !== undefined ? run.word_count.toLocaleString() : null} />
+                  <StatPill label="WPM" value={run.words_per_minute !== null && run.words_per_minute !== undefined ? run.words_per_minute : null} />
                   {run.rubrics?.target_duration_seconds && (
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-sm text-gray-600">Target</span>
-                      <span className="text-sm font-semibold text-blue-600">
-                        {formatDuration(run.rubrics.target_duration_seconds)}
-                      </span>
-                    </div>
+                    <StatPill label="Target" value={formatDuration(run.rubrics.target_duration_seconds)} className="border-[#F97316]/50" />
                   )}
                 </div>
               </Card>
@@ -719,7 +696,7 @@ export default function RunPage() {
               transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
             >
               <Card>
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Share</h3>
+                <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Share</h3>
                 <Button
                   onClick={copyShareSummary}
                   variant="primary"
@@ -738,7 +715,7 @@ export default function RunPage() {
                     </>
                   )}
                 </Button>
-                <p className="text-xs text-gray-500 mt-3">
+                <p className="text-xs text-[#9CA3AF] mt-3">
                   Copies a LinkedIn-friendly summary with metrics and key feedback.
                 </p>
               </Card>

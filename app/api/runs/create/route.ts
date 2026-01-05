@@ -78,6 +78,18 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer)
     const fileSizeKB = buffer.length / 1024
     const fileSizeMB = fileSizeKB / 1024
+    
+    // Reject silent/empty recordings
+    if (buffer.length < 8 * 1024) { // Less than 8KB
+      return NextResponse.json(
+        { 
+          error: 'Recording was empty or silent.',
+          details: `File size (${fileSizeKB.toFixed(2)} KB) is too small. Minimum size is 8 KB.`,
+          fix: 'Check microphone permissions and ensure you are speaking during recording.',
+        },
+        { status: 400 }
+      )
+    }
 
     // Determine content type - ensure .webm recordings get correct type
     let contentType = audioFile.type

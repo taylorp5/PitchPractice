@@ -21,9 +21,20 @@ export default function HomePage() {
   const [isRecording, setIsRecording] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
+  const [micLevel, setMicLevel] = useState<number>(0)
+  const [isSilent, setIsSilent] = useState(false)
+  const [isTestingMic, setIsTestingMic] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
+  const silenceStartRef = useRef<number | null>(null)
+  const testAudioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     // Fetch rubrics
@@ -41,11 +52,197 @@ export default function HomePage() {
         console.error('Failed to fetch rubrics:', err)
         setError('Failed to load rubrics')
       })
+
+    // Load saved device ID
+    const savedDeviceId = localStorage.getItem('pitchpractice_selected_device_id')
+    if (savedDeviceId) {
+      setSelectedDeviceId(savedDeviceId)
+    }
+
+    // Enumerate audio devices
+    enumerateAudioDevices()
   }, [])
 
-  const startRecording = async () => {
+  const enumerateAudioDevices = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Request permission first
+      await navigator.mediaDevices.getUserMedia({ audio: true })
+      
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const audioInputs = devices.filter(device => device.kind === 'audioinput')
+      setAudioDevices(audioInputs)
+      
+      // If we have a saved device ID, verify it still exists
+      const savedDeviceId = localStorage.getItem('pitchpractice_selected_device_id')
+      if (savedDeviceId && audioInputs.some(d => d.deviceId === savedDeviceId)) {
+        setSelectedDeviceId(savedDeviceId)
+      } else if (audioInputs.length > 0) {
+        // Use first available device
+        setSelectedDeviceId(audioInputs[0].deviceId)
+        localStorage.setItem('pitchpractice_selected_device_id', audioInputs[0].deviceId)
+      }
+    } catch (err) {
+      console.error('Failed to enumerate devices:', err)
+    }
+  }
+
+  const setupMicLevelMeter = (stream: MediaStream) => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const analyser = audioContext.createAnalyser()
+      const source = audioContext.createMediaStreamSource(stream)
+      
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.8
+      source.connect(analyser)
+      
+      audioContextRef.current = audioContext
+      analyserRef.current = analyser
+      
+      const dataArray = new Uint8Array(analyser.frequencyBinCount)
+      let silenceStartTime: number | null = null
+      
+      const measureLevel = () => {
+        if (!analyserRef.current) return
+        
+        analyserRef.current.getByteTimeDomainData(dataArray)
+        
+        // Calculate RMS (Root Mean Square) for volume level
+        let sum = 0
+        for (let i = 0; i < dataArray.length; i++) {
+          const normalized = (dataArray[i] - 128) / 128
+          sum += normalized * normalized
+        }
+        const rms = Math.sqrt(sum / dataArray.length)
+        
+        setMicLevel(rms)
+        
+        // Check for silence
+        const threshold = 0.01
+        if (rms < threshold) {
+          if (silenceStartTime === null) {
+            silenceStartTime = Date.now()
+            silenceStartRef.current = silenceStartTime
+          } else {
+            const silenceDuration = Date.now() - silenceStartTime
+            if (silenceDuration > 1500) { // 1.5 seconds
+              setIsSilent(true)
+            }
+          }
+        } else {
+          silenceStartTime = null
+          silenceStartRef.current = null
+          setIsSilent(false)
+        }
+        
+        animationFrameRef.current = requestAnimationFrame(measureLevel)
+      }
+      
+      measureLevel()
+    } catch (err) {
+      console.error('Failed to setup mic level meter:', err)
+    }
+  }
+
+  const stopMicLevelMeter = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(console.error)
+      audioContextRef.current = null
+    }
+    analyserRef.current = null
+    silenceStartRef.current = null
+    setIsSilent(false)
+    setMicLevel(0)
+  }
+
+  const testMicrophone = async () => {
+    if (isTestingMic) {
+      // Stop testing
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
+      }
+      if (testAudioRef.current) {
+        testAudioRef.current.srcObject = null
+        testAudioRef.current = null
+      }
+      stopMicLevelMeter()
+      setIsTestingMic(false)
+      return
+    }
+
+    try {
+      setIsTestingMic(true)
+      setError(null)
+      
+      const constraints: MediaStreamConstraints = selectedDeviceId
+        ? { audio: { deviceId: { exact: selectedDeviceId } } }
+        : { audio: true }
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = stream
+      
+      // Log stream details
+      const tracks = stream.getAudioTracks()
+      console.log('[Mic Test] Stream tracks:', tracks.map(track => ({
+        label: track.label,
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState,
+        settings: track.getSettings(),
+      })))
+      
+      // Setup live monitoring
+      if (testAudioRef.current) {
+        testAudioRef.current.srcObject = stream
+      } else {
+        const audio = document.createElement('audio')
+        audio.srcObject = stream
+        audio.autoplay = true
+        audio.controls = false
+        testAudioRef.current = audio
+      }
+      
+      // Setup mic level meter
+      setupMicLevelMeter(stream)
+    } catch (err) {
+      console.error('Error testing microphone:', err)
+      setError('Failed to access microphone. Check permissions.')
+      setIsTestingMic(false)
+    }
+  }
+
+  const startRecording = async () => {
+    if (isSilent) {
+      setError('No microphone input detected. Check permissions or select another input device.')
+      return
+    }
+
+    try {
+      // Request stream with selected device
+      const constraints: MediaStreamConstraints = selectedDeviceId
+        ? { audio: { deviceId: { exact: selectedDeviceId } } }
+        : { audio: true }
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = stream
+      
+      // Log stream details for debugging
+      const tracks = stream.getAudioTracks()
+      console.log('[Recording] Stream tracks:', tracks.map(track => ({
+        label: track.label,
+        enabled: track.enabled,
+        muted: track.muted,
+        readyState: track.readyState,
+        settings: track.getSettings(),
+      })))
+      
+      // Setup mic level meter
+      setupMicLevelMeter(stream)
       
       // Determine best supported mimeType
       let mimeType = 'audio/webm'
@@ -55,28 +252,57 @@ export default function HomePage() {
         mimeType = 'audio/webm'
       }
       
+      console.log('[Recording] Using mimeType:', mimeType)
+      
       const mediaRecorder = new MediaRecorder(stream, { mimeType })
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
+      
+      let chunkSizes: number[] = []
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data)
+          chunkSizes.push(event.data.size)
+          console.log('[Recording] Chunk received:', {
+            size: event.data.size,
+            type: event.data.type,
+            totalChunks: audioChunksRef.current.length,
+          })
         }
       }
 
       mediaRecorder.onstop = () => {
-        const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
+        stopMicLevelMeter()
         
-        // Validate recording is not empty
+        const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
+        const actualMimeType = mediaRecorder.mimeType || mimeType
+        
+        console.log('[Recording] Stopped:', {
+          totalSize,
+          totalSizeKB: (totalSize / 1024).toFixed(2),
+          chunkSizes,
+          mimeType: actualMimeType,
+          blobType: actualMimeType,
+        })
+        
+        // Validate recording is not empty (client-side check)
         if (totalSize < 5 * 1024) { // Less than 5KB
           setError('Recording was empty—check mic permissions.')
           stream.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+          return
+        }
+        
+        // Check if we detected silence
+        if (isSilent) {
+          setError('No microphone input detected. Check permissions or select another input device.')
+          stream.getTracks().forEach(track => track.stop())
+          streamRef.current = null
           return
         }
         
         // Create blob with the actual mimeType used
-        const actualMimeType = mediaRecorder.mimeType || mimeType
         const audioBlob = new Blob(audioChunksRef.current, { 
           type: actualMimeType
         })
@@ -86,13 +312,25 @@ export default function HomePage() {
         
         handleSubmit(audioBlob)
         stream.getTracks().forEach(track => track.stop())
+        streamRef.current = null
       }
+
+      // Check for silence after 1.5 seconds
+      setTimeout(() => {
+        if (isSilent && isRecording) {
+          setError('No microphone input detected. Check permissions or select another input device.')
+          stopRecording()
+        }
+      }, 1500)
 
       mediaRecorder.start()
       setIsRecording(true)
+      setIsSilent(false)
+      silenceStartRef.current = null
     } catch (err) {
       console.error('Error starting recording:', err)
       setError('Failed to start recording. Please check microphone permissions.')
+      stopMicLevelMeter()
     }
   }
 
@@ -100,7 +338,17 @@ export default function HomePage() {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
       setIsRecording(false)
+      stopMicLevelMeter()
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+        streamRef.current = null
+      }
     }
+  }
+  
+  const handleDeviceChange = (deviceId: string) => {
+    setSelectedDeviceId(deviceId)
+    localStorage.setItem('pitchpractice_selected_device_id', deviceId)
   }
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {

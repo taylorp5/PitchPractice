@@ -205,8 +205,8 @@ export default function HomePage() {
         testAudioRef.current = audio
       }
       
-      // Setup mic level meter
-      setupMicLevelMeter(stream)
+      // Setup mic level meter (await to ensure audioContext is resumed)
+      await setupMicLevelMeter(stream)
     } catch (err) {
       console.error('Error testing microphone:', err)
       setError('Failed to access microphone. Check permissions.')

@@ -58,11 +58,10 @@ export async function POST(
       )
     }
 
-    // Check if already transcribed: transcript exists AND is non-empty AND status is 'transcribed' or 'analyzed'
+    // Only block if transcript exists AND is non-empty (regardless of status)
     const hasValidTranscript = run.transcript && run.transcript.trim().length > 0
-    const isTranscribedOrAnalyzed = run.status === 'transcribed' || run.status === 'analyzed'
     
-    if (hasValidTranscript && isTranscribedOrAnalyzed) {
+    if (hasValidTranscript) {
       return NextResponse.json(
         { error: 'Run is already transcribed. Use reset-transcription endpoint to re-transcribe.' },
         { status: 400 }

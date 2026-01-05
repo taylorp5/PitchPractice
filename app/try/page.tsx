@@ -6,7 +6,7 @@ import { getSessionId } from '@/lib/session'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { CheckCircle2, Clock, Scissors, Mic, Upload, Play, Pause, Square } from 'lucide-react'
+import { CheckCircle2, Clock, Scissors, Mic, Upload, Play, Pause, Square, ChevronDown, ChevronUp, AlertCircle, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 const DEBUG = true
@@ -857,7 +857,7 @@ export default function TryPage() {
       
       // Auto-start feedback generation if transcript exists
       if (data.run?.transcript && data.run.transcript.length > 0) {
-        setIsGettingFeedback(true) // UI will show "Generating feedback..."
+        setIsGettingFeedback(true) // UI will show "Evaluating..."
         await getFeedback(runId)
       }
     } catch (err: any) {
@@ -1378,7 +1378,7 @@ export default function TryPage() {
 
                     {isGettingFeedback && (
                       <div className="text-center py-4">
-                        <LoadingSpinner size="md" text="Generating feedback..." />
+                        <LoadingSpinner size="md" text="Evaluating against prompt..." />
                       </div>
                     )}
 
@@ -1396,7 +1396,7 @@ export default function TryPage() {
                         className="w-full"
                         disabled={!selectedRubricId}
                       >
-                        Generate feedback
+                        Get My Evaluation
                       </Button>
                     )}
                   </div>
@@ -1448,7 +1448,7 @@ export default function TryPage() {
                         handleNewTake()
                       }}
                     >
-                      Try again
+                      Re-record to Improve Score
                     </Button>
                   </div>
                 )}
@@ -1534,54 +1534,79 @@ export default function TryPage() {
                   </Card>
                 )}
 
-                {/* Transcript */}
+                {/* Annotated Transcript */}
                 {run.transcript && run.transcript.trim().length > 0 && (
                   <Card className="p-6 bg-[#121826] border-[#22283A]">
-                    <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Transcript</h3>
+                    <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Annotated Transcript</h3>
                     <div className="space-y-2 max-h-96 overflow-y-auto">
                       {run.transcript.split(/\n+/).filter(l => l.trim()).map((line, idx) => {
-                        const highlight = highlights.find((h: { quote: string; type: string }) => {
-                          const quoteLower = h.quote.toLowerCase().trim()
+                        const feedbackData = feedback || run.analysis_json
+                        const lineByLine = feedbackData?.line_by_line || []
+                        
+                        // Find matching line_by_line items for this transcript line
+                        const matchingItems = lineByLine.filter((item: any) => {
+                          const quoteLower = item.quote?.toLowerCase().trim() || ''
                           const lineLower = line.toLowerCase().trim()
                           return lineLower.includes(quoteLower) || quoteLower.includes(lineLower)
                         })
-                        const highlightClasses = {
-                          strength: 'bg-[#22C55E]/20 border-[#22C55E]/30 text-[#22C55E]',
-                          improve: 'bg-[#F97316]/20 border-[#F97316]/30 text-[#F97316]',
-                          cut: 'bg-[#EF4444]/20 border-[#EF4444]/30 text-[#EF4444]',
+                        
+                        // Determine badge label and color based on type
+                        const getBadgeInfo = (item: any) => {
+                          if (item.type === 'praise') {
+                            return {
+                              label: 'Clear value',
+                              color: 'bg-[#22C55E]/20 text-[#22C55E] border-[#22C55E]/30',
+                              icon: CheckCircle2,
+                            }
+                          } else if (item.type === 'issue') {
+                            return {
+                              label: item.priority === 'high' ? 'Missing key point' : 'Needs work',
+                              color: 'bg-[#F97316]/20 text-[#F97316] border-[#F97316]/30',
+                              icon: AlertCircle,
+                            }
+                          } else if (item.type === 'suggestion') {
+                            return {
+                              label: 'Consider cutting',
+                              color: 'bg-[#EF4444]/20 text-[#EF4444] border-[#EF4444]/30',
+                              icon: Scissors,
+                            }
+                          }
+                          return null
                         }
-                        const highlightIcons = {
-                          strength: CheckCircle2,
-                          improve: Clock,
-                          cut: Scissors,
-                        }
-                        const highlightLabels = {
-                          strength: 'Strength',
-                          improve: 'Improve',
-                          cut: 'Cut',
-                        }
-                        const Icon = highlight ? highlightIcons[highlight.type as keyof typeof highlightIcons] : null
+                        
+                        const primaryItem = matchingItems[0]
+                        const badgeInfo = primaryItem ? getBadgeInfo(primaryItem) : null
+                        const BadgeIcon = badgeInfo?.icon
 
                         return (
                           <div
                             key={idx}
-                            className={`p-3 rounded-lg border ${
-                              highlight
-                                ? highlightClasses[highlight.type as keyof typeof highlightClasses]
+                            className={`p-3 rounded-lg border relative group ${
+                              badgeInfo
+                                ? badgeInfo.color
                                 : 'bg-[#0B0F14] border-[#22283A] text-[#E6E8EB]'
                             }`}
                           >
                             <div className="flex items-start gap-2">
                               <span className="flex-1 text-sm">{line}</span>
-                              {highlight && Icon && (
+                              {badgeInfo && BadgeIcon && (
                                 <div className="flex items-center gap-1 flex-shrink-0">
-                                  <Icon className="h-3 w-3" />
-                                  <span className="text-xs font-medium">
-                                    {highlightLabels[highlight.type as keyof typeof highlightLabels]}
+                                  <BadgeIcon className="h-3 w-3" />
+                                  <span className="text-xs font-medium px-1.5 py-0.5 rounded border">
+                                    {badgeInfo.label}
                                   </span>
                                 </div>
                               )}
                             </div>
+                            {/* Tooltip on hover */}
+                            {primaryItem && (
+                              <div className="absolute left-0 right-0 top-full mt-1 p-2 bg-[#0B0F14] border border-[#22283A] rounded-lg text-xs text-[#E6E8EB] opacity-0 group-hover:opacity-100 pointer-events-none z-10 transition-opacity">
+                                <p className="font-medium mb-1">{primaryItem.comment}</p>
+                                {primaryItem.action && (
+                                  <p className="text-[#9AA4B2]">{primaryItem.action}</p>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )
                       })}
@@ -1589,7 +1614,7 @@ export default function TryPage() {
                   </Card>
                 )}
 
-                {/* Feedback Summary */}
+                {/* Your Evaluation - Rubric Breakdown */}
                 {(() => {
                   // Use feedback state if available, otherwise fall back to run.analysis_json
                   const feedbackData = feedback || run.analysis_json
@@ -1599,9 +1624,9 @@ export default function TryPage() {
                     if (run.transcript) {
                       return (
                         <Card className="p-6 bg-[#121826] border-[#22283A]">
-                          <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Feedback</h3>
+                          <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Your Evaluation</h3>
                           <div className="text-center py-8">
-                            <p className="text-sm text-[#9AA4B2] mb-4">Feedback isn't generated yet.</p>
+                            <p className="text-sm text-[#9AA4B2] mb-4">Evaluation isn't generated yet.</p>
                             <Button
                               variant="primary"
                               size="lg"
@@ -1613,7 +1638,7 @@ export default function TryPage() {
                               }}
                               disabled={!selectedRubricId || isGettingFeedback}
                             >
-                              {isGettingFeedback ? 'Generating feedback...' : 'Generate feedback'}
+                              {isGettingFeedback ? 'Evaluating...' : 'Get My Evaluation'}
                             </Button>
                           </div>
                         </Card>
@@ -1622,54 +1647,124 @@ export default function TryPage() {
                     return null
                   }
                   
+                  // Check if transcript is too short
+                  const durationSec = durationMs ? durationMs / 1000 : (run.duration_ms ? run.duration_ms / 1000 : (run.audio_seconds || null))
+                  const selectedPromptData = PROMPTS.find(p => p.id === selectedPrompt)
+                  const isTooShort = durationSec && selectedPromptData && durationSec < 20
+                  
                   return (
-                    <Card className="p-6 bg-[#121826] border-[#22283A]">
-                      <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Feedback Summary</h3>
-                      <div className="space-y-4">
-                        {feedbackData.summary?.top_strengths && feedbackData.summary.top_strengths.length > 0 && (
-                          <div className="p-4 rounded-lg border bg-[#0B0F14] border-[#22C55E]/30">
-                            <div className="flex items-center gap-2 mb-2">
-                              <CheckCircle2 className="h-4 w-4 text-[#22C55E]" />
-                              <h4 className="text-sm font-semibold text-[#22C55E] uppercase tracking-wide">
-                                What's working
-                              </h4>
-                            </div>
-                            <ul className="space-y-1">
-                              {feedbackData.summary.top_strengths.map((strength: string, idx: number) => (
-                                <li key={idx} className="text-sm text-[#E6E8EB]">• {strength}</li>
-                              ))}
-                            </ul>
+                    <>
+                      {/* Warning for short recordings */}
+                      {isTooShort && (
+                        <Card className="p-4 bg-[#F97316]/10 border-[#F97316]/30">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="h-4 w-4 text-[#F97316] flex-shrink-0 mt-0.5" />
+                            <p className="text-sm text-[#F97316]">
+                              This recording is too short to fully evaluate this prompt. Record at least 20 seconds for accurate feedback.
+                            </p>
                           </div>
-                        )}
-
-                        {feedbackData.summary?.top_improvements && feedbackData.summary.top_improvements.length > 0 && (
-                          <div className="p-4 rounded-lg border bg-[#0B0F14] border-[#F97316]/30">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Clock className="h-4 w-4 text-[#F97316]" />
-                              <h4 className="text-sm font-semibold text-[#F97316] uppercase tracking-wide">
-                                What to improve
-                              </h4>
-                            </div>
-                            <ul className="space-y-1">
-                              {feedbackData.summary.top_improvements.map((improvement: string, idx: number) => (
-                                <li key={idx} className="text-sm text-[#E6E8EB]">• {improvement}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {feedbackData.summary?.overall_notes && (
-                          <div className="p-4 rounded-lg border bg-[#0B0F14] border-[#6B7280]/30">
-                            <div className="flex items-center gap-2 mb-2">
-                              <h4 className="text-sm font-semibold text-[#9AA4B2] uppercase tracking-wide">
-                                Suggested focus
-                              </h4>
-                            </div>
-                            <p className="text-sm text-[#E6E8EB]">{feedbackData.summary.overall_notes}</p>
-                          </div>
-                        )}
-                      </div>
-                    </Card>
+                        </Card>
+                      )}
+                      
+                      {/* Rubric Breakdown */}
+                      <Card className="p-6 bg-[#121826] border-[#22283A]">
+                        <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Rubric Breakdown</h3>
+                        <div className="space-y-3">
+                          {feedbackData.rubric_scores && feedbackData.rubric_scores.length > 0 ? (
+                            feedbackData.rubric_scores.map((rubricScore: any, idx: number) => {
+                              const score = rubricScore.score || 0
+                              const maxScore = 10
+                              const scorePercent = (score / maxScore) * 100
+                              
+                              // Determine status
+                              let statusIcon: any = null
+                              let statusColor = ''
+                              if (score >= 7) {
+                                statusIcon = CheckCircle2
+                                statusColor = 'text-[#22C55E]'
+                              } else if (score >= 4) {
+                                statusIcon = AlertCircle
+                                statusColor = 'text-[#F97316]'
+                              } else {
+                                statusIcon = X
+                                statusColor = 'text-[#EF4444]'
+                              }
+                              
+                              const StatusIcon = statusIcon
+                              
+                              return (
+                                <div
+                                  key={idx}
+                                  className="p-4 rounded-lg border bg-[#0B0F14] border-[#22283A]"
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-3 flex-1">
+                                      <StatusIcon className={`h-5 w-5 ${statusColor} flex-shrink-0`} />
+                                      <div className="flex-1">
+                                        <div className="flex items-center justify-between mb-1">
+                                          <span className="text-sm font-medium text-[#E6E8EB]">
+                                            {rubricScore.criterion}
+                                          </span>
+                                          <span className="text-sm font-bold text-[#E6E8EB]">
+                                            {score} / {maxScore}
+                                          </span>
+                                        </div>
+                                        {/* Progress bar */}
+                                        <div className="w-full h-2 bg-[#0B0F14] rounded-full overflow-hidden">
+                                          <div
+                                            className={`h-full transition-all ${
+                                              scorePercent >= 70 ? 'bg-[#22C55E]' :
+                                              scorePercent >= 40 ? 'bg-[#F97316]' :
+                                              'bg-[#EF4444]'
+                                            }`}
+                                            style={{ width: `${scorePercent}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {rubricScore.notes && (
+                                    <div className="mt-2 pt-2 border-t border-[#22283A]">
+                                      <p className="text-sm text-[#E6E8EB]">{rubricScore.notes}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })
+                          ) : (
+                            <p className="text-sm text-[#9AA4B2] text-center py-4">
+                              No rubric scores available
+                            </p>
+                          )}
+                        </div>
+                      </Card>
+                      
+                      {/* Next Attempt Focus */}
+                      {(() => {
+                        // Find the lowest scoring criterion or a key improvement
+                        const rubricScores = feedbackData.rubric_scores || []
+                        const lowestScore = rubricScores.length > 0 
+                          ? rubricScores.reduce((lowest: any, current: any) => 
+                              (current.score < lowest.score) ? current : lowest
+                            )
+                          : null
+                        
+                        const focusMessage = lowestScore 
+                          ? `Focus on ${lowestScore.criterion.toLowerCase()}. ${lowestScore.notes || 'This area needs the most improvement.'}`
+                          : feedbackData.summary?.top_improvements?.[0] 
+                            ? feedbackData.summary.top_improvements[0]
+                            : feedbackData.summary?.overall_notes || 'Review your pitch and try again.'
+                        
+                        return (
+                          <Card className="p-6 bg-gradient-to-br from-[#F59E0B]/20 to-[#F97316]/20 border-[#F59E0B]/50">
+                            <h4 className="text-sm font-semibold text-[#F59E0B] uppercase tracking-wide mb-2">
+                              Next attempt, focus on this
+                            </h4>
+                            <p className="text-sm text-[#E6E8EB]">{focusMessage}</p>
+                          </Card>
+                        )
+                      })()}
+                    </>
                   )
                 })()}
 
@@ -1679,7 +1774,7 @@ export default function TryPage() {
                   onClick={handleNewTake}
                   className="w-full"
                 >
-                  Try again
+                  Re-record to Improve Score
                 </Button>
               </>
             )}

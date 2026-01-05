@@ -12,6 +12,14 @@ export default function LandingPage() {
   const [highlightedLine, setHighlightedLine] = useState<number | null>(null)
   const demoRef = useRef<HTMLDivElement>(null)
   const isInView = useInView(demoRef, { once: true, margin: '-100px' })
+  
+  // New section state
+  const [currentStage, setCurrentStage] = useState<'record' | 'transcript' | 'improve' | null>(null)
+  const [visibleLines, setVisibleLines] = useState<number[]>([])
+  const [showMetrics, setShowMetrics] = useState(false)
+  const [showHighlights, setShowHighlights] = useState<{ type: string; lineIdx: number }[]>([])
+  const howItWorksRef = useRef<HTMLDivElement>(null)
+  const howItWorksInView = useInView(howItWorksRef, { once: true, margin: '-100px' })
 
   const testimonials = [
     { quote: "Helped me realize where I was rambling without noticing.", author: "Jamie, Sales" },
@@ -48,6 +56,16 @@ export default function LandingPage() {
     { text: "Would you like to see a demo?", type: null, delay: 3 },
   ]
 
+  const narrativeTranscript = [
+    { text: "Hi, I'm excited to share our product with you today.", type: null },
+    { text: "We've built something that will revolutionize how teams collaborate.", type: 'strength' },
+    { text: "Let me tell you a story about how we got started.", type: null },
+    { text: "It was a rainy Tuesday in 2019 when our founder had this idea.", type: 'cut' },
+    { text: "So we decided to build a platform that solves this problem.", type: null },
+    { text: "Our solution is simple, powerful, and easy to use.", type: 'pacing' },
+    { text: "Would you like to see a demo?", type: null },
+  ]
+
   useEffect(() => {
     if (isInView && !autoPlayStarted) {
       setAutoPlayStarted(true)
@@ -71,6 +89,40 @@ export default function LandingPage() {
       })
     }
   }, [isInView, autoPlayStarted])
+
+  // New section animation
+  useEffect(() => {
+    if (howItWorksInView && currentStage === null) {
+      // Stage 1: Record - lines appear one by one
+      setCurrentStage('record')
+      narrativeTranscript.forEach((_, idx) => {
+        setTimeout(() => {
+          setVisibleLines(prev => [...prev, idx])
+          if (idx === narrativeTranscript.length - 1) {
+            // Move to transcript stage after 1 second
+            setTimeout(() => {
+              setCurrentStage('transcript')
+              setTimeout(() => {
+                setShowMetrics(true)
+                // Move to improve stage after 1.5 seconds
+                setTimeout(() => {
+                  setCurrentStage('improve')
+                  // Show highlights sequentially
+                  narrativeTranscript.forEach((line, lineIdx) => {
+                    if (line.type) {
+                      setTimeout(() => {
+                        setShowHighlights(prev => [...prev, { type: line.type!, lineIdx }])
+                      }, lineIdx * 400)
+                    }
+                  })
+                }, 1500)
+              }, 500)
+            }, 1000)
+          }
+        }, idx * 300)
+      })
+    }
+  }, [howItWorksInView, currentStage])
 
   return (
     <div className="min-h-screen bg-[#0B0E14]">
@@ -202,72 +254,171 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Typography-led Flow Section */}
-      <section className="py-32 px-4 bg-[#121826]">
-        <div className="max-w-4xl mx-auto">
+      {/* From first take to ready */}
+      <section ref={howItWorksRef} className="py-32 px-4 bg-[#121826]">
+        <div className="max-w-6xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="space-y-16"
+            className="mb-16"
           >
-            <div>
-              <h2 className="text-4xl font-bold text-[#E5E7EB] mb-6">How it works</h2>
+            <h2 className="text-4xl font-bold text-[#E5E7EB] mb-4">From first take to ready</h2>
+            <p className="text-xl text-[#9CA3AF]">See how one practice run turns into clear, actionable feedback.</p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 gap-16 items-start">
+            {/* Left: Animated transcript demo */}
+            <div className="relative">
+              {/* Playhead line */}
+              {currentStage && (
+                <motion.div
+                  className="absolute left-0 top-0 w-0.5 bg-[#F59E0B] opacity-30"
+                  initial={{ height: 0 }}
+                  animate={{
+                    height: currentStage === 'record' ? '40%' : currentStage === 'transcript' ? '70%' : '100%',
+                  }}
+                  transition={{ duration: 0.8, ease: 'easeInOut' }}
+                />
+              )}
+
+              <div className="space-y-3 pl-8">
+                {narrativeTranscript.map((line, idx) => {
+                  const isVisible = visibleLines.includes(idx)
+                  const highlight = showHighlights.find(h => h.lineIdx === idx)
+                  
+                  const highlightClasses = {
+                    strength: 'bg-[#84CC16]/20 border-[#84CC16]/30 text-[#84CC16]',
+                    pacing: 'bg-[#F3B34C]/20 border-[#F3B34C]/30 text-[#F3B34C]',
+                    cut: 'bg-[#FB7185]/20 border-[#FB7185]/30 text-[#FB7185]',
+                  }
+
+                  return (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{
+                        opacity: isVisible ? 1 : 0,
+                        y: isVisible ? 0 : 10,
+                      }}
+                      transition={{ duration: 0.4 }}
+                      className={`p-4 rounded-lg border transition-all ${
+                        highlight
+                          ? highlightClasses[highlight.type as keyof typeof highlightClasses]
+                          : currentStage === 'transcript'
+                          ? 'bg-[#0B0E14] border-[#181F2F] text-[#E5E7EB]'
+                          : 'bg-transparent border-transparent text-[#9CA3AF]'
+                      }`}
+                    >
+                      {line.text}
+                    </motion.div>
+                  )
+                })}
+
+                {/* Metrics */}
+                {showMetrics && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="flex gap-6 pt-4 text-sm text-[#9CA3AF]"
+                  >
+                    <span>487 words</span>
+                    <span>•</span>
+                    <span>3:45</span>
+                  </motion.div>
+                )}
+              </div>
             </div>
 
+            {/* Right: Stage indicators */}
             <div className="space-y-12">
+              {/* Record */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6 }}
-                className="flex items-start gap-6"
+                className="relative"
               >
-                <div className="flex-shrink-0 text-4xl font-bold text-[#64748B]">01</div>
-                <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-[#E5E7EB] mb-3">Record</h3>
-                  <p className="text-lg text-[#9CA3AF] leading-relaxed">
-                    Record your pitch using your microphone or upload an audio file. We support up to 2 minutes for free.
-                  </p>
+                <div className="flex items-start gap-4">
+                  <div className={`flex-shrink-0 w-3 h-3 rounded-full mt-2 transition-all ${
+                    currentStage === 'record' ? 'bg-[#F59E0B]' : 'bg-[#64748B]'
+                  }`} />
+                  <div className="flex-1">
+                    <motion.div
+                      animate={{
+                        color: currentStage === 'record' ? '#F59E0B' : '#64748B',
+                      }}
+                      className="text-sm font-medium mb-2 uppercase tracking-wide"
+                    >
+                      {currentStage === 'record' ? 'Recording your pitch…' : 'Record'}
+                    </motion.div>
+                    <p className="text-lg text-[#9CA3AF] leading-relaxed">
+                      Say it out loud. No scripts. No pressure.
+                    </p>
+                  </div>
                 </div>
-                <ArrowDown className="flex-shrink-0 text-[#64748B] mt-2" />
               </motion.div>
 
+              {/* Transcript */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: 0.1 }}
-                className="flex items-start gap-6"
+                className="relative"
               >
-                <div className="flex-shrink-0 text-4xl font-bold text-[#64748B]">02</div>
-                <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-[#E5E7EB] mb-3">Get Transcript</h3>
-                  <p className="text-lg text-[#9CA3AF] leading-relaxed">
-                    Get an instant, accurate transcript with word count, pacing metrics, and timing analysis.
-                  </p>
+                <div className="flex items-start gap-4">
+                  <div className={`flex-shrink-0 w-3 h-3 rounded-full mt-2 transition-all ${
+                    currentStage === 'transcript' ? 'bg-[#F59E0B]' : 'bg-[#64748B]'
+                  }`} />
+                  <div className="flex-1">
+                    <motion.div
+                      animate={{
+                        color: currentStage === 'transcript' ? '#F59E0B' : '#64748B',
+                      }}
+                      className="text-sm font-medium mb-2 uppercase tracking-wide"
+                    >
+                      {currentStage === 'transcript' ? 'Transcript generated' : 'Transcript'}
+                    </motion.div>
+                    <p className="text-lg text-[#9CA3AF] leading-relaxed">
+                      See exactly what you said — and how long it took.
+                    </p>
+                  </div>
                 </div>
-                <ArrowDown className="flex-shrink-0 text-[#64748B] mt-2" />
               </motion.div>
 
+              {/* Improve */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: 0.2 }}
-                className="flex items-start gap-6"
+                className="relative"
               >
-                <div className="flex-shrink-0 text-4xl font-bold text-[#64748B]">03</div>
-                <div className="flex-1">
-                  <h3 className="text-2xl font-bold text-[#E5E7EB] mb-3">Improve</h3>
-                  <p className="text-lg text-[#9CA3AF] leading-relaxed">
-                    Receive actionable feedback with specific suggestions, pause recommendations, and areas to cut or strengthen.
-                  </p>
+                <div className="flex items-start gap-4">
+                  <div className={`flex-shrink-0 w-3 h-3 rounded-full mt-2 transition-all ${
+                    currentStage === 'improve' ? 'bg-[#F59E0B]' : 'bg-[#64748B]'
+                  }`} />
+                  <div className="flex-1">
+                    <motion.div
+                      animate={{
+                        color: currentStage === 'improve' ? '#F59E0B' : '#64748B',
+                      }}
+                      className="text-sm font-medium mb-2 uppercase tracking-wide"
+                    >
+                      {currentStage === 'improve' ? 'Actionable feedback' : 'Improve'}
+                    </motion.div>
+                    <p className="text-lg text-[#9CA3AF] leading-relaxed">
+                      Clear suggestions on pacing, clarity, and cuts.
+                    </p>
+                  </div>
                 </div>
               </motion.div>
             </div>
-          </motion.div>
+          </div>
         </div>
       </section>
 

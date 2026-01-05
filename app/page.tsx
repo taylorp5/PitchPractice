@@ -463,10 +463,70 @@ export default function HomePage() {
               <h2 className="text-lg font-semibold text-gray-900">Record or Upload Your Pitch</h2>
             </div>
             <div className="ml-11 space-y-3">
+              {/* Microphone Selector */}
+              {audioDevices.length > 0 && (
+                <div>
+                  <label htmlFor="mic-select" className="block text-sm font-medium text-gray-700 mb-1">
+                    Microphone
+                  </label>
+                  <select
+                    id="mic-select"
+                    value={selectedDeviceId}
+                    onChange={(e) => handleDeviceChange(e.target.value)}
+                    disabled={isRecording || isUploading}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {audioDevices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label || `Microphone ${device.deviceId.substring(0, 8)}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Test Mic Button */}
+              <button
+                onClick={testMicrophone}
+                disabled={isRecording || isUploading}
+                className={`w-full px-4 py-2 text-sm rounded-lg font-medium transition-colors ${
+                  isTestingMic
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-gray-500 hover:bg-gray-600 text-white disabled:bg-gray-300 disabled:cursor-not-allowed'
+                }`}
+              >
+                {isTestingMic ? '⏹ Stop Test' : '🎤 Test Mic'}
+              </button>
+
+              {/* Mic Level Meter */}
+              {(isRecording || isTestingMic) && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-4 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-100 ${
+                          micLevel > 0.01 ? 'bg-green-500' : 'bg-red-500'
+                        }`}
+                        style={{ width: `${Math.min(micLevel * 1000, 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-gray-600 w-12 text-right">
+                      {(micLevel * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  {isSilent && (
+                    <p className="text-xs text-red-600 font-medium">
+                      ⚠️ No microphone input detected
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Record/Upload Buttons */}
               <div className="flex gap-3">
                 <button
                   onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isUploading || !selectedRubric}
+                  disabled={isUploading || !selectedRubric || isSilent}
                   className={`flex-1 px-6 py-3 rounded-lg font-medium transition-all ${
                     isRecording
                       ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg'

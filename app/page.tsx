@@ -86,55 +86,53 @@ export default function HomePage() {
     }
   }
 
-  const setupMicLevelMeter = (stream: MediaStream) => {
+  const setupMicLevelMeter = async (stream: MediaStream) => {
     try {
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      
+      // Resume audio context on user gesture (required for some browsers)
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume()
+      }
+      
       const analyser = audioContext.createAnalyser()
       const source = audioContext.createMediaStreamSource(stream)
       
-      analyser.fftSize = 256
-      analyser.smoothingTimeConstant = 0.8
+      // Configure analyser for better accuracy
+      analyser.fftSize = 2048
+      analyser.smoothingTimeConstant = 0.2
       source.connect(analyser)
       
       audioContextRef.current = audioContext
       analyserRef.current = analyser
       
-      const dataArray = new Uint8Array(analyser.frequencyBinCount)
-      let silenceStartTime: number | null = null
+      // Use Float32Array for time-domain data
+      const bufferLength = analyser.frequencyBinCount
+      const dataArray = new Float32Array(bufferLength)
       
       const measureLevel = () => {
         if (!analyserRef.current) return
         
-        analyserRef.current.getByteTimeDomainData(dataArray)
+        // Get float time-domain data
+        analyserRef.current.getFloatTimeDomainData(dataArray)
         
-        // Calculate RMS (Root Mean Square) for volume level
+        // Calculate RMS (Root Mean Square) from float samples
         let sum = 0
         for (let i = 0; i < dataArray.length; i++) {
-          const normalized = (dataArray[i] - 128) / 128
-          sum += normalized * normalized
+          const sample = dataArray[i]
+          sum += sample * sample
         }
         const rms = Math.sqrt(sum / dataArray.length)
         
-        setMicLevel(rms)
+        // Normalize RMS to 0..1 UI value with curve
+        const normalizedLevel = Math.min(1, rms * 12)
         
-        // Check for silence
-        const threshold = 0.01
-        if (rms < threshold) {
-          if (silenceStartTime === null) {
-            silenceStartTime = Date.now()
-            silenceStartRef.current = silenceStartTime
-          } else {
-            const silenceDuration = Date.now() - silenceStartTime
-            if (silenceDuration > 1500) { // 1.5 seconds
-              setIsSilent(true)
-            }
-          }
-        } else {
-          silenceStartTime = null
-          silenceStartRef.current = null
-          setIsSilent(false)
-        }
+        setMicLevel(normalizedLevel)
         
+        // Store raw RMS for debugging
+        ;(window as any).__micRawRMS = rms
+        
+        // Update at ~30fps (requestAnimationFrame runs at ~60fps, so we can throttle if needed)
         animationFrameRef.current = requestAnimationFrame(measureLevel)
       }
       
@@ -233,13 +231,17 @@ export default function HomePage() {
       
       // Log stream details for debugging
       const tracks = stream.getAudioTracks()
-      console.log('[Recording] Stream tracks:', tracks.map(track => ({
+      const trackInfo = tracks.map(track => ({
         label: track.label,
         enabled: track.enabled,
         muted: track.muted,
         readyState: track.readyState,
         settings: track.getSettings(),
-      })))
+      }))
+      console.log('[Recording] Stream tracks:', trackInfo)
+      
+      // Store track info for debug display
+      ;(window as any).__currentTrackInfo = trackInfo
       
       // Setup mic level meter
       setupMicLevelMeter(stream)
@@ -294,13 +296,7 @@ export default function HomePage() {
           return
         }
         
-        // Check if we detected silence
-        if (isSilent) {
-          setError('No microphone input detected. Check permissions or select another input device.')
-          stream.getTracks().forEach(track => track.stop())
-          streamRef.current = null
-          return
-        }
+        // Note: Not blocking recording based on meter for now - just making it accurate
         
         // Create blob with the actual mimeType used
         const audioBlob = new Blob(audioChunksRef.current, { 
@@ -507,13 +503,33 @@ export default function HomePage() {
                         className={`h-full transition-all duration-100 ${
                           micLevel > 0.01 ? 'bg-green-500' : 'bg-red-500'
                         }`}
-                        style={{ width: `${Math.min(micLevel * 1000, 100)}%` }}
+                        style={{ width: `${Math.min(micLevel * 100, 100)}%` }}
                       />
                     </div>
-                    <span className="text-xs text-gray-600 w-12 text-right">
+                    <span className="text-xs text-gray-600 w-16 text-right">
                       {(micLevel * 100).toFixed(1)}%
                     </span>
                   </div>
+                  
+                  {/* Debug Info */}
+                  <div className="text-xs text-gray-500 space-y-0.5">
+                    {selectedDeviceId && audioDevices.find(d => d.deviceId === selectedDeviceId) && (
+                      <div>Device: {audioDevices.find(d => d.deviceId === selectedDeviceId)?.label || 'Unknown'}</div>
+                    )}
+                    {(window as any).__currentTrackInfo && (window as any).__currentTrackInfo[0] && (
+                      <>
+                        <div>
+                          Enabled: {(window as any).__currentTrackInfo[0].enabled ? '✓' : '✗'} | 
+                          Muted: {(window as any).__currentTrackInfo[0].muted ? '✓' : '✗'} | 
+                          State: {(window as any).__currentTrackInfo[0].readyState}
+                        </div>
+                      </>
+                    )}
+                    {(window as any).__micRawRMS !== undefined && (
+                      <div>Raw RMS: {(window as any).__micRawRMS.toFixed(4)}</div>
+                    )}
+                  </div>
+                  
                   {isSilent && (
                     <p className="text-xs text-red-600 font-medium">
                       ⚠️ No microphone input detected

@@ -12,7 +12,7 @@ export async function GET(
 
     const { data: run, error } = await getSupabaseAdmin()
       .from('pitch_runs')
-      .select('id, status, audio_path, transcript, analysis_json, error_message, created_at, session_id, title, audio_seconds, word_count, words_per_minute, rubric_id, rubrics(*)')
+      .select('id, status, audio_path, transcript, analysis_json, error_message, created_at, session_id, title, audio_seconds, duration_ms, word_count, words_per_minute, rubric_id, rubrics(*)')
       .eq('id', id)
       .single()
 

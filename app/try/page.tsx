@@ -41,6 +41,16 @@ interface Run {
   words_per_minute: number | null
 }
 
+interface Feedback {
+  summary?: {
+    overall_score?: number
+    overall_notes?: string
+    top_strengths?: string[]
+    top_improvements?: string[]
+  }
+  [key: string]: any
+}
+
 const PROMPTS = [
   {
     id: 'elevator',
@@ -103,6 +113,8 @@ export default function TryPage() {
   const [isSilent, setIsSilent] = useState(false)
   const [hasMicPermission, setHasMicPermission] = useState(false)
   const [lastError, setLastError] = useState<any>(null)
+  const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [lastFeedbackResponse, setLastFeedbackResponse] = useState<any>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -337,8 +349,8 @@ export default function TryPage() {
 
   // Calculate WPM from transcript and duration
   const calculateWPM = (transcript: string | null, durationSeconds: number | null): number | null => {
-    if (!transcript || !durationSeconds || durationSeconds < 3) {
-      return null // Too short to estimate
+    if (!transcript || !durationSeconds || durationSeconds < 5) {
+      return null // Too short to estimate (minimum 5 seconds)
     }
     const words = transcript.trim().split(/\s+/).filter(w => w.length > 0).length
     const wpm = Math.round(words / (durationSeconds / 60))
@@ -765,6 +777,11 @@ export default function TryPage() {
         })
       }
 
+      // Ensure duration_ms is set in run data if we have it
+      if (uploadDurationMs !== null && uploadDurationMs > 0) {
+        runData.duration_ms = uploadDurationMs
+      }
+      
       setRun({ ...runData, audio_url: null })
       setIsUploading(false)
       
@@ -864,8 +881,28 @@ export default function TryPage() {
         }),
       })
 
+      // Capture full response
+      const responseText = await response.text()
+      let responseData: any = null
+      
+      try {
+        responseData = JSON.parse(responseText)
+      } catch (e) {
+        if (DEBUG) {
+          console.warn('[Try] Could not parse feedback response as JSON:', responseText.substring(0, 200))
+        }
+      }
+
+      setLastFeedbackResponse({
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        data: responseData,
+        responseText: responseText.substring(0, 1000),
+      })
+
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = responseData || {}
         
         if (DEBUG) {
           console.error('[Try] Feedback generation failed:', {
@@ -883,10 +920,37 @@ export default function TryPage() {
         throw new Error(`${errorMsg}${details}${fieldsChecked}`)
       }
 
-      if (DEBUG) {
-        console.log('[Try] Feedback generation complete:', { runId })
+      // Store feedback immediately from response
+      if (responseData?.ok && responseData?.analysis) {
+        setFeedback(responseData.analysis)
+        if (DEBUG) {
+          console.log('[Try] Feedback stored from response:', {
+            runId,
+            hasSummary: !!responseData.analysis.summary,
+            hasRubricScores: !!responseData.analysis.rubric_scores,
+          })
+        }
+      } else if (responseData?.ok && responseData?.run?.analysis_json) {
+        setFeedback(responseData.run.analysis_json)
+        if (DEBUG) {
+          console.log('[Try] Feedback stored from run.analysis_json:', {
+            runId,
+            hasSummary: !!responseData.run.analysis_json.summary,
+          })
+        }
+      } else {
+        if (DEBUG) {
+          console.warn('[Try] Feedback response missing analysis data:', {
+            runId,
+            responseData,
+            hasAnalysis: !!responseData?.analysis,
+            hasRunAnalysisJson: !!responseData?.run?.analysis_json,
+          })
+        }
+        throw new Error('Feedback generation succeeded but no feedback data in response')
       }
 
+      // Refetch run to confirm persistence
       await fetchRun(runId)
       setIsGettingFeedback(false)
     } catch (err: any) {
@@ -917,6 +981,14 @@ export default function TryPage() {
       if (data.ok && data.run) {
         setRun(data.run)
         setAudioUrl(data.run.audio_url)
+        
+        // Update feedback from DB if present
+        if (data.run.analysis_json) {
+          setFeedback(data.run.analysis_json)
+        } else {
+          // Clear feedback if run doesn't have it
+          setFeedback(null)
+        }
       }
     } catch (err: any) {
       console.error('[Try] Failed to fetch run:', err)
@@ -988,8 +1060,9 @@ export default function TryPage() {
 
   // Parse transcript for highlights (if analysis exists)
   const getTranscriptHighlights = (): Array<{ quote: string; type: 'strength' | 'improve' | 'cut' }> => {
-    if (!run?.analysis_json?.line_by_line) return []
-    return run.analysis_json.line_by_line.map((item: any) => ({
+    const feedbackData = feedback || run?.analysis_json
+    if (!feedbackData?.line_by_line) return []
+    return feedbackData.line_by_line.map((item: any) => ({
       quote: item.quote,
       type: item.type === 'praise' ? 'strength' : item.type === 'issue' ? 'improve' : 'cut',
     }))
@@ -1275,7 +1348,7 @@ export default function TryPage() {
                     )}
 
                     {/* Get feedback button (shown when transcript exists but no feedback yet) */}
-                    {run && run.transcript && !run.analysis_json && !isTranscribing && !isGettingFeedback && (
+                    {run && run.transcript && !feedback && !run.analysis_json && !isTranscribing && !isGettingFeedback && (
                       <Button
                         variant="primary"
                         size="lg"
@@ -1288,7 +1361,7 @@ export default function TryPage() {
                         className="w-full"
                         disabled={!selectedRubricId}
                       >
-                        Get feedback
+                        Generate feedback
                       </Button>
                     )}
                   </div>
@@ -1368,10 +1441,12 @@ export default function TryPage() {
                         <p className="text-xs text-[#6B7280] mb-1">Duration</p>
                         <p className="text-lg font-bold text-[#E6E8EB]">
                           {(() => {
-                            // Use duration_ms as source of truth, fallback to audio_seconds, then state
-                            const durationSec = run.duration_ms 
-                              ? run.duration_ms / 1000 
-                              : (run.audio_seconds || (durationMs ? durationMs / 1000 : null))
+                            // Use duration_ms as source of truth: local state > DB > audio_seconds
+                            const durationSec = durationMs 
+                              ? durationMs / 1000 
+                              : (run.duration_ms 
+                                ? run.duration_ms / 1000 
+                                : (run.audio_seconds || null))
                             return durationSec ? formatTime(durationSec) : '—'
                           })()}
                         </p>
@@ -1387,10 +1462,12 @@ export default function TryPage() {
                         <p className="text-lg font-bold text-[#E6E8EB]">
                           {(() => {
                             // Use duration_ms as source of truth for WPM calculation
-                            const durationSec = run.duration_ms 
-                              ? run.duration_ms / 1000 
-                              : (run.audio_seconds || (durationMs ? durationMs / 1000 : null))
-                            const wpm = run.words_per_minute || calculateWPM(run.transcript, durationSec)
+                            const durationSec = durationMs 
+                              ? durationMs / 1000 
+                              : (run.duration_ms 
+                                ? run.duration_ms / 1000 
+                                : (run.audio_seconds || null))
+                            const wpm = calculateWPM(run.transcript, durationSec)
                             return wpm !== null ? wpm : '—'
                           })()}
                         </p>
@@ -1398,15 +1475,26 @@ export default function TryPage() {
                     </div>
                     {(() => {
                       // Use duration_ms as source of truth for WPM interpretation
-                      const durationSec = run.duration_ms 
-                        ? run.duration_ms / 1000 
-                        : (run.audio_seconds || (durationMs ? durationMs / 1000 : null))
-                      const wpm = run.words_per_minute || calculateWPM(run.transcript, durationSec)
-                      return wpm !== null ? (
-                        <p className="text-xs text-[#9AA4B2] text-center mt-3">
-                          {getWPMInterpretation(wpm)}
-                        </p>
-                      ) : null
+                      const durationSec = durationMs 
+                        ? durationMs / 1000 
+                        : (run.duration_ms 
+                          ? run.duration_ms / 1000 
+                          : (run.audio_seconds || null))
+                      const wpm = calculateWPM(run.transcript, durationSec)
+                      if (wpm !== null) {
+                        return (
+                          <p className="text-xs text-[#9AA4B2] text-center mt-3">
+                            {getWPMInterpretation(wpm)}
+                          </p>
+                        )
+                      } else if (durationSec && durationSec < 5) {
+                        return (
+                          <p className="text-xs text-[#9AA4B2] text-center mt-3">
+                            Record 20–60s for accurate pacing.
+                          </p>
+                        )
+                      }
+                      return null
                     })()}
                   </Card>
                 )}
@@ -1467,44 +1555,88 @@ export default function TryPage() {
                 )}
 
                 {/* Feedback Summary */}
-                {run.analysis_json && (
-                  <Card className="p-6 bg-[#121826] border-[#22283A]">
-                    <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Feedback Summary</h3>
-                    <div className="space-y-4">
-                      {run.analysis_json.summary?.top_strengths && run.analysis_json.summary.top_strengths.length > 0 && (
-                        <div className="p-4 rounded-lg border bg-[#0B0F14] border-[#22C55E]/30">
-                          <div className="flex items-center gap-2 mb-2">
-                            <CheckCircle2 className="h-4 w-4 text-[#22C55E]" />
-                            <h4 className="text-sm font-semibold text-[#22C55E] uppercase tracking-wide">
-                              What's working
-                            </h4>
+                {(() => {
+                  // Use feedback state if available, otherwise fall back to run.analysis_json
+                  const feedbackData = feedback || run.analysis_json
+                  
+                  if (!feedbackData) {
+                    // Show empty state if transcript exists but no feedback
+                    if (run.transcript) {
+                      return (
+                        <Card className="p-6 bg-[#121826] border-[#22283A]">
+                          <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Feedback</h3>
+                          <div className="text-center py-8">
+                            <p className="text-sm text-[#9AA4B2] mb-4">Feedback isn't generated yet.</p>
+                            <Button
+                              variant="primary"
+                              size="lg"
+                              onClick={() => {
+                                if (run.id) {
+                                  setIsGettingFeedback(true)
+                                  getFeedback(run.id)
+                                }
+                              }}
+                              disabled={!selectedRubricId || isGettingFeedback}
+                            >
+                              {isGettingFeedback ? 'Generating feedback...' : 'Generate feedback'}
+                            </Button>
                           </div>
-                          <ul className="space-y-1">
-                            {run.analysis_json.summary.top_strengths.map((strength: string, idx: number) => (
-                              <li key={idx} className="text-sm text-[#E6E8EB]">• {strength}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                        </Card>
+                      )
+                    }
+                    return null
+                  }
+                  
+                  return (
+                    <Card className="p-6 bg-[#121826] border-[#22283A]">
+                      <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Feedback Summary</h3>
+                      <div className="space-y-4">
+                        {feedbackData.summary?.top_strengths && feedbackData.summary.top_strengths.length > 0 && (
+                          <div className="p-4 rounded-lg border bg-[#0B0F14] border-[#22C55E]/30">
+                            <div className="flex items-center gap-2 mb-2">
+                              <CheckCircle2 className="h-4 w-4 text-[#22C55E]" />
+                              <h4 className="text-sm font-semibold text-[#22C55E] uppercase tracking-wide">
+                                What's working
+                              </h4>
+                            </div>
+                            <ul className="space-y-1">
+                              {feedbackData.summary.top_strengths.map((strength: string, idx: number) => (
+                                <li key={idx} className="text-sm text-[#E6E8EB]">• {strength}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
 
-                      {run.analysis_json.summary?.top_improvements && run.analysis_json.summary.top_improvements.length > 0 && (
-                        <div className="p-4 rounded-lg border bg-[#0B0F14] border-[#F97316]/30">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Clock className="h-4 w-4 text-[#F97316]" />
-                            <h4 className="text-sm font-semibold text-[#F97316] uppercase tracking-wide">
-                              What to improve
-                            </h4>
+                        {feedbackData.summary?.top_improvements && feedbackData.summary.top_improvements.length > 0 && (
+                          <div className="p-4 rounded-lg border bg-[#0B0F14] border-[#F97316]/30">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Clock className="h-4 w-4 text-[#F97316]" />
+                              <h4 className="text-sm font-semibold text-[#F97316] uppercase tracking-wide">
+                                What to improve
+                              </h4>
+                            </div>
+                            <ul className="space-y-1">
+                              {feedbackData.summary.top_improvements.map((improvement: string, idx: number) => (
+                                <li key={idx} className="text-sm text-[#E6E8EB]">• {improvement}</li>
+                              ))}
+                            </ul>
                           </div>
-                          <ul className="space-y-1">
-                            {run.analysis_json.summary.top_improvements.map((improvement: string, idx: number) => (
-                              <li key={idx} className="text-sm text-[#E6E8EB]">• {improvement}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                )}
+                        )}
+
+                        {feedbackData.summary?.overall_notes && (
+                          <div className="p-4 rounded-lg border bg-[#0B0F14] border-[#6B7280]/30">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="text-sm font-semibold text-[#9AA4B2] uppercase tracking-wide">
+                                Suggested focus
+                              </h4>
+                            </div>
+                            <p className="text-sm text-[#E6E8EB]">{feedbackData.summary.overall_notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  )
+                })()}
 
                 {/* New take button */}
                 <Button
@@ -1576,6 +1708,25 @@ export default function TryPage() {
                       </div>
                       <pre className="mt-2 p-2 bg-[#0B0F14] rounded text-xs overflow-auto max-h-40 font-mono text-[#E6E8EB]">
                         {JSON.stringify(lastError.fullResponse || lastError, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                  {lastFeedbackResponse && (
+                    <div className="mt-2 pt-2 border-t border-[#22283A]">
+                      <div className="font-semibold text-[#E6E8EB] mb-1">Last Feedback Response:</div>
+                      <div className="text-xs space-y-1">
+                        <div>Status: {lastFeedbackResponse.status} {lastFeedbackResponse.statusText}</div>
+                        <div>OK: {lastFeedbackResponse.ok ? 'yes' : 'no'}</div>
+                        {lastFeedbackResponse.data && (
+                          <>
+                            <div>Has analysis: {lastFeedbackResponse.data.analysis ? 'yes' : 'no'}</div>
+                            <div>Has run.analysis_json: {lastFeedbackResponse.data.run?.analysis_json ? 'yes' : 'no'}</div>
+                            <div>Response keys: {Object.keys(lastFeedbackResponse.data || {}).join(', ')}</div>
+                          </>
+                        )}
+                      </div>
+                      <pre className="mt-2 p-2 bg-[#0B0F14] rounded text-xs overflow-auto max-h-40 font-mono text-[#E6E8EB]">
+                        {JSON.stringify(lastFeedbackResponse.data || lastFeedbackResponse, null, 2)}
                       </pre>
                     </div>
                   )}

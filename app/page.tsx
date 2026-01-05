@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import Link from 'next/link'
-import { ArrowRight, Mic } from 'lucide-react'
+import { ArrowRight, Mic, CheckCircle2, Clock, Scissors } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { useState } from 'react'
@@ -14,6 +14,8 @@ export default function LandingPage() {
   const [visibleTranscriptLines, setVisibleTranscriptLines] = useState<number[]>([])
   const [showMetrics, setShowMetrics] = useState(false)
   const [visibleHighlights, setVisibleHighlights] = useState<{ type: string; lineIdx: number }[]>([])
+  const [hoveredHighlight, setHoveredHighlight] = useState<number | null>(null)
+  const [focusedInsight, setFocusedInsight] = useState<string | null>(null)
 
   const testimonials = [
     { quote: "Helped me realize where I was rambling without noticing.", author: "Jamie, Sales" },
@@ -27,12 +29,28 @@ export default function LandingPage() {
 
   const exampleTranscript = [
     { text: "Hi, I'm excited to share our product with you today.", type: null },
-    { text: "We've built something that will revolutionize how teams collaborate.", type: 'strength' },
+    { text: "We've built something that will revolutionize how teams collaborate.", type: 'strength', insightKey: 'strength' },
     { text: "Let me tell you a story about how we got started.", type: null },
-    { text: "It was a rainy Tuesday in 2019 when our founder had this idea.", type: 'cut' },
+    { text: "It was a rainy Tuesday in 2019 when our founder had this idea.", type: 'cut', insightKey: 'cut' },
     { text: "So we decided to build a platform that solves this problem.", type: null },
-    { text: "Our solution is simple, powerful, and easy to use.", type: 'pacing' },
+    { text: "Our solution is simple, powerful, and easy to use.", type: 'pacing', insightKey: 'pacing' },
   ]
+
+  // Coach-like insights
+  const analysisInsights = {
+    strength: {
+      title: "What's working",
+      text: "Clear value statement early. You explain what you've built within the first 10 seconds, which helps listeners quickly understand your direction.",
+    },
+    pacing: {
+      title: "What to improve",
+      text: "Story comes too early. The personal backstory appears before you establish why the problem matters.",
+    },
+    cut: {
+      title: "Suggested focus",
+      text: "Cut the origin story for now. Removing this section would shorten your pitch by ~15 seconds without losing clarity.",
+    },
+  }
 
   // Handle recording simulation
   const handleStartRecording = () => {
@@ -316,6 +334,9 @@ export default function LandingPage() {
                 <div className="space-y-3 mb-6">
                   {exampleTranscript.map((line, idx) => {
                     const highlight = visibleHighlights.find(h => h.lineIdx === idx)
+                    const isHovered = hoveredHighlight === idx
+                    const insightKey = line.insightKey
+                    const isInsightFocused = focusedInsight === insightKey && insightKey === line.insightKey
                     
                     const highlightClasses = {
                       strength: 'bg-[#84CC16]/20 border-[#84CC16]/30 text-[#84CC16]',
@@ -323,35 +344,159 @@ export default function LandingPage() {
                       cut: 'bg-[#FB7185]/20 border-[#FB7185]/30 text-[#FB7185]',
                     }
 
+                    const highlightIcons = {
+                      strength: CheckCircle2,
+                      pacing: Clock,
+                      cut: Scissors,
+                    }
+
+                    const highlightLabels = {
+                      strength: 'Strength',
+                      pacing: 'Pacing issue',
+                      cut: 'Suggested cut',
+                    }
+
+                    const Icon = highlight ? highlightIcons[highlight.type as keyof typeof highlightIcons] : null
+
                     return (
                       <motion.div
                         key={idx}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.3 }}
-                        className={`p-4 rounded-lg border transition-all ${
+                        onMouseEnter={() => {
+                          if (insightKey) {
+                            setHoveredHighlight(idx)
+                            setFocusedInsight(insightKey)
+                          }
+                        }}
+                        onMouseLeave={() => {
+                          setHoveredHighlight(null)
+                          setFocusedInsight(null)
+                        }}
+                        className={`p-4 rounded-lg border transition-all cursor-pointer ${
                           highlight
-                            ? highlightClasses[highlight.type as keyof typeof highlightClasses]
+                            ? `${highlightClasses[highlight.type as keyof typeof highlightClasses]} ${
+                                isHovered || isInsightFocused ? 'ring-2 ring-offset-2 ring-offset-[#121826]' : ''
+                              }`
                             : 'bg-[#0B0E14] border-[#181F2F] text-[#E5E7EB]'
+                        } ${
+                          isHovered || isInsightFocused ? 'ring-[#F59E0B] shadow-lg shadow-[#F59E0B]/20' : ''
                         }`}
                       >
-                        {line.text}
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1">
+                            {line.text}
+                          </div>
+                          {highlight && Icon && (
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <Icon className="h-4 w-4" />
+                              <span className="text-xs font-medium">
+                                {highlightLabels[highlight.type as keyof typeof highlightLabels]}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </motion.div>
                     )
                   })}
                 </div>
 
-                {/* Metrics */}
+                {/* Metrics with interpretation */}
                 {showMetrics && (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5 }}
-                    className="flex gap-6 justify-center mb-6 text-sm text-[#9CA3AF]"
+                    className="mb-6"
                   >
-                    <span>87 words</span>
-                    <span>•</span>
-                    <span>{formatTime(45)}</span>
+                    <div className="flex gap-6 justify-center mb-2 text-sm text-[#9CA3AF]">
+                      <span>87 words</span>
+                      <span>•</span>
+                      <span>{formatTime(45)}</span>
+                    </div>
+                    <p className="text-sm text-[#9CA3AF] text-center">
+                      This length is solid for an elevator pitch. You could aim for 30–35 seconds for more impact.
+                    </p>
+                  </motion.div>
+                )}
+
+                {/* Analysis Summary Panel */}
+                {walkthroughStep === 'analyzed' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.2 }}
+                    className="mb-6"
+                  >
+                    <Card className="p-6 bg-[#181F2F] border-[#22283A]">
+                      <h4 className="text-lg font-bold text-[#E5E7EB] mb-4">Analysis Summary</h4>
+                      
+                      <div className="space-y-6">
+                        {/* What's working */}
+                        <div
+                          onMouseEnter={() => setFocusedInsight('strength')}
+                          onMouseLeave={() => setFocusedInsight(null)}
+                          className={`p-4 rounded-lg border transition-all ${
+                            focusedInsight === 'strength'
+                              ? 'bg-[#84CC16]/10 border-[#84CC16]/30 ring-2 ring-[#84CC16]/20'
+                              : 'bg-[#0B0E14] border-[#181F2F]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <CheckCircle2 className="h-4 w-4 text-[#84CC16]" />
+                            <h5 className="text-sm font-semibold text-[#84CC16] uppercase tracking-wide">
+                              {analysisInsights.strength.title}
+                            </h5>
+                          </div>
+                          <p className="text-sm text-[#E5E7EB] leading-relaxed">
+                            {analysisInsights.strength.text}
+                          </p>
+                        </div>
+
+                        {/* What to improve */}
+                        <div
+                          onMouseEnter={() => setFocusedInsight('pacing')}
+                          onMouseLeave={() => setFocusedInsight(null)}
+                          className={`p-4 rounded-lg border transition-all ${
+                            focusedInsight === 'pacing'
+                              ? 'bg-[#F3B34C]/10 border-[#F3B34C]/30 ring-2 ring-[#F3B34C]/20'
+                              : 'bg-[#0B0E14] border-[#181F2F]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <Clock className="h-4 w-4 text-[#F3B34C]" />
+                            <h5 className="text-sm font-semibold text-[#F3B34C] uppercase tracking-wide">
+                              {analysisInsights.pacing.title}
+                            </h5>
+                          </div>
+                          <p className="text-sm text-[#E5E7EB] leading-relaxed">
+                            {analysisInsights.pacing.text}
+                          </p>
+                        </div>
+
+                        {/* Suggested focus */}
+                        <div
+                          onMouseEnter={() => setFocusedInsight('cut')}
+                          onMouseLeave={() => setFocusedInsight(null)}
+                          className={`p-4 rounded-lg border transition-all ${
+                            focusedInsight === 'cut'
+                              ? 'bg-[#FB7185]/10 border-[#FB7185]/30 ring-2 ring-[#FB7185]/20'
+                              : 'bg-[#0B0E14] border-[#181F2F]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <Scissors className="h-4 w-4 text-[#FB7185]" />
+                            <h5 className="text-sm font-semibold text-[#FB7185] uppercase tracking-wide">
+                              {analysisInsights.cut.title}
+                            </h5>
+                          </div>
+                          <p className="text-sm text-[#E5E7EB] leading-relaxed">
+                            {analysisInsights.cut.text}
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
                   </motion.div>
                 )}
 

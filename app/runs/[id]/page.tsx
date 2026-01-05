@@ -121,6 +121,7 @@ export default function RunPage() {
 
   useEffect(() => {
     fetchRun()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeRunId])
 
   // Auto-start transcription if status is 'uploaded' and no transcript exists
@@ -529,12 +530,17 @@ export default function RunPage() {
               </details>
               
               {/* Raw Run JSON Panel (dev-only) */}
-              {process.env.NODE_ENV === 'development' && (
+              {process.env.NODE_ENV === 'development' && run && (
                 <details className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded">
                   <summary className="cursor-pointer font-semibold text-purple-800 mb-2">Raw Run JSON</summary>
-                  <pre className="mt-2 p-3 bg-white border border-purple-200 rounded text-xs overflow-auto max-h-60 font-mono">
-                    {JSON.stringify(run, null, 2)}
-                  </pre>
+                  <div className="mt-2 space-y-2">
+                    <div className="p-2 bg-purple-100 rounded text-xs">
+                      <strong>transcriptPreview:</strong> {run.transcript?.slice(0, 200) ?? 'null'}
+                    </div>
+                    <pre className="p-3 bg-white border border-purple-200 rounded text-xs overflow-auto max-h-60 font-mono">
+                      {JSON.stringify(run, null, 2)}
+                    </pre>
+                  </div>
                 </details>
               )}
               

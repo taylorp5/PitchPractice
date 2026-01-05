@@ -25,12 +25,6 @@ export function Navbar() {
           {/* Navigation Links - Hidden on mobile, shown on desktop */}
           <div className="hidden md:flex items-center gap-8">
             <Link 
-              href="/#from-first-take" 
-              className="text-sm font-medium text-[#9CA3AF] hover:text-[#F59E0B] transition-colors"
-            >
-              How it Works
-            </Link>
-            <Link 
               href="/app" 
               className="text-sm font-medium text-[#9CA3AF] hover:text-[#F59E0B] transition-colors"
             >

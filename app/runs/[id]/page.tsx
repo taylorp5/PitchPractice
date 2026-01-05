@@ -110,7 +110,8 @@ export default function RunPage() {
   // Auto-start transcription if status is 'uploaded' and no transcript exists
   useEffect(() => {
     if (run && run.status === 'uploaded' && !run.transcript && !isTranscribing) {
-      handleTranscribe()
+      // Use force=1 for auto-transcribe to bypass any guards
+      handleTranscribe(true)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run?.status, run?.transcript, runId])
@@ -145,6 +146,12 @@ export default function RunPage() {
         const errorMsg = responseData.error || responseData.message || 'Transcription failed'
         const details = responseData.details ? `: ${responseData.details}` : ''
         const statusCode = responseData.statusCode ? ` (Status: ${responseData.statusCode})` : ''
+        
+        // If error is about already transcribed and we didn't use force, suggest force option
+        if (errorMsg.includes('already transcribed') && !force) {
+          throw new Error(`${errorMsg}${details}${statusCode}\n\n💡 Tip: Use "Force Transcribe" button to re-transcribe.`)
+        }
+        
         throw new Error(`${errorMsg}${details}${statusCode}`)
       }
 

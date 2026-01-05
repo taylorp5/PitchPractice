@@ -243,8 +243,8 @@ export default function HomePage() {
       // Store track info for debug display
       ;(window as any).__currentTrackInfo = trackInfo
       
-      // Setup mic level meter
-      setupMicLevelMeter(stream)
+      // Setup mic level meter (await to ensure audioContext is resumed)
+      await setupMicLevelMeter(stream)
       
       // Determine best supported mimeType
       let mimeType = 'audio/webm'

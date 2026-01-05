@@ -1469,7 +1469,7 @@ export default function TryPage() {
             ) : (
               <>
                 {/* Metrics */}
-                {run.transcript && (
+                {run.transcript && run.transcript.trim().length > 0 && (
                   <Card className="p-4 bg-[#121826] border-[#22283A]">
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div>
@@ -1535,7 +1535,7 @@ export default function TryPage() {
                 )}
 
                 {/* Transcript */}
-                {run.transcript && (
+                {run.transcript && run.transcript.trim().length > 0 && (
                   <Card className="p-6 bg-[#121826] border-[#22283A]">
                     <h3 className="text-lg font-bold text-[#E6E8EB] mb-4">Transcript</h3>
                     <div className="space-y-2 max-h-96 overflow-y-auto">
@@ -1706,9 +1706,9 @@ export default function TryPage() {
                     <div>{isTranscribing ? 'yes' : 'no'}</div>
                     <div>Is Getting Feedback:</div>
                     <div>{isGettingFeedback ? 'yes' : 'no'}</div>
-                    <div>Duration (ms):</div>
-                    <div>{durationMs !== null ? durationMs : (run && run.duration_ms !== null) ? run.duration_ms : '—'}</div>
-                    <div>Duration (DB):</div>
+                    <div>Duration (ms) Local:</div>
+                    <div>{durationMs !== null ? `${durationMs}ms (${(durationMs / 1000).toFixed(2)}s)` : '—'}</div>
+                    <div>Duration (ms) DB:</div>
                     <div>{(run && run.duration_ms !== null) ? `${run.duration_ms}ms (${(run.duration_ms / 1000).toFixed(2)}s)` : '—'}</div>
                     <div>Words (computed):</div>
                     <div>{run?.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : '—'}</div>

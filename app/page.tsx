@@ -120,7 +120,7 @@ export default function LandingPage() {
             transition={{ duration: 0.8 }}
           >
             <h1 className="text-6xl md:text-7xl lg:text-8xl xl:text-9xl font-bold mb-10 md:mb-12 leading-[1.1] tracking-tight" style={{ color: colors.text.primary }}>
-              <span className="block mb-3">Practice once.</span>
+              <span className="block mb-3" style={{ color: colors.accent.primary }}>Practice once.</span>
               <span className="block">Perform better everywhere.</span>
             </h1>
             <p className="text-xl md:text-2xl lg:text-3xl mb-16 md:mb-20 max-w-3xl mx-auto leading-relaxed font-normal" style={{ color: colors.text.secondary }}>
@@ -139,7 +139,7 @@ export default function LandingPage() {
                   href="/try"
                   className="shadow-md shadow-[#F59E0B]/15 hover:shadow-lg hover:shadow-[#F59E0B]/25 transition-all"
                 >
-                  Start practicing
+                  Try for free
                 </Button>
               </motion.div>
               <motion.div
@@ -153,7 +153,7 @@ export default function LandingPage() {
                   onClick={() => {
                     document.getElementById('interactive-example')?.scrollIntoView({ behavior: 'smooth' })
                   }}
-                  className="border border-[#1E293B] hover:border-[#334155] hover:bg-[#0F172A]/50 transition-all"
+                  className="border border-[#334155] hover:border-[#475569] hover:bg-[#0F172A]/50 transition-all"
                 >
                   See an example
                 </Button>

@@ -60,8 +60,10 @@ export async function POST(
       return NextResponse.json(
         { 
           ok: false,
-          started: false,
-          error: 'Run not found' 
+          transcriptLen: 0,
+          bytesDownloaded: 0,
+          mime: null,
+          message: 'Run not found'
         },
         { status: 404 }
       )

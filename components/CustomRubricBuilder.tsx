@@ -469,6 +469,7 @@ export default function CustomRubricBuilder({ initialData, onSave, onUse, disabl
           <ChevronLeft className="h-4 w-4 text-[#6B7280]" />
         )}
       </button>
+      </div>
     </div>
   )
 }

@@ -98,7 +98,7 @@ export default function RunPage() {
         setRun(runData)
         
         // Use plan from analysis metadata if available, otherwise keep current plan
-        if (runData.analysis_json?.meta?.plan_at_time) {
+        if (runData && runData.analysis_json?.meta?.plan_at_time) {
           const planAtTime = runData.analysis_json.meta.plan_at_time
           setUserPlan(planAtTime === 'daypass' ? 'day_pass' : planAtTime)
         }
@@ -109,7 +109,7 @@ export default function RunPage() {
         setRun(runData)
         
         // Use plan from analysis metadata if available
-        if (runData.analysis_json?.meta?.plan_at_time) {
+        if (runData && runData.analysis_json?.meta?.plan_at_time) {
           const planAtTime = runData.analysis_json.meta.plan_at_time
           setUserPlan(planAtTime === 'daypass' ? 'day_pass' : planAtTime)
         }

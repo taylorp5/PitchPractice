@@ -643,7 +643,14 @@ export default function HomePage() {
   }
 
   // Get plan display name
-  const planDisplayName = userPlan === 'starter' ? 'Starter' : userPlan === 'coach' ? 'Coach' : userPlan === 'daypass' ? 'Day Pass' : 'Free'
+  let planDisplayName = 'Free';
+  if (userPlan === 'starter') {
+    planDisplayName = 'Starter';
+  } else if (userPlan === 'coach') {
+    planDisplayName = 'Coach';
+  } else if (userPlan === 'daypass') {
+    planDisplayName = 'Day Pass';
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0B0F14] to-[#0F172A] py-12 px-4">
@@ -1201,6 +1208,7 @@ export default function HomePage() {
               </Card>
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>

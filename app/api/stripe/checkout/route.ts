@@ -24,6 +24,7 @@ function getPriceId(plan: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  let plan: string | undefined
   try {
     // Validate Stripe configuration
     let stripe: Stripe
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { plan } = body
+    plan = body.plan
 
     // Validate plan
     if (!plan || !['starter', 'coach', 'daypass'].includes(plan)) {
@@ -131,7 +132,8 @@ export async function POST(request: NextRequest) {
         errorMessage = 'Invalid Stripe request'
         // Provide more helpful details based on the error code
         if (error.code === 'resource_missing') {
-          errorDetails = `The price ID "${error.param}" does not exist in Stripe. Please check your STRIPE_PRICE_${plan.toUpperCase()} environment variable.`
+          const planName = plan ? plan.toUpperCase() : 'PLAN'
+          errorDetails = `The price ID "${error.param}" does not exist in Stripe. Please check your STRIPE_PRICE_${planName} environment variable.`
         } else if (error.param) {
           errorDetails = `${error.message} (Parameter: ${error.param})`
         } else {

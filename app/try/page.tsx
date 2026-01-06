@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSessionId } from '@/lib/session'
+import { createClient } from '@/lib/supabase/client-auth'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -141,6 +142,7 @@ export default function TryPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [lastFeedbackResponse, setLastFeedbackResponse] = useState<any>(null)
   const [isDebugExpanded, setIsDebugExpanded] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -181,6 +183,32 @@ export default function TryPage() {
 
     // Enumerate audio devices
     enumerateAudioDevices()
+  }, [])
+
+  // Check authentication status
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        setIsAuthenticated(!!session)
+      } catch (err) {
+        console.error('Failed to check auth:', err)
+        setIsAuthenticated(false)
+      }
+    }
+
+    checkAuth()
+
+    // Listen for auth state changes
+    const supabase = createClient()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session)
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
   }, [])
 
   // Enumerate audio input devices
@@ -1560,16 +1588,22 @@ FEEDBACK SUMMARY
                   >
                     Record
                   </button>
-                  <button
-                    onClick={() => setActiveTab('upload')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === 'upload'
-                        ? 'bg-[#F59E0B] text-[#0B0F14] shadow-sm'
-                        : 'bg-[rgba(255,255,255,0.03)] text-[#9AA4B2] hover:text-[#E6E8EB] border border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.12)]'
-                    }`}
-                  >
-                    Upload
-                  </button>
+                  <div className="relative group">
+                    <button
+                      onClick={() => {}}
+                      disabled={true}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                        activeTab === 'upload'
+                          ? 'bg-[#F59E0B] text-[#0B0F14] shadow-sm'
+                          : 'bg-[rgba(255,255,255,0.03)] text-[#9AA4B2] border border-[rgba(255,255,255,0.08)] opacity-50 cursor-not-allowed'
+                      }`}
+                    >
+                      Upload
+                    </button>
+                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-[#E6E8EB] bg-[#151A23] border border-[rgba(255,255,255,0.12)] rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-10">
+                        Coming soon
+                      </span>
+                  </div>
                 </div>
               </div>
 
@@ -1588,9 +1622,10 @@ FEEDBACK SUMMARY
                           }}
                           className="w-full px-3 py-2 bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] rounded-lg text-[#E6E8EB] text-sm focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30"
                           disabled={isRecording || isTestingMic}
+                          style={{ colorScheme: 'dark' }}
                         >
                           {audioDevices.map((device) => (
-                            <option key={device.deviceId} value={device.deviceId}>
+                            <option key={device.deviceId} value={device.deviceId} className="bg-[#151A23] text-[#E6E8EB]">
                               {device.label || `Device ${device.deviceId.substring(0, 8)}`}
                             </option>
                           ))}
@@ -1916,440 +1951,83 @@ FEEDBACK SUMMARY
                   </Card>
                 )}
 
-                {/* Transcript-First UI */}
-                {run.transcript && run.transcript.trim().length > 0 && (() => {
-                  // Normalize analysis shape
-                  const feedbackData = feedback || run.analysis_json
-                  const lineByLine = feedbackData?.line_by_line || []
+                {/* Deep analysis intentionally hidden on Try Free page. */}
+
+                {/* Empty state if no feedback yet */}
+                {(() => {
+                  const currentRun = run
+                  if (!currentRun) return null
                   
-                  // Create sentence feedback map using line_by_line
-                  const sentences = splitIntoSentences(run.transcript)
-                  const sentenceFeedbackMap = createSentenceFeedbackMap(run.transcript, lineByLine)
-                  const paragraphs = groupSentencesIntoParagraphs(sentences, sentenceFeedbackMap)
+                  const feedbackData = feedback || currentRun.analysis_json
                   
-                  // Sentence span component - use CSS hover instead of hooks
-                  const SentenceSpan = ({ sentence, idx }: { sentence: string; idx: number }) => {
-                    const feedback = sentenceFeedbackMap.get(idx)
-                    const isPinned = pinnedSentenceIdx === idx
-                    const isHighlighted = highlightedCriterion && feedback?.quote && sentence.toLowerCase().includes(highlightedCriterion.toLowerCase())
-                    
-                    const getTypeColor = (type: string) => {
-                      if (type === 'strength') return 'hover:border-[#22C55E]/30 hover:bg-[#D1FAE5]'
-                      if (type === 'issue') return 'hover:border-[#EF4444]/30 hover:bg-[#FEE2E2]'
-                      return 'hover:border-[#9AA4B2]/20 hover:bg-[rgba(255,255,255,0.05)]'
-                    }
-                    
-                    const getPriorityColor = (priority: string) => {
-                      if (priority === 'high') return 'text-[#EF4444]'
-                      if (priority === 'medium') return 'text-[#F97316]'
-                      return 'text-[#9AA4B2]'
-                    }
-                    
+                  if (!feedbackData && currentRun.transcript) {
                     return (
-                      <span
-                        id={`sentence-${idx}`}
-                        className={`group relative inline cursor-pointer transition-all rounded px-1 py-0.5 border border-transparent ${
-                          isHighlighted ? 'bg-[#FEF3C7] border-[#F59E0B]/40 animate-pulse' : getTypeColor(feedback?.type || 'suggestion')
-                        }`}
-                        onClick={() => {
-                          setPinnedSentenceIdx(isPinned ? null : idx)
-                        }}
-                      >
-                        {sentence}
-                        {feedback ? (
-                          <div className={`absolute z-50 mt-2 p-3 bg-[#121826] border border-[rgba(255,255,255,0.12)] rounded-lg shadow-xl min-w-[280px] max-w-[400px] ${
-                            isPinned ? 'block' : 'hidden group-hover:block'
-                          }`}
-                          style={{ left: '50%', transform: 'translateX(-50%)', top: '100%' }}
+                      <Card className="p-10">
+                        <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Your Evaluation</h3>
+                        <div className="text-center py-8">
+                          <p className="text-sm text-[#9AA4B2] mb-4">Evaluation isn't generated yet.</p>
+                          <Button
+                            variant="primary"
+                            size="lg"
+                            onClick={() => {
+                              if (currentRun.id) {
+                                setIsGettingFeedback(true)
+                                getFeedback(currentRun.id)
+                              }
+                            }}
+                            disabled={!selectedRubricId || isGettingFeedback}
                           >
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <span className={`text-xs font-medium px-2 py-1 rounded border bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)] ${
-                                  feedback.type === 'strength' ? 'text-[#22C55E]' :
-                                  feedback.type === 'issue' ? 'text-[#EF4444]' :
-                                  'text-[#F97316]'
-                                }`}>
-                                  {feedback.type === 'strength' ? 'Strength' : feedback.type === 'issue' ? 'Issue' : 'Suggestion'}
-                                </span>
-                                {feedback.priority && (
-                                  <span className={`text-xs font-medium ${getPriorityColor(feedback.priority)}`}>
-                                    {feedback.priority.toUpperCase()}
-                                  </span>
-                                )}
-                              </div>
-                              {feedback.comment && (
-                                <p className="text-sm text-[#E6E8EB]"><strong>Comment:</strong> {feedback.comment}</p>
-                              )}
-                              {feedback.action && (
-                                <p className="text-sm text-[#9AA4B2]"><strong>Action:</strong> {feedback.action}</p>
-                              )}
-                              {isPinned && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setPinnedSentenceIdx(null)
-                                  }}
-                                  className="text-xs text-[#9AA4B2] hover:text-[#E6E8EB]"
-                                >
-                                  Close
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className={`absolute z-50 mt-2 p-3 bg-[#121826] border border-[rgba(255,255,255,0.12)] rounded-lg shadow-xl min-w-[280px] max-w-[400px] ${
-                            isPinned ? 'block' : 'hidden group-hover:block'
-                          }`}
-                          style={{ left: '50%', transform: 'translateX(-50%)', top: '100%' }}
-                          >
-                            <p className="text-sm text-[#9AA4B2]">No coaching for this line.</p>
-                            {isPinned && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setPinnedSentenceIdx(null)
-                                }}
-                                className="text-xs text-[#9AA4B2] hover:text-[#E6E8EB] mt-2"
-                              >
-                                Close
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </span>
+                            {isGettingFeedback ? 'Evaluating...' : 'Get My Evaluation'}
+                          </Button>
+                        </div>
+                      </Card>
                     )
                   }
                   
+                  return null
+                })()}
+
+                {/* CTA Button */}
+                {(() => {
+                  const currentRun = run
+                  if (!currentRun || (!feedback && !currentRun.analysis_json)) return null
+                  
+                  const runId = currentRun.id
+                  const hasRun = !!runId
+                  
                   return (
-                    <Card className="p-10">
-                      <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Transcript</h3>
-                      <div className="max-h-[700px] overflow-y-auto">
-                        <div className="max-w-[80ch] mx-auto" style={{ lineHeight: '1.9' }}>
-                          {paragraphs.map((paragraph, pIdx) => {
-                            let globalSentenceIdx = paragraphs.slice(0, pIdx).reduce((sum, p) => sum + p.length, 0)
-                            return (
-                              <p key={pIdx} className="mb-5 text-[#E6E8EB] text-base">
-                                {paragraph.map((sentence, sIdx) => {
-                                  const globalIdx = globalSentenceIdx++
-                                  return (
-                                    <React.Fragment key={globalIdx}>
-                                      <SentenceSpan sentence={sentence} idx={globalIdx} />
-                                      {sIdx < paragraph.length - 1 && ' '}
-                                    </React.Fragment>
-                                  )
-                                })}
-                              </p>
-                            )
-                          })}
-                        </div>
-                      </div>
-                      
-                      {/* Line-by-Line Coaching Section - Always visible for all plans */}
-                      {lineByLine && lineByLine.length > 0 && (
-                        <div className="mt-8 pt-8 border-t border-[rgba(255,255,255,0.08)]">
-                          <h4 className="text-lg font-bold text-[#E6E8EB] mb-4">Line-by-Line Coaching</h4>
-                          <div className="space-y-3">
-                            {lineByLine.map((item: any, idx: number) => {
-                              const typeColors = {
-                                strength: 'bg-[#22C55E]/20 border-[#22C55E]/50',
-                                issue: 'bg-[#EF4444]/20 border-[#EF4444]/50',
-                              }
-                              const priorityColors = {
-                                high: 'text-[#EF4444]',
-                                medium: 'text-[#F97316]',
-                                low: 'text-[#9AA4B2]',
-                              }
-                              return (
-                                <div
-                                  key={idx}
-                                  className={`p-4 rounded-lg border ${typeColors[item.type as keyof typeof typeColors] || 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)]'}`}
-                                >
-                                  <div className="flex items-start justify-between mb-2">
-                                    <blockquote className="text-sm font-medium text-[#E6E8EB] italic flex-1">
-                                      "{item.quote}"
-                                    </blockquote>
-                                    <div className="flex items-center gap-2 ml-3">
-                                      <span className={`text-xs font-semibold px-2 py-1 rounded ${
-                                        item.type === 'strength' ? 'bg-[#22C55E]/20 text-[#22C55E]' :
-                                        item.type === 'issue' ? 'bg-[#EF4444]/20 text-[#EF4444]' :
-                                        'bg-[#F97316]/20 text-[#F97316]'
-                                      }`}>
-                                        {item.type === 'strength' ? 'Strength' : item.type === 'issue' ? 'Issue' : 'Suggestion'}
-                                      </span>
-                                      {item.priority && (
-                                        <span className={`text-xs font-semibold ${priorityColors[item.priority as keyof typeof priorityColors] || 'text-[#9AA4B2]'}`}>
-                                          {item.priority.toUpperCase()}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {item.comment && (
-                                    <p className="text-sm text-[#E6E8EB] mb-1">
-                                      <strong>Comment:</strong> {item.comment}
-                                    </p>
-                                  )}
-                                  {item.action && (
-                                    <p className="text-sm text-[#E6E8EB]">
-                                      <strong>Action:</strong> {item.action}
-                                    </p>
-                                  )}
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
+                    <Card className="p-6">
+                      <Button
+                        variant="primary"
+                        size="lg"
+                        className="w-full"
+                        disabled={!hasRun}
+                        onClick={() => {
+                          if (!hasRun) return
+                          
+                          const runIdToUse = runId
+                          if (isAuthenticated) {
+                            router.push(`/runs/${runIdToUse}`)
+                          } else {
+                            router.push(`/signin?redirect=/runs/${runIdToUse}`)
+                          }
+                        }}
+                      >
+                        Analyze your results
+                      </Button>
+                      {!hasRun ? (
+                        <p className="text-xs text-[#9AA4B2] text-center mt-3">
+                          Record a pitch first.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-[#9AA4B2] text-center mt-3">
+                          Sign in to unlock line-by-line coaching, filler word detection, pacing insights, and transcript download.
+                        </p>
                       )}
                     </Card>
                   )
                 })()}
-
-                {/* Your Evaluation - Rubric Breakdown */}
-                {(() => {
-                  // Use feedback state if available, otherwise fall back to run.analysis_json
-                  const feedbackData = feedback || run.analysis_json
-                  
-                  if (!feedbackData) {
-                    // Show empty state if transcript exists but no feedback
-                    if (run.transcript) {
-                      return (
-                        <Card className="p-10">
-                          <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Your Evaluation</h3>
-                          <div className="text-center py-8">
-                            <p className="text-sm text-[#9AA4B2] mb-4">Evaluation isn't generated yet.</p>
-                            <Button
-                              variant="primary"
-                              size="lg"
-                              onClick={() => {
-                                if (run.id) {
-                                  setIsGettingFeedback(true)
-                                  getFeedback(run.id)
-                                }
-                              }}
-                              disabled={!selectedRubricId || isGettingFeedback}
-                            >
-                              {isGettingFeedback ? 'Evaluating...' : 'Get My Evaluation'}
-                            </Button>
-                          </div>
-                        </Card>
-                      )
-                    }
-                    return null
-                  }
-                  
-                  // Check if transcript is too short
-                  const durationSec = durationMs ? durationMs / 1000 : (run.duration_ms ? run.duration_ms / 1000 : (run.audio_seconds || null))
-                  const selectedPromptData = PROMPTS.find(p => p.id === selectedPrompt)
-                  const isTooShort = durationSec && selectedPromptData && durationSec < 20
-                  
-                  return (
-                    <>
-                      {/* Warning for short recordings */}
-                      {isTooShort && (
-                        <Card className="p-4 bg-[#FEF3C7] border-[#F59E0B]/30">
-                          <div className="flex items-start gap-2">
-                            <AlertCircle className="h-4 w-4 text-[#F59E0B] flex-shrink-0 mt-0.5" />
-                            <p className="text-sm text-[#92400E]">
-                              This recording is too short to fully evaluate this prompt. Record at least 20 seconds for accurate feedback.
-                            </p>
-                          </div>
-                        </Card>
-                      )}
-                      
-                      {/* Rubric Breakdown */}
-                      <Card className="p-10">
-                        <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Rubric Breakdown</h3>
-                        <div className="space-y-3">
-                          {feedbackData.rubric_scores && feedbackData.rubric_scores.length > 0 ? (
-                            feedbackData.rubric_scores.map((rubricScore: any, idx: number) => {
-                              const score = rubricScore.score || 0
-                              const maxScore = 10
-                              const scorePercent = (score / maxScore) * 100
-                              const criterionLabel = rubricScore.criterion_label || rubricScore.criterion || `Criterion ${idx + 1}`
-                              
-                              // Determine status
-                              let statusIcon: any = null
-                              let statusColor = ''
-                              if (score >= 7) {
-                                statusIcon = CheckCircle2
-                                statusColor = 'text-[#22C55E]'
-                              } else if (score >= 4) {
-                                statusIcon = AlertCircle
-                                statusColor = 'text-[#F97316]'
-                              } else {
-                                statusIcon = X
-                                statusColor = 'text-[#EF4444]'
-                              }
-                              
-                              const StatusIcon = statusIcon
-                              
-                              return (
-                                <div
-                                  key={idx}
-                                  className="p-5 rounded-lg border bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)]"
-                                >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-3 flex-1">
-                                      <StatusIcon className={`h-5 w-5 ${statusColor} flex-shrink-0`} />
-                                      <div className="flex-1">
-                                        <div className="flex items-center justify-between mb-1">
-                                          <span className="text-sm font-medium text-[#E6E8EB]">
-                                            {criterionLabel}
-                                          </span>
-                                          <span className="text-sm font-bold text-[#E6E8EB]">
-                                            {score} / {maxScore}
-                                          </span>
-                                        </div>
-                                        {/* Progress bar */}
-                                        <div className="w-full h-2 bg-[rgba(255,255,255,0.08)] rounded-full overflow-hidden">
-                                          <div
-                                            className={`h-full transition-all ${
-                                              scorePercent >= 70 ? 'bg-[#22C55E]' :
-                                              scorePercent >= 40 ? 'bg-[#F97316]' :
-                                              'bg-[#EF4444]'
-                                            }`}
-                                            style={{ width: `${scorePercent}%` }}
-                                          />
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => {
-                                        // Toggle evidence display for this criterion
-                                        setExpandedEvidence(prev => {
-                                          const next = new Set(prev)
-                                          if (next.has(idx)) {
-                                            next.delete(idx)
-                                          } else {
-                                            next.add(idx)
-                                          }
-                                          return next
-                                        })
-                                      }}
-                                      className="ml-3 text-xs"
-                                    >
-                                      {expandedEvidence.has(idx) ? 'Hide evidence' : 'Show evidence'}
-                                    </Button>
-                                  </div>
-                                  {expandedEvidence.has(idx) && (() => {
-                                    // Try these possible fields in order: evidence_quotes, evidenceQuotes, evidence, evidence_snippets
-                                    const evidenceQuotes = rubricScore.evidence_quotes 
-                                      ?? rubricScore.evidenceQuotes 
-                                      ?? rubricScore.evidence 
-                                      ?? rubricScore.evidence_snippets 
-                                      ?? null
-                                    
-                                    if (evidenceQuotes && Array.isArray(evidenceQuotes) && evidenceQuotes.length > 0) {
-                                      return (
-                                        <div className="mt-3 pt-3 border-t border-[rgba(255,255,255,0.08)]">
-                                          <p className="text-xs font-semibold text-[#9AA4B2] mb-2 uppercase tracking-wide">Evidence:</p>
-                                          <div className="space-y-2">
-                                            {evidenceQuotes.map((quote: string, qIdx: number) => (
-                                              <p key={qIdx} className="text-sm text-[#E6E8EB] italic pl-3 border-l-2 border-[rgba(255,255,255,0.12)]">
-                                                "{quote}"
-                                              </p>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      )
-                                    } else {
-                                      return (
-                                        <div className="mt-3 pt-3 border-t border-[rgba(255,255,255,0.08)]">
-                                          <p className="text-sm text-[#9AA4B2] italic">No evidence quotes available for this criterion.</p>
-                                        </div>
-                                      )
-                                    }
-                                  })()}
-                                  {rubricScore.notes && (
-                                    <div className="mt-2 pt-2 border-t border-[rgba(255,255,255,0.08)]">
-                                      <p className="text-sm text-[#E6E8EB]">{rubricScore.notes}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              )
-                            })
-                          ) : (
-                            <p className="text-sm text-[#9AA4B2] text-center py-4">
-                              No rubric scores available
-                            </p>
-                          )}
-                        </div>
-                      </Card>
-                      
-                      {/* Next Attempt Focus */}
-                      {(() => {
-                        // Find the lowest scoring criterion or a key improvement
-                        const rubricScores = feedbackData.rubric_scores || []
-                        const lowestScore = rubricScores.length > 0 
-                          ? rubricScores.reduce((lowest: any, current: any) => 
-                              (current.score < lowest.score) ? current : lowest
-                            )
-                          : null
-                        
-                        const lowestCriterionLabel = lowestScore 
-                          ? (lowestScore.criterion_label || lowestScore.criterion || 'this area')
-                          : null
-                        
-                        const focusMessage = lowestScore 
-                          ? `Focus on ${lowestCriterionLabel ? lowestCriterionLabel.toLowerCase() : 'this area'}. ${lowestScore.notes || 'This area needs the most improvement.'}`
-                          : feedbackData.summary?.top_improvements?.[0] 
-                            ? feedbackData.summary.top_improvements[0]
-                            : feedbackData.summary?.overall_notes || 'Review your pitch and try again.'
-                        
-                        return (
-                          <Card className="p-6 bg-[#FEF3C7] border-2 border-[#F59E0B]/50">
-                            <h4 className="text-sm font-semibold text-[#92400E] uppercase tracking-wide mb-3">
-                              Next attempt, focus on this
-                            </h4>
-                            <p className="text-sm text-[#78350F] leading-relaxed">{focusMessage}</p>
-                          </Card>
-                        )
-                      })()}
-                      
-                      {/* Download Buttons - Show after feedback is available */}
-                      {run?.transcript && (feedback || run.analysis_json) && (
-                        <Card className="p-6">
-                          <h4 className="text-sm font-semibold text-[#E6E8EB] mb-4 uppercase tracking-wide">
-                            Export
-                          </h4>
-                          <div className="space-y-3">
-                            <Button
-                              variant="secondary"
-                              size="lg"
-                              onClick={downloadTranscript}
-                              className="w-full"
-                            >
-                              <Download className="mr-2 h-4 w-4" />
-                              Download transcript (.txt)
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="lg"
-                              onClick={downloadFeedback}
-                              className="w-full"
-                            >
-                              <Download className="mr-2 h-4 w-4" />
-                              Download feedback (.txt)
-                            </Button>
-                            {(feedback || run.analysis_json) && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={downloadAnalysisJSON}
-                                className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
-                              >
-                                <Download className="mr-2 h-3 w-3" />
-                                Download analysis JSON
-                              </Button>
-                            )}
-                          </div>
-                        </Card>
-                      )}
-                    </>
-                  )
-                })()}
-
+                
                 {/* New take button */}
                 <Button
                   variant="ghost"

@@ -10,7 +10,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { StatPill } from '@/components/ui/StatPill'
-import { Copy, Check, ArrowLeft, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Mic, FileText } from 'lucide-react'
+import { Copy, Check, ArrowLeft, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Mic, FileText, Download } from 'lucide-react'
 import { getUserPlan } from '@/lib/plan'
 
 // Helper function to log fetch errors with full details
@@ -747,22 +747,7 @@ export default function RunPage() {
                   </div>
                 </Card>
               </motion.div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
-              >
-                <Card className="bg-yellow-500/10 border-yellow-500/30">
-                  <SectionHeader title="Evaluation Prompt" />
-                  <div className="p-4">
-                    <p className="text-sm text-[#F59E0B]">
-                      ⚠️ This run was created without a prompt selection.
-                    </p>
-                  </div>
-                </Card>
-              </motion.div>
-            )}
+            ) : null}
 
             {/* Transcript Card */}
             <motion.div
@@ -1224,77 +1209,98 @@ export default function RunPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Status Card */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-            >
-              <Card>
-                <div className="mb-4">
-                  <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Status</h3>
-                  <div className="flex items-center gap-2 mb-3">
-                    <StatusBadge status={run.status} />
-                  </div>
-                  <p className="text-xs text-[#9CA3AF]">
-                    Updated {formatLastUpdated(run.created_at)}
-                  </p>
-                </div>
-                <div className="space-y-2 pt-4 border-t border-[#22283A]">
-                  {run.transcript && !run.analysis_json && (
-                    <Button
-                      onClick={handleGetFeedback}
-                      variant="primary"
-                      size="sm"
-                      className="w-full"
-                      disabled={isGettingFeedback || (!run.rubrics && !run.rubric_snapshot_json)}
-                      isLoading={isGettingFeedback}
-                    >
-                      {isGettingFeedback ? (
-                        <>
-                          <LoadingSpinner size="sm" />
-                          Generating feedback...
-                        </>
-                      ) : (
-                        <>
-                          Get feedback
-                        </>
-                      )}
-                    </Button>
-                  )}
+            {/* Status Card - Different for Free vs Paid */}
+            {userPlan === 'free' ? (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              >
+                <Card>
                   <Button
-                    onClick={handleTranscribe}
                     variant="primary"
                     size="sm"
                     className="w-full"
-                    disabled={isTranscribing}
-                    isLoading={isTranscribing}
+                    onClick={() => {
+                      router.push('/app/practice')
+                    }}
                   >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Re-transcribe (overwrite)
+                    Practice again
                   </Button>
-                  <Button
-                    onClick={handleReset}
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                  >
-                    <RotateCcw className="mr-2 h-4 w-4" />
-                    Reset
-                  </Button>
-                  <Link href="/app" className="block">
+                </Card>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              >
+                <Card>
+                  <div className="mb-4">
+                    <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Status</h3>
+                    <div className="flex items-center gap-2 mb-3">
+                      <StatusBadge status={run.status} />
+                    </div>
+                    <p className="text-xs text-[#9CA3AF]">
+                      Updated {formatLastUpdated(run.created_at)}
+                    </p>
+                  </div>
+                  <div className="space-y-2 pt-4 border-t border-[#22283A]">
+                    {run.transcript && !run.analysis_json && (
+                      <Button
+                        onClick={handleGetFeedback}
+                        variant="primary"
+                        size="sm"
+                        className="w-full"
+                        disabled={isGettingFeedback || (!run.rubrics && !run.rubric_snapshot_json)}
+                        isLoading={isGettingFeedback}
+                      >
+                        {isGettingFeedback ? (
+                          <>
+                            <LoadingSpinner size="sm" />
+                            Generating feedback...
+                          </>
+                        ) : (
+                          <>
+                            Get feedback
+                          </>
+                        )}
+                      </Button>
+                    )}
                     <Button
-                      variant="ghost"
+                      onClick={handleTranscribe}
+                      variant="primary"
+                      size="sm"
+                      className="w-full"
+                      disabled={isTranscribing}
+                      isLoading={isTranscribing}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Re-transcribe (overwrite)
+                    </Button>
+                    <Button
+                      onClick={handleReset}
+                      variant="secondary"
                       size="sm"
                       className="w-full"
                     >
-                      <ArrowLeft className="mr-2 h-4 w-4" />
-                      Back to /app
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Reset
                     </Button>
-                  </Link>
-                </div>
-              </Card>
-            </motion.div>
+                    <Link href="/app" className="block">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full"
+                      >
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Back to /app
+                      </Button>
+                    </Link>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
 
             {/* Metrics Card */}
             <motion.div
@@ -1319,40 +1325,73 @@ export default function RunPage() {
               </Card>
             </motion.div>
 
-            {/* Share Card - Visible to All Users */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
-            >
-              <Card>
-                <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Share</h3>
-                <Button
-                  onClick={copyShareSummary}
-                  variant="primary"
-                  size="sm"
-                  className="w-full"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="mr-2 h-4 w-4" />
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="mr-2 h-4 w-4" />
-                      Copy Share Summary
-                    </>
-                  )}
-                </Button>
-                <p className="text-xs text-[#9CA3AF] mt-3">
-                  Copies a LinkedIn-friendly summary with metrics and key feedback.
-                </p>
-              </Card>
-            </motion.div>
+            {/* Share Card - Only for Paid Users */}
+            {userPlan !== 'free' && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
+              >
+                <Card>
+                  <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Share</h3>
+                  <Button
+                    onClick={copyShareSummary}
+                    variant="primary"
+                    size="sm"
+                    className="w-full"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="mr-2 h-4 w-4" />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copy Share Summary
+                      </>
+                    )}
+                  </Button>
+                  <p className="text-xs text-[#9CA3AF] mt-3">
+                    Copies a LinkedIn-friendly summary with metrics and key feedback.
+                  </p>
+                </Card>
+              </motion.div>
+            )}
 
-            {/* Export Card - Only for Coach + Day Pass */}
-            {(userPlan === 'coach' || userPlan === 'day_pass') && (
+            {/* Export Card - Different for Free vs Paid */}
+            {userPlan === 'free' ? (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
+              >
+                <Card>
+                  <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Export</h3>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      if (!run.transcript) return
+                      const blob = new Blob([run.transcript], { type: 'text/plain' })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `transcript-${run.id}.txt`
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
+                      URL.revokeObjectURL(url)
+                    }}
+                    disabled={!run.transcript}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Download Transcript (.txt)
+                  </Button>
+                </Card>
+              </motion.div>
+            ) : (userPlan === 'coach' || userPlan === 'day_pass') ? (
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -1375,7 +1414,7 @@ export default function RunPage() {
                   </div>
                 </Card>
               </motion.div>
-            )}
+            ) : null}
 
             {/* Compare Attempts - Only for Coach + Day Pass */}
             {(userPlan === 'coach' || userPlan === 'day_pass') && (

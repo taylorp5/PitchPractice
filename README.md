@@ -48,6 +48,8 @@ npm install
      - Adds `word_count` and `words_per_minute` fields to `pitch_runs`
    - Third: `supabase/migrations/002_add_duration_ms.sql`
      - Adds `duration_ms` field to `pitch_runs` (source of truth for duration)
+   - Continue with remaining migrations in order (004-009)
+   - **Important**: Run `supabase/migrations/009_create_user_entitlements.sql` for Stripe entitlements support
 
 ### 3. Create Storage Bucket
 
@@ -90,6 +92,14 @@ npx tsx scripts/create-bucket.ts
      - Copy your **service_role key** (keep this secret!) → `SUPABASE_SERVICE_ROLE_KEY`
    - **OpenAI**: Get your API key from [platform.openai.com](https://platform.openai.com/api-keys)
      - Copy your **API key** → `OPENAI_API_KEY` (server-only, never exposed to client)
+   - **Stripe** (for payments): Get your keys from [dashboard.stripe.com](https://dashboard.stripe.com/test/apikeys) (TEST MODE)
+     - Copy your **Secret key** → `STRIPE_SECRET_KEY` (server-only, keep secret!)
+     - Copy your **Publishable key** → `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+     - Create Products/Prices in Stripe dashboard (TEST MODE) and copy Price IDs:
+       - `STRIPE_PRICE_STARTER` (Price ID for Starter plan)
+       - `STRIPE_PRICE_COACH` (Price ID for Coach plan)
+       - `STRIPE_PRICE_DAYPASS` (Price ID for Day Pass plan)
+     - For webhook testing: Get webhook secret from Stripe dashboard → `STRIPE_WEBHOOK_SECRET`
 
    Your `.env.local` should look like:
    ```
@@ -97,6 +107,14 @@ npx tsx scripts/create-bucket.ts
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
    SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
    OPENAI_API_KEY=sk-your-openai-key-here
+   
+   # Stripe (TEST MODE)
+   STRIPE_SECRET_KEY=sk_test_...
+   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_...
+   STRIPE_PRICE_STARTER=price_...
+   STRIPE_PRICE_COACH=price_...
+   STRIPE_PRICE_DAYPASS=price_...
+   STRIPE_WEBHOOK_SECRET=whsec_... (for local webhook testing)
    ```
 
 ### 5. Run the Development Server

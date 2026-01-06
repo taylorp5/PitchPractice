@@ -51,3 +51,4 @@ If setting up from scratch, run migrations in this order:
 - **"column already exists"**: The migration uses `IF NOT EXISTS`, so this shouldn't happen, but it's safe to ignore
 - **Still seeing errors**: Clear your browser cache and restart your Next.js dev server
 
+

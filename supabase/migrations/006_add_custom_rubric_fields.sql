@@ -9,3 +9,4 @@ ADD COLUMN IF NOT EXISTS context_summary text;
 COMMENT ON COLUMN user_rubrics.guiding_questions IS 'Array of guiding questions for the rubric (stored as JSONB array)';
 COMMENT ON COLUMN user_rubrics.context_summary IS 'Summary of pitch context and audience';
 
+

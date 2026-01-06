@@ -845,9 +845,9 @@ export default function RunPage() {
                     <Button 
                       variant="primary" 
                       className="w-full"
-                      onClick={() => router.push('/upgrade?plan=coach')}
+                      asChild
                     >
-                      Upgrade to Coach
+                      <Link href="/upgrade?plan=coach">Upgrade to Coach</Link>
                     </Button>
                   </div>
                 </Card>

@@ -1027,11 +1027,9 @@ export default function HomePage() {
                 <p className="text-sm text-[#6B7280] mb-4">
                   Upgrade to unlock the rubric builder and create custom evaluation criteria.
                 </p>
-                <Link href="/upgrade">
-                  <Button variant="primary" size="sm">
-                    Upgrade to Coach
-                  </Button>
-                </Link>
+                <Button variant="primary" size="sm" asChild>
+                  <Link href="/upgrade?plan=coach">Upgrade to Coach</Link>
+                </Button>
               </div>
             </Card>
           )}
@@ -1110,9 +1108,9 @@ export default function HomePage() {
                 <Button 
                   variant="primary" 
                   className="w-full"
-                  onClick={() => router.push('/upgrade?plan=coach')}
+                  asChild
                 >
-                  Upgrade to Coach
+                  <Link href="/upgrade?plan=coach">Upgrade to Coach</Link>
                 </Button>
               </div>
             </Card>

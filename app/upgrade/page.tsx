@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
 import { Button } from '@/components/ui/Button'
 import { getUserPlan, UserPlan, setDevPlanOverride } from '@/lib/plan'
+import { getSessionId } from '@/lib/session'
 
 function UpgradePageContent() {
   const router = useRouter()
@@ -13,6 +14,8 @@ function UpgradePageContent() {
   const [currentPlan, setCurrentPlan] = useState<UserPlan>('free')
   const [isLoading, setIsLoading] = useState(true)
   const [devOverrideMessage, setDevOverrideMessage] = useState<string | null>(null)
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const isDev = typeof window !== 'undefined' && process.env.NODE_ENV !== 'production'
   
   useEffect(() => {
@@ -24,6 +27,45 @@ function UpgradePageContent() {
   
   // Get plan from query param if present (for highlighting)
   const highlightedPlan = searchParams.get('plan') as UserPlan | null
+  const canceled = searchParams.get('canceled')
+  
+  // Handle checkout
+  const handleCheckout = async (plan: UserPlan) => {
+    if (!['starter', 'coach', 'daypass'].includes(plan)) {
+      setCheckoutError('Invalid plan selected')
+      return
+    }
+
+    setCheckoutLoading(true)
+    setCheckoutError(null)
+
+    try {
+      const response = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ plan }),
+      })
+
+      const data = await response.json()
+
+      if (!data.ok) {
+        throw new Error(data.error || 'Failed to create checkout session')
+      }
+
+      if (data.url) {
+        // Redirect to Stripe checkout
+        window.location.href = data.url
+      } else {
+        throw new Error('No checkout URL returned')
+      }
+    } catch (error: any) {
+      console.error('[Checkout] Error:', error)
+      setCheckoutError(error.message || 'Failed to start checkout. Please try again.')
+      setCheckoutLoading(false)
+    }
+  }
   
   // Handle dev simulate upgrade
   const handleDevSimulate = (plan: UserPlan) => {
@@ -58,6 +100,20 @@ function UpgradePageContent() {
           </p>
         </div>
         
+        {/* Canceled Message */}
+        {canceled === '1' && (
+          <div className="mb-6 p-4 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg text-center">
+            <p className="text-sm text-[#F59E0B] font-medium">Checkout was canceled. You can try again anytime.</p>
+          </div>
+        )}
+
+        {/* Checkout Error Message */}
+        {checkoutError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+            <p className="text-sm text-red-600 font-medium">{checkoutError}</p>
+          </div>
+        )}
+
         {/* Dev Override Message */}
         {devOverrideMessage && (
           <div className="mb-6 p-4 bg-[#22C55E]/10 border border-[#22C55E]/30 rounded-lg text-center">
@@ -91,6 +147,30 @@ function UpgradePageContent() {
                   </Button>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Checkout CTA Section - Show when plan is selected */}
+        {highlightedPlan && ['starter', 'coach', 'daypass'].includes(highlightedPlan) && currentPlan !== highlightedPlan && (
+          <div className="mb-8 p-6 bg-white rounded-xl border border-[rgba(17,24,39,0.10)] shadow-sm">
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-[#111827] mb-2">
+                Ready to upgrade to {highlightedPlan === 'daypass' ? 'Day Pass' : highlightedPlan.charAt(0).toUpperCase() + highlightedPlan.slice(1)}?
+              </h2>
+              <p className="text-sm text-[#6B7280] mb-4">
+                Click below to continue to secure checkout
+              </p>
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => handleCheckout(highlightedPlan)}
+                isLoading={checkoutLoading}
+                disabled={checkoutLoading}
+                className="min-w-[200px]"
+              >
+                {checkoutLoading ? 'Loading...' : 'Continue to Checkout'}
+              </Button>
             </div>
           </div>
         )}
@@ -200,9 +280,11 @@ function UpgradePageContent() {
               variant="primary"
               size="lg"
               className="w-full"
-              onClick={() => router.push('/upgrade?plan=starter')}
+              asChild
             >
-              {currentPlan === 'starter' ? 'Current Plan' : 'Upgrade to Starter'}
+              <Link href="/upgrade?plan=starter">
+                {currentPlan === 'starter' ? 'Current Plan' : 'Upgrade to Starter'}
+              </Link>
             </Button>
           </div>
 
@@ -256,9 +338,11 @@ function UpgradePageContent() {
               variant="primary"
               size="lg"
               className="w-full"
-              onClick={() => router.push('/upgrade?plan=coach')}
+              asChild
             >
-              {currentPlan === 'coach' ? 'Current Plan' : 'Upgrade to Coach'}
+              <Link href="/upgrade?plan=coach">
+                {currentPlan === 'coach' ? 'Current Plan' : 'Upgrade to Coach'}
+              </Link>
             </Button>
           </div>
 
@@ -297,9 +381,11 @@ function UpgradePageContent() {
               variant="primary"
               size="lg"
               className="w-full"
-              onClick={() => router.push('/upgrade?plan=daypass')}
+              asChild
             >
-              {currentPlan === 'daypass' ? 'Current Plan' : 'Get Day Pass'}
+              <Link href="/upgrade?plan=daypass">
+                {currentPlan === 'daypass' ? 'Current Plan' : 'Get Day Pass'}
+              </Link>
             </Button>
           </div>
         </div>

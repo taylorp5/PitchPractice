@@ -45,30 +45,38 @@ export async function getUserPlan(): Promise<UserPlan> {
     const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()
     
-    // If not authenticated, return "free"
-    if (!session || !session.user) {
-      return 'free'
+    // Get session_id for fallback (non-authenticated users)
+    let sessionId: string | null = null
+    try {
+      const { getSessionId } = await import('@/lib/session')
+      sessionId = getSessionId()
+    } catch (e) {
+      // getSessionId might fail in some contexts
     }
-    
-    // TODO: Check user's entitlement/plan from database
-    // For now, if authenticated, default to "starter" as per existing code
-    // This can be extended later to check actual plan/entitlement field
-    
-    // Check if user has a plan/entitlement in user metadata or a separate table
-    // For now, we'll default authenticated users to "starter"
-    // In the future, this should check:
-    // - user.user_metadata.plan
-    // - or a separate user_plans/entitlements table
-    
-    const plan = session.user.user_metadata?.plan || session.user.user_metadata?.entitlement
-    
-    if (plan === 'starter' || plan === 'coach' || plan === 'daypass') {
-      return plan as UserPlan
+
+    // Call API to get plan from database
+    const params = new URLSearchParams()
+    if (sessionId) {
+      params.set('session_id', sessionId)
     }
-    
-    // Default authenticated users to "starter" for now
-    // This matches the existing hardcoded behavior in app/app/page.tsx
-    return 'starter'
+
+    const response = await fetch(`/api/plan?${params.toString()}`)
+    const data = await response.json()
+
+    if (data.plan && ['free', 'starter', 'coach', 'daypass'].includes(data.plan)) {
+      return data.plan as UserPlan
+    }
+
+    // Fallback: check user metadata (legacy)
+    if (session?.user) {
+      const plan = session.user.user_metadata?.plan || session.user.user_metadata?.entitlement
+      if (plan === 'starter' || plan === 'coach' || plan === 'daypass') {
+        return plan as UserPlan
+      }
+    }
+
+    // Default to free
+    return 'free'
   } catch (error) {
     console.error('Error getting user plan:', error)
     // On error, default to "free" for safety

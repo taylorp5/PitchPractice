@@ -9,3 +9,4 @@ CREATE INDEX IF NOT EXISTS idx_pitch_runs_user_id ON pitch_runs(user_id);
 ALTER TABLE pitch_runs
 ADD COLUMN IF NOT EXISTS pitch_context text;
 
+

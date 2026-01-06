@@ -33,8 +33,8 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Protect /app routes
-  if (request.nextUrl.pathname.startsWith('/app')) {
+  // Protect /app routes, but allow anonymous access to /app/practice
+  if (request.nextUrl.pathname.startsWith('/app') && !request.nextUrl.pathname.startsWith('/app/practice')) {
     if (!user) {
       const redirectUrl = new URL('/signin', request.url)
       redirectUrl.searchParams.set('redirect', request.nextUrl.pathname)

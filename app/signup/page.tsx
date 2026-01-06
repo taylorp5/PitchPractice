@@ -55,8 +55,36 @@ export default function SignUpPage() {
         return
       }
 
+      // Check for redirect parameter or runId in URL
+      const urlParams = new URLSearchParams(window.location.search)
+      let redirect = urlParams.get('redirect') || '/dashboard'
+      const runId = urlParams.get('runId')
+      
+      // Attach anonymous run to user if runId exists
+      if (runId) {
+        try {
+          const attachResponse = await fetch(`/api/runs/${runId}/attach`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          })
+
+          if (!attachResponse.ok) {
+            console.error('Failed to attach run to user')
+            // Don't block the flow if attachment fails
+          } else {
+            // If run was attached, redirect to run detail page
+            redirect = `/runs/${runId}`
+          }
+        } catch (err) {
+          console.error('Error attaching run:', err)
+          // Don't block the flow if attachment fails
+        }
+      }
+      
       // Use window.location for a full page reload to ensure middleware sees the session
-      window.location.href = '/dashboard'
+      window.location.href = redirect
     } catch (err) {
       setError('An unexpected error occurred')
       setIsLoading(false)

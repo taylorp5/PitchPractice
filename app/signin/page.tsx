@@ -55,7 +55,31 @@ export default function SignInPage() {
 
       // Check for redirect parameter, otherwise go to dashboard
       const urlParams = new URLSearchParams(window.location.search)
-      const redirect = urlParams.get('redirect') || '/dashboard'
+      let redirect = urlParams.get('redirect') || '/dashboard'
+      
+      // Extract runId from redirect URL if present (e.g., /runs/[id] or ?runId=...)
+      const runIdMatch = redirect.match(/\/runs\/([^\/]+)/)
+      const runId = runIdMatch ? runIdMatch[1] : urlParams.get('runId')
+      
+      // Attach anonymous run to user if runId exists
+      if (runId) {
+        try {
+          const attachResponse = await fetch(`/api/runs/${runId}/attach`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          })
+
+          if (!attachResponse.ok) {
+            console.error('Failed to attach run to user')
+            // Don't block the flow if attachment fails
+          }
+        } catch (err) {
+          console.error('Error attaching run:', err)
+          // Don't block the flow if attachment fails
+        }
+      }
       
       // Use window.location for a full page reload to ensure middleware sees the session
       window.location.href = redirect

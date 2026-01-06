@@ -11,6 +11,8 @@ import { Mic, Upload, Play, Pause, Square, AlertCircle, X, CheckCircle2, Edit2, 
 import Link from 'next/link'
 import { getUserPlan, UserPlan } from '@/lib/plan'
 import CustomRubricBuilder, { CustomRubric } from '@/components/CustomRubricBuilder'
+import { SignInModal } from '@/components/SignInModal'
+import { createClient } from '@/lib/supabase/client-auth'
 
 interface Run {
   id: string
@@ -95,6 +97,37 @@ export default function PracticePage() {
   const testAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const [isLoadingPlan, setIsLoadingPlan] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  const [showSignInModal, setShowSignInModal] = useState(false)
+
+  // Check authentication status
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        setIsAuthenticated(!!session)
+      } catch (err) {
+        console.error('Failed to check auth:', err)
+        setIsAuthenticated(false)
+      } finally {
+        setIsCheckingAuth(false)
+      }
+    }
+
+    checkAuth()
+
+    // Listen for auth state changes
+    const supabase = createClient()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session)
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
 
   // Fetch user plan on mount and when page becomes visible (for refresh after purchase)
   useEffect(() => {
@@ -1599,7 +1632,13 @@ export default function PracticePage() {
                 <Button
                   variant="primary"
                   className="w-full"
-                  onClick={() => router.push(`/runs/${run.id}`)}
+                  onClick={() => {
+                    if (isAuthenticated) {
+                      router.push(`/runs/${run.id}`)
+                    } else {
+                      setShowSignInModal(true)
+                    }
+                  }}
                 >
                   Review full feedback →
                 </Button>
@@ -1617,6 +1656,13 @@ export default function PracticePage() {
             </div>
           </Card>
         )}
+
+        {/* Sign-in Modal */}
+        <SignInModal
+          isOpen={showSignInModal}
+          onClose={() => setShowSignInModal(false)}
+          runId={run?.id || null}
+        />
       </div>
     </div>
   )

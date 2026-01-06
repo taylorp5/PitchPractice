@@ -1414,16 +1414,26 @@ export default function PracticePage() {
                   </>
                 )}
               </Button>
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!hasValidRubric || isUploading || isRecording}
-                variant="secondary"
-                className="flex-1"
-                title={!hasValidRubric ? 'Please complete Step 1 first' : undefined}
-              >
-                <Upload className="h-4 w-4 mr-2" />
-                Upload
-              </Button>
+              <div className="flex-1 relative group">
+                <Button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                  disabled={true}
+                  variant="secondary"
+                  className="w-full cursor-not-allowed opacity-60"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload
+                </Button>
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#1F2937] text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 border border-[#374151] shadow-lg">
+                  Coming soon
+                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                    <div className="w-2 h-2 bg-[#1F2937] border-r border-b border-[#374151] transform rotate-45"></div>
+                  </div>
+                </div>
+              </div>
             </div>
             <input
               ref={fileInputRef}

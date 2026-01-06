@@ -66,6 +66,7 @@ interface AnalysisOutput {
     comment: string
     action: string
     priority: 'high' | 'medium' | 'low'
+    category?: string
   }>
   pause_suggestions: Array<{
     after_quote: string
@@ -84,6 +85,213 @@ interface PromptRubricItem {
   label: string
   weight: number
   optional?: boolean
+}
+
+// Detect filler words and hesitation patterns in transcript
+function detectFillerWordsAndHesitation(
+  transcript: string,
+  existingQuotes: Set<string>
+): Array<{
+  quote: string
+  type: 'issue'
+  comment: string
+  action: string
+  priority: 'high' | 'medium' | 'low'
+  category: 'delivery'
+}> {
+  const issues: Array<{
+    quote: string
+    type: 'issue'
+    comment: string
+    action: string
+    priority: 'high' | 'medium' | 'low'
+    category: 'delivery'
+  }> = []
+
+  if (!transcript || transcript.trim().length === 0) {
+    return issues
+  }
+
+  // Normalize transcript for matching (preserve original for quotes)
+  const transcriptLower = transcript.toLowerCase()
+  
+  // Filler words to detect (case-insensitive)
+  const fillerWords = [
+    /\bum\b/gi,
+    /\buh\b/gi,
+    /\blike\b/gi,
+    /\byeah\b/gi,
+    /\bkind of\b/gi,
+    /\bsort of\b/gi,
+  ]
+
+  // Hesitant phrase patterns at sentence start
+  const hesitantStartPatterns = [
+    /^so\s*,\s*um\s*[,.]/i,
+    /^so\s*,\s*uh\s*[,.]/i,
+    /^i\s+guess\s*[,.]/i,
+    /^kind\s+of\s*[,.]/i,
+    /^sort\s+of\s*[,.]/i,
+    /^well\s*,\s*um\s*[,.]/i,
+    /^well\s*,\s*uh\s*[,.]/i,
+  ]
+
+  // Softening phrases
+  const softeningPhrases = [
+    /\bkind of\b/gi,
+    /\bsort of\b/gi,
+    /\bi guess\b/gi,
+    /\bi think\b/gi, // Only when used as hesitation, not as opinion
+    /\bmaybe\b/gi,
+    /\bprobably\b/gi,
+  ]
+
+  // Split transcript into sentences for better context
+  // Split on sentence endings, but preserve punctuation with the sentence
+  const sentenceParts = transcript.split(/([.!?]+\s+)/)
+  const sentences: string[] = []
+  for (let i = 0; i < sentenceParts.length; i += 2) {
+    const sentence = (sentenceParts[i] || '').trim()
+    const punctuation = (sentenceParts[i + 1] || '').trim()
+    if (sentence.length > 0) {
+      sentences.push(sentence + punctuation)
+    }
+  }
+  
+  // Track found quotes to avoid duplicates
+  const foundQuotes = new Set<string>()
+
+  // Check each sentence for issues
+  sentences.forEach((sentence, idx) => {
+    const sentenceTrimmed = sentence.trim()
+    if (sentenceTrimmed.length === 0) return
+
+    const sentenceLower = sentenceTrimmed.toLowerCase()
+    
+    // Check for hesitant starts
+    for (const pattern of hesitantStartPatterns) {
+      const match = sentenceTrimmed.match(pattern)
+      if (match) {
+        // Extract quote (max 120 chars, prefer sentence start)
+        let quote = sentenceTrimmed.substring(0, Math.min(120, sentenceTrimmed.length))
+        // Try to end at a natural break
+        const lastSpace = quote.lastIndexOf(' ')
+        if (lastSpace > 80) {
+          quote = quote.substring(0, lastSpace) + '...'
+        }
+        
+        // Skip if already in existing quotes or found quotes
+        const quoteKey = quote.toLowerCase().trim()
+        if (existingQuotes.has(quoteKey) || foundQuotes.has(quoteKey)) continue
+        foundQuotes.add(quoteKey)
+
+        // Determine priority based on pattern
+        let priority: 'high' | 'medium' | 'low' = 'medium'
+        if (match[0].toLowerCase().includes('um') || match[0].toLowerCase().includes('uh')) {
+          priority = 'high'
+        }
+
+        issues.push({
+          quote: quote.trim(),
+          type: 'issue',
+          comment: 'Filler words at the start reduce clarity and confidence.',
+          action: 'Remove fillers and start with a direct statement of what you are building.',
+          priority,
+          category: 'delivery',
+        })
+        break // Only flag once per sentence
+      }
+    }
+
+    // Check for filler words (not at sentence start, or if we didn't catch it above)
+    let fillerCount = 0
+    const fillerMatches: Array<{ word: string; index: number }> = []
+
+    fillerWords.forEach((pattern, patternIdx) => {
+      const matches = [...sentenceTrimmed.matchAll(pattern)]
+      matches.forEach(match => {
+        if (match.index !== undefined) {
+          fillerMatches.push({ word: match[0], index: match.index })
+          fillerCount++
+        }
+      })
+    })
+
+    // Only flag if there are multiple fillers or one at a critical position
+    if (fillerCount >= 2 || (fillerCount === 1 && fillerMatches[0].index < 50)) {
+      // Extract quote around the filler(s)
+      const firstFillerIndex = Math.min(...fillerMatches.map(m => m.index))
+      const lastFillerIndex = Math.max(...fillerMatches.map(m => m.index + m.word.length))
+      
+      // Get context around fillers (max 120 chars)
+      const start = Math.max(0, firstFillerIndex - 20)
+      const end = Math.min(sentenceTrimmed.length, lastFillerIndex + 40)
+      let quote = sentenceTrimmed.substring(start, end).trim()
+      
+      // Ensure quote is not too long
+      if (quote.length > 120) {
+        quote = quote.substring(0, 117) + '...'
+      }
+
+      const quoteKey = quote.toLowerCase().trim()
+      if (existingQuotes.has(quoteKey) || foundQuotes.has(quoteKey)) return
+      foundQuotes.add(quoteKey)
+
+      const priority: 'high' | 'medium' | 'low' = fillerCount >= 3 ? 'high' : 'medium'
+
+      issues.push({
+        quote: quote.trim(),
+        type: 'issue',
+        comment: fillerCount >= 3 
+          ? 'Multiple filler words reduce clarity and confidence.'
+          : 'Filler words reduce clarity and confidence.',
+        action: 'Remove fillers and speak more directly.',
+        priority,
+        category: 'delivery',
+      })
+    }
+
+    // Check for excessive softening phrases (only if not already flagged)
+    if (fillerCount === 0) {
+      let softeningCount = 0
+      softeningPhrases.forEach(pattern => {
+        const matches = sentenceTrimmed.match(pattern)
+        if (matches) {
+          softeningCount += matches.length
+        }
+      })
+
+      // Flag if 2+ softening phrases in one sentence
+      if (softeningCount >= 2) {
+        let quote = sentenceTrimmed.substring(0, Math.min(120, sentenceTrimmed.length))
+        const lastSpace = quote.lastIndexOf(' ')
+        if (lastSpace > 80) {
+          quote = quote.substring(0, lastSpace) + '...'
+        }
+
+        const quoteKey = quote.toLowerCase().trim()
+        if (existingQuotes.has(quoteKey) || foundQuotes.has(quoteKey)) return
+        foundQuotes.add(quoteKey)
+
+        issues.push({
+          quote: quote.trim(),
+          type: 'issue',
+          comment: 'Softening phrases reduce clarity and confidence.',
+          action: 'Remove softening phrases and state your points more directly.',
+          priority: 'low',
+          category: 'delivery',
+        })
+      }
+    }
+  })
+
+  // Limit to top 3-5 most important issues to avoid overwhelming
+  return issues
+    .sort((a, b) => {
+      const priorityOrder = { high: 3, medium: 2, low: 1 }
+      return priorityOrder[b.priority] - priorityOrder[a.priority]
+    })
+    .slice(0, 5)
 }
 
 function buildAnalysisPrompt(
@@ -152,21 +360,27 @@ For each question, determine:
     ? `\n\nSPECIAL INSTRUCTIONS FOR "CALL TO ACTION" CRITERION (Free Elevator Pitch Only):
 This criterion should be evaluated as "Close or Next Step" (not just explicit ask).
 
-Scoring Guidelines:
-- Full credit (8-10): Explicit ask (e.g., "I'm looking for...", "The next step is...")
-- Partial credit (5-7): Strong closing summary or implied next step (e.g., "This gives people a repeatable way to improve how they communicate.")
-- Low score (0-4): Abrupt ending, trailing off, or no clear close
+Scoring Guidelines (Free Plan Only):
+- 8-10: Explicit next step or ask (e.g., "I'm looking for...", "The next step is...")
+- 5-7: Clear implied next step or strong takeaway (e.g., "This gives people a repeatable way to improve how they communicate.")
+- 4: Soft close with purpose/value (e.g., "do better when it matters", summary of value)
+- 0-3: Abrupt stop or trailing off with no conclusion
 
-IMPORTANT RULES:
-- If the pitch ends with a clear summary or value statement, do NOT score below 5.
-- Only score below 5 if the ending lacks BOTH:
-  * a summary takeaway
-  * an implied or explicit next step
+IMPORTANT RULES (Free Plan Only):
+- MINIMUM SCORE = 4 if the pitch ends with:
+  * a summary of value OR
+  * an implied outcome (e.g., "do better when it matters")
+- If the pitch ends with a clear summary or value statement, do NOT score below 4.
+- Only score below 4 (0-3) if the ending is abrupt or trails off with no conclusion.
 - When giving partial credit (5-7), include the closing sentence as an evidence quote.
-- Feedback text: If there's a summary but no explicit ask, say: "The pitch ends with a summary, but could be strengthened by adding a clear next step or ask."
-- Only say "lacks a call to action" when there is no close at all (score 0-4).
+- When giving minimum score (4), include the closing sentence as an evidence quote.
+- Feedback text: 
+  * If score is 4: "The pitch ends with a purpose, but could be stronger with a clear next step."
+  * If there's a summary but no explicit ask (score 5-7): "The pitch ends with a summary, but could be strengthened by adding a clear next step or ask."
+  * Only say "lacks a call to action" when there is no close at all (score 0-3).
 
-Example evidence quote for partial credit: "PitchPractice gives people a repeatable way to improve how they communicate."`
+Example evidence quote for score 4: "do better when it matters"
+Example evidence quote for score 5-7: "PitchPractice gives people a repeatable way to improve how they communicate."`
     : ''
 
   return `You are an expert pitch coach providing detailed, actionable feedback on a pitch presentation.
@@ -643,6 +857,58 @@ export async function POST(
       analysisJson.meta = {
         plan_at_time: userPlan,
         generated_at: new Date().toISOString(),
+      }
+
+      // Add filler word and hesitation detection for Free and Starter plans
+      if (userPlan === 'free' || userPlan === 'starter') {
+        // Collect existing quotes to avoid duplicates
+        const existingQuotes = new Set<string>()
+        analysisJson.line_by_line.forEach(item => {
+          existingQuotes.add(item.quote.toLowerCase().trim())
+        })
+
+        // Detect filler words and hesitation
+        const deliveryIssues = detectFillerWordsAndHesitation(
+          run.transcript,
+          existingQuotes
+        )
+
+        // Add delivery issues to line_by_line (limit to avoid overwhelming)
+        if (deliveryIssues.length > 0) {
+          // Insert delivery issues at the beginning or mix them in
+          // Limit total line_by_line items to reasonable number (max 10-12)
+          const maxItems = 12
+          const currentCount = analysisJson.line_by_line.length
+          const availableSlots = Math.max(0, maxItems - currentCount)
+          
+          if (availableSlots > 0) {
+            // Add top delivery issues
+            const issuesToAdd = deliveryIssues.slice(0, Math.min(availableSlots, 3))
+            analysisJson.line_by_line = [
+              ...issuesToAdd,
+              ...analysisJson.line_by_line,
+            ]
+          } else {
+            // Replace lowest priority items if we're at max
+            const sortedByPriority = [...analysisJson.line_by_line].sort((a, b) => {
+              const priorityOrder = { high: 3, medium: 2, low: 1 }
+              return priorityOrder[a.priority] - priorityOrder[b.priority]
+            })
+            
+            // Replace up to 2 lowest priority items with top delivery issues
+            const topDeliveryIssues = deliveryIssues.slice(0, 2)
+            if (topDeliveryIssues.length > 0) {
+              const lowestPriorityItems = sortedByPriority.slice(-2)
+              const lowestPriorityQuotes = new Set(
+                lowestPriorityItems.map(item => item.quote.toLowerCase().trim())
+              )
+              
+              analysisJson.line_by_line = analysisJson.line_by_line
+                .filter(item => !lowestPriorityQuotes.has(item.quote.toLowerCase().trim()))
+                .concat(topDeliveryIssues)
+            }
+          }
+        }
       }
     } catch (error: any) {
       console.error('OpenAI analysis error:', error)

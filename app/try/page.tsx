@@ -1660,6 +1660,16 @@ FEEDBACK SUMMARY
                             🎤 Test microphone
                           </Button>
                         )}
+                        {isTestingMic && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={testMicrophone}
+                            className="w-full text-[#9AA4B2] hover:text-[#E6E8EB] border border-[#22283A]"
+                          >
+                            ⏹ End test
+                          </Button>
+                        )}
                       </div>
                     )}
 

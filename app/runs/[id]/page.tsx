@@ -74,6 +74,9 @@ export default function RunPage() {
   const [lastTranscribeResponse, setLastTranscribeResponse] = useState<any>(null)
   const [lastTranscript, setLastTranscript] = useState<string | null>(null)
   const [lastAction, setLastAction] = useState<string | null>(null)
+  const [selectedSentenceIdx, setSelectedSentenceIdx] = useState<number | null>(null)
+  const [highlightedFeedbackIdx, setHighlightedFeedbackIdx] = useState<number | null>(null)
+  const [showNoFeedbackMessage, setShowNoFeedbackMessage] = useState<number | null>(null)
   
   // Use ref to track current run for polling logic (avoids stale closures)
   const runRef = useRef<Run | null>(null)
@@ -518,6 +521,106 @@ export default function RunPage() {
     return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`
   }
 
+  // Split transcript into sentences with stable indices
+  const splitIntoSentences = (text: string): string[] => {
+    if (!text) return []
+    // Split by sentence endings, but preserve the punctuation
+    const sentences = text
+      .split(/([.!?]+[\s\n]+)/)
+      .filter(s => s.trim().length > 0)
+      .map(s => s.trim())
+    
+    // Merge punctuation back with previous sentence
+    const merged: string[] = []
+    for (let i = 0; i < sentences.length; i++) {
+      if (sentences[i].match(/^[.!?]+$/)) {
+        // This is just punctuation, merge with previous
+        if (merged.length > 0) {
+          merged[merged.length - 1] += sentences[i]
+        }
+      } else {
+        merged.push(sentences[i])
+      }
+    }
+    
+    return merged.filter(s => s.length > 0)
+  }
+
+  // Map line_by_line feedback to sentence indices
+  const createFeedbackToSentenceMap = (transcript: string, lineByLine: any[]): Map<number, number> => {
+    const sentences = splitIntoSentences(transcript)
+    const feedbackToSentenceMap = new Map<number, number>()
+    
+    lineByLine.forEach((item, feedbackIdx) => {
+      const quote = (item.quote || '').toLowerCase().trim()
+      if (!quote) return
+      
+      let bestMatchIdx = -1
+      let bestScore = 0
+      
+      sentences.forEach((sentence, sentenceIdx) => {
+        const sentenceLower = sentence.toLowerCase().trim()
+        
+        // Exact substring match
+        if (sentenceLower.includes(quote) || quote.includes(sentenceLower)) {
+          const score = Math.min(sentenceLower.length, quote.length) / Math.max(sentenceLower.length, quote.length)
+          if (score > bestScore) {
+            bestScore = score
+            bestMatchIdx = sentenceIdx
+          }
+        }
+      })
+      
+      // Fallback: word overlap
+      if (bestMatchIdx === -1) {
+        const quoteWords = quote.split(/\s+/).filter((w: string) => w.length > 2)
+        sentences.forEach((sentence, sentenceIdx) => {
+          const sentenceLower = sentence.toLowerCase().trim()
+          const sentenceWords = sentenceLower.split(/\s+/).filter((w: string) => w.length > 2)
+          const overlap = sentenceWords.filter((w: string) => quoteWords.includes(w))
+          if (overlap.length >= 3) {
+            const score = overlap.length / Math.max(sentenceWords.length, quoteWords.length)
+            if (score > bestScore) {
+              bestScore = score
+              bestMatchIdx = sentenceIdx
+            }
+          }
+        })
+      }
+      
+      if (bestMatchIdx !== -1) {
+        feedbackToSentenceMap.set(feedbackIdx, bestMatchIdx)
+      }
+    })
+    
+    return feedbackToSentenceMap
+  }
+
+  // Create reverse map: sentence index -> feedback index
+  const createSentenceToFeedbackMap = (transcript: string, lineByLine: any[]): Map<number, number> => {
+    const feedbackToSentenceMap = createFeedbackToSentenceMap(transcript, lineByLine)
+    const sentenceToFeedbackMap = new Map<number, number>()
+    
+    feedbackToSentenceMap.forEach((sentenceIdx, feedbackIdx) => {
+      sentenceToFeedbackMap.set(sentenceIdx, feedbackIdx)
+    })
+    
+    return sentenceToFeedbackMap
+  }
+
+  // Scroll to feedback card and highlight it
+  const scrollToFeedback = (feedbackIdx: number) => {
+    const feedbackElement = document.getElementById(`feedback-${feedbackIdx}`)
+    if (feedbackElement) {
+      feedbackElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightedFeedbackIdx(feedbackIdx)
+      // Auto-clear highlight after 2 seconds
+      setTimeout(() => {
+        setHighlightedFeedbackIdx(null)
+      }, 2000)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center py-20 bg-[#0E1117]">
@@ -708,18 +811,80 @@ export default function RunPage() {
                 {/* Transcript Text */}
                 <AnimatePresence mode="wait">
                   {transcript.trim().length > 0 ? (
-                    <motion.div
-                      key="transcript"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="p-6 bg-[#151A23] rounded-lg border border-[#22283A]"
-                    >
-                      <pre className="text-[#E5E7EB] whitespace-pre-wrap font-sans text-sm leading-relaxed font-normal">
-                        {transcript}
-                      </pre>
-                    </motion.div>
+                    (() => {
+                      const sentences = splitIntoSentences(transcript)
+                      const lineByLine = run.analysis_json?.line_by_line || []
+                      const sentenceToFeedbackMap = createSentenceToFeedbackMap(transcript, lineByLine)
+                      
+                      return (
+                        <motion.div
+                          key="transcript"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="p-6 bg-[#151A23] rounded-lg border border-[#22283A]"
+                        >
+                          <div className="text-[#E5E7EB] whitespace-pre-wrap font-sans text-sm leading-relaxed font-normal">
+                            {sentences.map((sentence, idx) => {
+                              const feedbackIdx = sentenceToFeedbackMap.get(idx)
+                              const hasFeedback = feedbackIdx !== undefined
+                              const isSelected = selectedSentenceIdx === idx
+                              const showNoFeedback = showNoFeedbackMessage === idx
+                              
+                              return (
+                                <span key={idx} className="relative inline-block">
+                                  <span
+                                    id={`sentence-${idx}`}
+                                    onClick={() => {
+                                      if (hasFeedback && feedbackIdx !== undefined) {
+                                        setSelectedSentenceIdx(isSelected ? null : idx)
+                                        scrollToFeedback(feedbackIdx)
+                                        setShowNoFeedbackMessage(null)
+                                      } else {
+                                        setSelectedSentenceIdx(isSelected ? null : idx)
+                                        setShowNoFeedbackMessage(isSelected ? null : idx)
+                                        // Auto-hide message after 3 seconds
+                                        setTimeout(() => {
+                                          setShowNoFeedbackMessage(null)
+                                        }, 3000)
+                                      }
+                                    }}
+                                    className={`
+                                      inline cursor-pointer transition-all rounded px-1.5 py-0.5 mx-0.5 my-0.5
+                                      ${isSelected 
+                                        ? 'bg-amber-500/30 border-2 border-amber-500/60' 
+                                        : hasFeedback
+                                          ? 'hover:bg-amber-500/10 border border-transparent'
+                                          : 'hover:bg-gray-500/8 border border-transparent'
+                                      }
+                                    `}
+                                    style={{ 
+                                      textDecoration: 'none',
+                                      color: 'inherit'
+                                    }}
+                                  >
+                                    {sentence}
+                                  </span>
+                                  {showNoFeedback && (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: -5 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: -5 }}
+                                      className="absolute z-50 mt-2 p-2 bg-[#151A23] border border-[#22283A] rounded-lg shadow-lg text-xs text-[#9CA3AF] whitespace-nowrap"
+                                      style={{ left: '50%', transform: 'translateX(-50%)', top: '100%' }}
+                                    >
+                                      No feedback for this line
+                                    </motion.div>
+                                  )}
+                                  {idx < sentences.length - 1 && ' '}
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </motion.div>
+                      )
+                    })()
                   ) : (
                     <motion.div
                       key="empty"
@@ -811,13 +976,20 @@ export default function RunPage() {
                         medium: 'text-[#F97316]',
                         low: 'text-[#9CA3AF]',
                       }
+                      const isHighlighted = highlightedFeedbackIdx === idx
+                      
                       return (
                         <motion.div
                           key={idx}
+                          id={`feedback-${idx}`}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ duration: 0.3, delay: idx * 0.05 }}
-                          className={`p-4 rounded-lg border ${typeColors[item.type as keyof typeof typeColors] || 'bg-[#151A23] border-[#22283A]'}`}
+                          className={`p-4 rounded-lg border transition-all duration-200 ${
+                            isHighlighted 
+                              ? 'border-amber-500/60 bg-amber-500/15 shadow-[0_0_20px_rgba(245,158,11,0.3)]' 
+                              : typeColors[item.type as keyof typeof typeColors] || 'bg-[#151A23] border-[#22283A]'
+                          }`}
                         >
                           <div className="flex items-start justify-between mb-2">
                             <blockquote className="text-sm font-medium text-[#E5E7EB] italic flex-1">

@@ -190,11 +190,13 @@ export default function RunPage() {
       }
 
       // Return true if we should continue polling
+      // Stop polling when status is "analyzed" OR when we have both transcript and analysis
+      const hasCompleteData = runData.status === 'analyzed' || (hasNewTranscript && hasNewAnalysis)
       const shouldContinuePolling = 
         (runData.status === 'uploaded' || 
          runData.status === 'transcribing' || 
          runData.status === 'transcribed') &&
-        !(runData.status === 'analyzed' || (hasNewTranscript && hasNewAnalysis))
+        !hasCompleteData
 
       return shouldContinuePolling
     } catch (err: any) {

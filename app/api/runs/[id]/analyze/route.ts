@@ -78,6 +78,44 @@ interface AnalysisOutput {
     why: string
     replacement: string | null
   }>
+  premium_insights?: {
+    filler_words: {
+      totals: { [word: string]: number }
+      total_count: number
+      top_sentences: Array<{
+        sentence: string
+        count: number
+        words: string[]
+        suggestion: string
+        rewrite: string | null
+      }>
+    }
+    pacing: {
+      wpm_overall: number | null
+      segments: Array<{
+        label: 'slow' | 'good' | 'fast'
+        start_sec: number | null
+        end_sec: number | null
+        wpm: number | null
+        note: string
+      }>
+      pauses: {
+        longest_pause_sec: number | null
+        long_pause_count: number
+        notes: string
+      }
+    }
+    structure: {
+      detected_sections: string[]
+      missing_sections: string[]
+      suggested_lines: { [section: string]: string }
+      one_sentence_pitch: string
+    }
+    coaching_plan: {
+      next_attempt_focus: string[]
+      drills: Array<{ title: string; steps: string[] }>
+    }
+  }
 }
 
 interface PromptRubricItem {
@@ -292,6 +330,381 @@ function detectFillerWordsAndHesitation(
       return priorityOrder[b.priority] - priorityOrder[a.priority]
     })
     .slice(0, 5)
+}
+
+// Premium Insights: Filler Words Analysis
+function analyzeFillerWords(transcript: string): {
+  totals: { [word: string]: number }
+  total_count: number
+  top_sentences: Array<{
+    sentence: string
+    count: number
+    words: string[]
+    suggestion: string
+    rewrite: string | null
+  }>
+} {
+  const fillerWordPatterns: { [key: string]: RegExp } = {
+    'um': /\bum\b/gi,
+    'uh': /\buh\b/gi,
+    'like': /\blike\b/gi,
+    'you know': /\byou\s+know\b/gi,
+    'so': /\bso\b/gi,
+    'well': /\bwell\b/gi,
+    'kind of': /\bkind\s+of\b/gi,
+    'sort of': /\bsort\s+of\b/gi,
+    'I mean': /\bi\s+mean\b/gi,
+    'actually': /\bactually\b/gi,
+    'basically': /\bbasically\b/gi,
+  }
+
+  const totals: { [word: string]: number } = {}
+  const sentenceData: Array<{
+    sentence: string
+    count: number
+    words: string[]
+  }> = []
+
+  // Normalize transcript
+  const normalized = transcript.replace(/\s+/g, ' ').trim()
+  
+  // Count totals
+  Object.entries(fillerWordPatterns).forEach(([word, pattern]) => {
+    const matches = normalized.match(pattern)
+    totals[word] = matches ? matches.length : 0
+  })
+
+  const total_count = Object.values(totals).reduce((sum, count) => sum + count, 0)
+
+  // Split into sentences
+  const sentenceParts = normalized.split(/([.!?]+\s+)/)
+  const sentences: string[] = []
+  for (let i = 0; i < sentenceParts.length; i += 2) {
+    const sentence = (sentenceParts[i] || '').trim()
+    const punctuation = (sentenceParts[i + 1] || '').trim()
+    if (sentence.length > 0) {
+      sentences.push(sentence + punctuation)
+    }
+  }
+
+  // Analyze each sentence
+  sentences.forEach(sentence => {
+    const foundWords: string[] = []
+    let count = 0
+
+    Object.entries(fillerWordPatterns).forEach(([word, pattern]) => {
+      const matches = sentence.match(pattern)
+      if (matches) {
+        foundWords.push(word)
+        count += matches.length
+      }
+    })
+
+    if (count > 0) {
+      sentenceData.push({ sentence, count, words: foundWords })
+    }
+  })
+
+  // Get top sentences (sorted by count, limit to 5)
+  const topSentences = sentenceData
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5)
+    .map(item => ({
+      sentence: item.sentence,
+      count: item.count,
+      words: [...new Set(item.words)], // Remove duplicates
+      suggestion: item.count >= 3
+        ? 'Multiple filler words reduce clarity. Practice pausing instead of using fillers.'
+        : item.count === 2
+        ? 'Two filler words detected. Try removing them for a more confident delivery.'
+        : 'One filler word found. Consider a brief pause instead.',
+      rewrite: null, // Could be enhanced with AI rewrite later
+    }))
+
+  return {
+    totals,
+    total_count,
+    top_sentences: topSentences,
+  }
+}
+
+// Premium Insights: Pacing Analysis
+function analyzePacing(
+  transcript: string,
+  durationMs: number | null,
+  wpm: number | null
+): {
+  wpm_overall: number | null
+  segments: Array<{
+    label: 'slow' | 'good' | 'fast'
+    start_sec: number | null
+    end_sec: number | null
+    wpm: number | null
+    note: string
+  }>
+  pauses: {
+    longest_pause_sec: number | null
+    long_pause_count: number
+    notes: string
+  }
+} {
+  const wpm_overall = wpm
+
+  // Approximate segments using sentence order + duration
+  const segments: Array<{
+    label: 'slow' | 'good' | 'fast'
+    start_sec: number | null
+    end_sec: number | null
+    wpm: number | null
+    note: string
+  }> = []
+
+  if (durationMs && durationMs > 0) {
+    const durationSec = durationMs / 1000
+    const sentences = transcript.split(/([.!?]+\s+)/).filter((part, i) => i % 2 === 0 && part.trim().length > 0)
+    const totalWords = transcript.split(/\s+/).filter(w => w.length > 0).length
+    const avgWpm = wpm || (totalWords / (durationSec / 60))
+
+    // Divide into 3 segments
+    const segmentCount = 3
+    const wordsPerSegment = Math.ceil(totalWords / segmentCount)
+    const secPerSegment = durationSec / segmentCount
+
+    let wordCount = 0
+    for (let i = 0; i < segmentCount; i++) {
+      const startSec = i * secPerSegment
+      const endSec = (i + 1) * secPerSegment
+      
+      // Approximate words in this segment (rough estimate)
+      const segmentWords = Math.min(wordsPerSegment, totalWords - wordCount)
+      const segmentWpm = segmentWords / (secPerSegment / 60)
+      
+      let label: 'slow' | 'good' | 'fast'
+      let note: string
+      
+      if (segmentWpm < 120) {
+        label = 'slow'
+        note = 'Pace is slower than ideal. Consider speaking slightly faster to maintain engagement.'
+      } else if (segmentWpm > 180) {
+        label = 'fast'
+        note = 'Pace is faster than ideal. Slow down slightly for better comprehension.'
+      } else {
+        label = 'good'
+        note = 'Pace is within the ideal range for clear communication.'
+      }
+
+      segments.push({
+        label,
+        start_sec: i === 0 ? 0 : startSec,
+        end_sec: i === segmentCount - 1 ? null : endSec,
+        wpm: segmentWpm,
+        note,
+      })
+
+      wordCount += segmentWords
+    }
+  } else {
+    // No duration data - provide null segments
+    segments.push({
+      label: 'good',
+      start_sec: null,
+      end_sec: null,
+      wpm: null,
+      note: 'Duration data unavailable for segment analysis.',
+    })
+  }
+
+  // Pause analysis (approximate from punctuation and sentence breaks)
+  const pauses = {
+    longest_pause_sec: null,
+    long_pause_count: 0,
+    notes: 'Pause analysis requires word-level timestamps. Estimated from sentence structure.',
+  }
+
+  // Count sentence breaks (potential pauses)
+  const sentenceBreaks = (transcript.match(/[.!?]+\s+/g) || []).length
+  if (durationMs && durationMs > 0 && sentenceBreaks > 0) {
+    const avgPauseSec = (durationMs / 1000) / (sentenceBreaks + 1)
+    // Consider pauses > 1 second as "long"
+    pauses.long_pause_count = Math.max(0, sentenceBreaks - Math.floor((durationMs / 1000) / sentenceBreaks))
+    pauses.notes = `Estimated ${sentenceBreaks} natural pauses. Aim for 0.5-1 second pauses between key points.`
+  }
+
+  return {
+    wpm_overall,
+    segments,
+    pauses,
+  }
+}
+
+// Premium Insights: Structure Analysis
+function analyzeStructure(
+  transcript: string,
+  chunks: Array<{ text: string; purpose_label: string }>,
+  rubricScores: Array<{ criterion_label: string; missing: boolean }>
+): {
+  detected_sections: string[]
+  missing_sections: string[]
+  suggested_lines: { [section: string]: string }
+  one_sentence_pitch: string
+} {
+  // Common pitch sections
+  const commonSections = ['hook', 'problem', 'solution', 'value', 'cta', 'who', 'what', 'why', 'how']
+  
+  // Detect sections from chunks and rubric scores
+  const detectedSections: string[] = []
+  const missingSections: string[] = []
+  
+  chunks.forEach(chunk => {
+    const label = chunk.purpose_label.toLowerCase()
+    commonSections.forEach(section => {
+      if (label.includes(section) && !detectedSections.includes(section)) {
+        detectedSections.push(section)
+      }
+    })
+  })
+
+  // Check rubric scores for missing sections
+  rubricScores.forEach(score => {
+    const label = score.criterion_label.toLowerCase()
+    commonSections.forEach(section => {
+      if (label.includes(section)) {
+        if (score.missing && !missingSections.includes(section)) {
+          missingSections.push(section)
+        }
+      }
+    })
+  })
+
+  // Generate suggested lines for missing sections
+  const suggestedLines: { [section: string]: string } = {}
+  
+  missingSections.forEach(section => {
+    switch (section) {
+      case 'hook':
+        suggestedLines[section] = "Start with a compelling question or surprising statistic that grabs attention."
+        break
+      case 'problem':
+        suggestedLines[section] = "Clearly state the problem your audience faces. What pain point are you solving?"
+        break
+      case 'solution':
+        suggestedLines[section] = "Explain your solution in simple terms. What do you offer?"
+        break
+      case 'value':
+        suggestedLines[section] = "Articulate the unique value proposition. Why should they care?"
+        break
+      case 'cta':
+        suggestedLines[section] = "End with a clear call to action. What's the next step?"
+        break
+      case 'who':
+        suggestedLines[section] = "Define your target audience. Who is this for?"
+        break
+      case 'what':
+        suggestedLines[section] = "Describe what you're building or offering."
+        break
+      case 'why':
+        suggestedLines[section] = "Explain why this matters. What's the motivation?"
+        break
+      case 'how':
+        suggestedLines[section] = "Explain how it works or how you'll deliver value."
+        break
+      default:
+        suggestedLines[section] = `Add a clear ${section} section to strengthen your pitch.`
+    }
+  })
+
+  // Generate one-sentence pitch (compressed version)
+  const sentences = transcript.split(/([.!?]+\s+)/).filter((part, i) => i % 2 === 0 && part.trim().length > 0)
+  const oneSentencePitch = sentences.length > 0
+    ? sentences.slice(0, 3).join(' ').substring(0, 200) + (sentences.length > 3 ? '...' : '')
+    : transcript.substring(0, 200) + (transcript.length > 200 ? '...' : '')
+
+  return {
+    detected_sections: detectedSections,
+    missing_sections: missingSections,
+    suggested_lines: suggestedLines,
+    one_sentence_pitch: oneSentencePitch,
+  }
+}
+
+// Premium Insights: Coaching Plan
+function generateCoachingPlan(
+  analysis: AnalysisOutput,
+  fillerCount: number,
+  wpm: number | null
+): {
+  next_attempt_focus: string[]
+  drills: Array<{ title: string; steps: string[] }>
+} {
+  const focus: string[] = []
+  const drills: Array<{ title: string; steps: string[] }> = []
+
+  // Determine focus areas based on analysis
+  if (fillerCount > 5) {
+    focus.push('Reduce filler words by practicing pauses instead')
+  }
+
+  if (wpm !== null) {
+    if (wpm < 120) {
+      focus.push('Increase speaking pace slightly for better engagement')
+    } else if (wpm > 180) {
+      focus.push('Slow down to improve clarity and comprehension')
+    }
+  }
+
+  if (analysis.summary.top_improvements.length > 0) {
+    const topImprovement = analysis.summary.top_improvements[0]
+    if (topImprovement.length < 100) {
+      focus.push(topImprovement.substring(0, 80) + '...')
+    } else {
+      focus.push('Address the key improvement areas identified in feedback')
+    }
+  }
+
+  // Limit to 3 focus items
+  const next_attempt_focus = focus.slice(0, 3)
+
+  // Generate drills
+  if (fillerCount > 0) {
+    drills.push({
+      title: 'Filler Word Elimination',
+      steps: [
+        'Record yourself speaking for 30 seconds',
+        'Count every "um", "uh", "like" you use',
+        'Re-record, replacing fillers with a 1-second pause',
+        'Repeat until you use 0-1 fillers per 30 seconds',
+      ],
+    })
+  }
+
+  if (wpm !== null && (wpm < 120 || wpm > 180)) {
+    drills.push({
+      title: 'Pace Control Practice',
+      steps: [
+        wpm < 120
+          ? 'Read a paragraph at 140-150 WPM (use a metronome app)'
+          : 'Read a paragraph at 150-160 WPM (use a metronome app)',
+        'Practice the same paragraph 3 times, matching the target pace',
+        'Record yourself and verify your pace matches',
+        'Apply this pace to your pitch practice',
+      ],
+    })
+  }
+
+  drills.push({
+    title: 'Structure Reinforcement',
+    steps: [
+      'Write out your pitch in 3-5 bullet points',
+      'Practice each section separately',
+      'Connect sections with transition phrases',
+      'Record the full pitch and check for all key sections',
+    ],
+  })
+
+  return {
+    next_attempt_focus: next_attempt_focus,
+    drills: drills.slice(0, 3), // Limit to 3 drills
+  }
 }
 
 function buildAnalysisPrompt(
@@ -857,6 +1270,33 @@ export async function POST(
       analysisJson.meta = {
         plan_at_time: userPlan,
         generated_at: new Date().toISOString(),
+      }
+
+      // Generate premium insights for Coach plan
+      if (userPlan === 'coach') {
+        const fillerWordsAnalysis = analyzeFillerWords(run.transcript)
+        const pacingAnalysis = analyzePacing(
+          run.transcript,
+          run.duration_ms,
+          run.words_per_minute || null
+        )
+        const structureAnalysis = analyzeStructure(
+          run.transcript,
+          analysisJson.chunks,
+          analysisJson.rubric_scores
+        )
+        const coachingPlan = generateCoachingPlan(
+          analysisJson,
+          fillerWordsAnalysis.total_count,
+          run.words_per_minute || null
+        )
+
+        analysisJson.premium_insights = {
+          filler_words: fillerWordsAnalysis,
+          pacing: pacingAnalysis,
+          structure: structureAnalysis,
+          coaching_plan: coachingPlan,
+        }
       }
 
       // Add filler word and hesitation detection for Free and Starter plans

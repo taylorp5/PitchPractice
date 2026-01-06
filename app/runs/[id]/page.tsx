@@ -10,7 +10,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { StatPill } from '@/components/ui/StatPill'
 import { Badge } from '@/components/ui/Badge'
-import { Check, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, FileText, Download } from 'lucide-react'
+import { Check, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, FileText, Download, Copy, Sparkles } from 'lucide-react'
 import { getUserPlan } from '@/lib/plan'
 
 // Helper function to log fetch errors with full details
@@ -56,6 +56,206 @@ interface Run {
     target_duration_seconds: number | null
     max_duration_seconds: number | null
   } | null
+}
+
+// Drill Accordion Component for Premium Insights
+function DrillAccordion({ title, steps }: { title: string; steps: string[] }) {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <div className="border border-[#1A1F2E] rounded-lg overflow-hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full p-2 bg-[#0F1419] hover:bg-[#151A23] transition-colors flex items-center justify-between"
+      >
+        <span className="text-xs font-semibold text-[#E5E7EB]">{title}</span>
+        {isOpen ? (
+          <ChevronUp className="h-4 w-4 text-[#9CA3AF]" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-[#9CA3AF]" />
+        )}
+      </button>
+      {isOpen && steps.length > 0 && (
+        <div className="p-3 bg-[#0F1419] border-t border-[#1A1F2E]">
+          <ol className="space-y-1.5 list-decimal list-inside">
+            {steps.map((step: string, stepIdx: number) => (
+              <li key={stepIdx} className="text-xs text-[#E5E7EB]">
+                {step}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Helper function to normalize text for matching (whitespace + lowercase)
+function normalizeText(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+// Helper function to check if two texts match (fuzzy includes)
+function textsMatch(text1: string, text2: string): boolean {
+  const normalized1 = normalizeText(text1)
+  const normalized2 = normalizeText(text2)
+  return normalized1.includes(normalized2) || normalized2.includes(normalized1)
+}
+
+// Helper function to get filler words for a quote
+function getFillerWordsForQuote(
+  quote: string,
+  fillerWordsData: any
+): { word: string; count: number }[] | null {
+  if (!fillerWordsData?.totals || !fillerWordsData?.top_sentences) {
+    return null
+  }
+
+  const fillerWordPatterns: { [key: string]: RegExp } = {
+    'um': /\bum\b/gi,
+    'uh': /\buh\b/gi,
+    'like': /\blike\b/gi,
+    'you know': /\byou\s+know\b/gi,
+    'so': /\bso\b/gi,
+    'well': /\bwell\b/gi,
+    'kind of': /\bkind\s+of\b/gi,
+    'sort of': /\bsort\s+of\b/gi,
+    'I mean': /\bi\s+mean\b/gi,
+    'actually': /\bactually\b/gi,
+    'basically': /\bbasically\b/gi,
+  }
+
+  const foundWords: { word: string; count: number }[] = []
+  
+  Object.entries(fillerWordPatterns).forEach(([word, pattern]) => {
+    const matches = quote.match(pattern)
+    if (matches && matches.length > 0) {
+      foundWords.push({ word, count: matches.length })
+    }
+  })
+
+  return foundWords.length > 0 ? foundWords : null
+}
+
+// Helper function to find matching rewrite from top_sentences
+function findMatchingRewrite(
+  quote: string,
+  topSentences: any[]
+): { sentence: string; rewrite: string } | null {
+  if (!topSentences || topSentences.length === 0) {
+    return null
+  }
+
+  for (const item of topSentences) {
+    if (item.sentence && item.rewrite && textsMatch(quote, item.sentence)) {
+      return {
+        sentence: item.sentence,
+        rewrite: item.rewrite,
+      }
+    }
+  }
+
+  return null
+}
+
+// Line-by-Line Item Component with Premium Insights enhancements
+function LineByLineItem({
+  idx,
+  item,
+  typeColors,
+  priorityColors,
+  isHighlighted,
+  fillerWordsForQuote,
+  matchingRewrite,
+}: {
+  idx: number
+  item: any
+  typeColors: { strength: string; issue: string }
+  priorityColors: { high: string; medium: string; low: string }
+  isHighlighted: boolean
+  fillerWordsForQuote: { word: string; count: number }[] | null
+  matchingRewrite: { sentence: string; rewrite: string } | null
+}) {
+  const [isRewriteExpanded, setIsRewriteExpanded] = useState(false)
+
+  return (
+    <motion.div
+      id={`feedback-${idx}`}
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.3, delay: idx * 0.05 }}
+      className={`p-4 rounded-lg border transition-all duration-200 ${
+        isHighlighted 
+          ? 'border-amber-500/60 bg-amber-500/15 shadow-[0_0_20px_rgba(245,158,11,0.3)]' 
+          : typeColors[item.type as keyof typeof typeColors] || 'bg-[#151A23] border-[#22283A]'
+      }`}
+    >
+      <div className="flex items-start justify-between mb-2">
+        <blockquote className="text-sm font-medium text-[#E5E7EB] italic flex-1">
+          "{item.quote}"
+        </blockquote>
+        <span className={`text-xs font-semibold ml-2 ${priorityColors[item.priority as keyof typeof priorityColors] || 'text-[#9CA3AF]'}`}>
+          {item.priority?.toUpperCase()}
+        </span>
+      </div>
+      
+      {/* Filler Words Display (Coach only) */}
+      {fillerWordsForQuote && fillerWordsForQuote.length > 0 && (
+        <div className="mb-2 p-2 bg-yellow-500/10 border border-yellow-500/20 rounded">
+          <p className="text-xs font-semibold text-yellow-400 mb-1">Filler words:</p>
+          <p className="text-xs text-[#E5E7EB]">
+            {fillerWordsForQuote.map((fw, fwIdx) => (
+              <span key={fwIdx}>
+                {fw.word} ({fw.count}){fwIdx < fillerWordsForQuote.length - 1 ? ', ' : ''}
+              </span>
+            ))}
+          </p>
+        </div>
+      )}
+      
+      <p className="text-sm text-[#E5E7EB] mb-1">
+        <strong>Comment:</strong> {item.comment}
+      </p>
+      {item.action && (
+        <p className="text-sm text-[#E5E7EB]">
+          <strong>Action:</strong> {item.action}
+        </p>
+      )}
+      
+      {/* Rewrite Suggestions - Original from line_by_line */}
+      {item.rewrite && (
+        <div className="mt-3 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
+          <p className="text-xs font-semibold text-[#F59E0B] mb-1">Suggested Rewrite:</p>
+          <p className="text-sm text-[#E5E7EB] italic">{item.rewrite}</p>
+        </div>
+      )}
+      
+      {/* Premium Insights Rewrite (Coach only) - Expandable */}
+      {matchingRewrite && matchingRewrite.rewrite && (
+        <div className="mt-3 border border-[#F59E0B]/30 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setIsRewriteExpanded(!isRewriteExpanded)}
+            className="w-full p-2 bg-[#F59E0B]/10 hover:bg-[#F59E0B]/15 transition-colors flex items-center justify-between"
+          >
+            <p className="text-xs font-semibold text-[#F59E0B]">Suggested rewrite</p>
+            {isRewriteExpanded ? (
+              <ChevronUp className="h-4 w-4 text-[#F59E0B]" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-[#F59E0B]" />
+            )}
+          </button>
+          {isRewriteExpanded && (
+            <div className="p-3 bg-[#0F1419] border-t border-[#F59E0B]/30">
+              <p className="text-xs text-[#9CA3AF] mb-1">Original:</p>
+              <p className="text-xs text-[#E5E7EB] italic mb-3">{matchingRewrite.sentence}</p>
+              <p className="text-xs text-[#9CA3AF] mb-1">Rewrite:</p>
+              <p className="text-sm text-[#E5E7EB] italic">{matchingRewrite.rewrite}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </motion.div>
+  )
 }
 
 export default function RunPage() {
@@ -834,6 +1034,289 @@ export default function RunPage() {
               </motion.div>
             ) : null}
 
+            {/* Premium Insights Card - Only for Coach plan */}
+            {run.analysis_json?.premium_insights && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
+              >
+                <Card>
+                  <div className="flex items-center gap-2 mb-6">
+                    <Sparkles className="h-5 w-5 text-[#F59E0B]" />
+                    <SectionHeader title="Premium Insights" />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 1. Filler Words */}
+                    {run.analysis_json.premium_insights.filler_words && (
+                      <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                        <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Filler Words</h3>
+                        <div className="space-y-3">
+                          {run.analysis_json.premium_insights.filler_words.total_count !== undefined && (
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-1">Total Count</p>
+                              <p className="text-lg font-bold text-[#F59E0B]">
+                                {run.analysis_json.premium_insights.filler_words.total_count}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {run.analysis_json.premium_insights.filler_words.totals && Object.keys(run.analysis_json.premium_insights.filler_words.totals).length > 0 && (
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-2">Top Words</p>
+                              <div className="flex flex-wrap gap-2">
+                                {Object.entries(run.analysis_json.premium_insights.filler_words.totals)
+                                  .sort(([, a], [, b]) => (b as number) - (a as number))
+                                  .slice(0, 5)
+                                  .map(([word, count]) => (
+                                    <Badge key={word} variant="warning" size="sm">
+                                      {word}: {count as number}
+                                    </Badge>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {run.analysis_json.premium_insights.filler_words.top_sentences && 
+                           run.analysis_json.premium_insights.filler_words.top_sentences.length > 0 && (
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-2">Top Sentences to Fix</p>
+                              <div className="space-y-3">
+                                {run.analysis_json.premium_insights.filler_words.top_sentences
+                                  .slice(0, 3)
+                                  .map((item: any, idx: number) => (
+                                    <div key={idx} className="p-3 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                                      <p className="text-xs text-[#E5E7EB] mb-1">{item.sentence}</p>
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-xs text-[#F59E0B]">
+                                          {item.count} filler{item.count !== 1 ? 's' : ''}
+                                        </span>
+                                        {item.words && item.words.length > 0 && (
+                                          <span className="text-xs text-[#9CA3AF]">
+                                            ({item.words.join(', ')})
+                                          </span>
+                                        )}
+                                      </div>
+                                      {item.rewrite && (
+                                        <div className="mt-2 p-2 bg-[#22283A] rounded border border-[#2A3142]">
+                                          <p className="text-xs text-[#9CA3AF] mb-1">Rewrite:</p>
+                                          <p className="text-xs text-[#E5E7EB] italic">{item.rewrite}</p>
+                                        </div>
+                                      )}
+                                      {item.suggestion && (
+                                        <p className="text-xs text-[#9CA3AF] mt-1">{item.suggestion}</p>
+                                      )}
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 2. Pacing & Pauses */}
+                    {run.analysis_json.premium_insights.pacing && (
+                      <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                        <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Pacing & Pauses</h3>
+                        <div className="space-y-3">
+                          {run.analysis_json.premium_insights.pacing.wpm_overall !== null && 
+                           run.analysis_json.premium_insights.pacing.wpm_overall !== undefined && (
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-1">Overall WPM</p>
+                              <p className="text-lg font-bold text-[#F59E0B]">
+                                {Math.round(run.analysis_json.premium_insights.pacing.wpm_overall)}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {run.analysis_json.premium_insights.pacing.segments && 
+                           run.analysis_json.premium_insights.pacing.segments.length > 0 && (
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-2">Segments</p>
+                              <div className="space-y-2">
+                                {run.analysis_json.premium_insights.pacing.segments.map((segment: any, idx: number) => (
+                                  <div key={idx} className="p-2 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <Badge 
+                                        variant={
+                                          segment.label === 'slow' ? 'info' :
+                                          segment.label === 'fast' ? 'warning' : 'success'
+                                        }
+                                        size="sm"
+                                      >
+                                        {segment.label}
+                                      </Badge>
+                                      {segment.wpm !== null && segment.wpm !== undefined && (
+                                        <span className="text-xs text-[#9CA3AF]">
+                                          {Math.round(segment.wpm)} WPM
+                                        </span>
+                                      )}
+                                    </div>
+                                    {segment.start_sec !== null && segment.end_sec !== null && (
+                                      <p className="text-xs text-[#9CA3AF] mb-1">
+                                        {segment.start_sec.toFixed(1)}s - {segment.end_sec.toFixed(1)}s
+                                      </p>
+                                    )}
+                                    {segment.note && (
+                                      <p className="text-xs text-[#E5E7EB]">{segment.note}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {run.analysis_json.premium_insights.pacing.pauses && (
+                            <div className="pt-2 border-t border-[#22283A]">
+                              <p className="text-xs text-[#9CA3AF] mb-2">Pauses</p>
+                              <div className="space-y-1">
+                                {run.analysis_json.premium_insights.pacing.pauses.longest_pause_sec !== null && (
+                                  <p className="text-xs text-[#E5E7EB]">
+                                    Longest: {run.analysis_json.premium_insights.pacing.pauses.longest_pause_sec.toFixed(1)}s
+                                  </p>
+                                )}
+                                <p className="text-xs text-[#E5E7EB]">
+                                  Long pauses: {run.analysis_json.premium_insights.pacing.pauses.long_pause_count || 0}
+                                </p>
+                                {run.analysis_json.premium_insights.pacing.pauses.notes && (
+                                  <p className="text-xs text-[#9CA3AF] mt-1">
+                                    {run.analysis_json.premium_insights.pacing.pauses.notes}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 3. Structure */}
+                    {run.analysis_json.premium_insights.structure && (
+                      <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                        <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Structure</h3>
+                        <div className="space-y-3">
+                          {run.analysis_json.premium_insights.structure.detected_sections && 
+                           run.analysis_json.premium_insights.structure.detected_sections.length > 0 && (
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-2">Detected Sections</p>
+                              <div className="flex flex-wrap gap-2">
+                                {run.analysis_json.premium_insights.structure.detected_sections.map((section: string) => (
+                                  <Badge key={section} variant="success" size="sm">
+                                    {section}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {run.analysis_json.premium_insights.structure.missing_sections && 
+                           run.analysis_json.premium_insights.structure.missing_sections.length > 0 && (
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-2">Missing Sections</p>
+                              <div className="flex flex-wrap gap-2">
+                                {run.analysis_json.premium_insights.structure.missing_sections.map((section: string) => (
+                                  <Badge key={section} variant="warning" size="sm">
+                                    {section}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {run.analysis_json.premium_insights.structure.suggested_lines && 
+                           Object.keys(run.analysis_json.premium_insights.structure.suggested_lines).length > 0 && (
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-2">Suggested Lines</p>
+                              <div className="space-y-2">
+                                {Object.entries(run.analysis_json.premium_insights.structure.suggested_lines).map(([section, line]: [string, any]) => (
+                                  <div key={section} className="p-2 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1">
+                                        <p className="text-xs font-semibold text-[#F59E0B] mb-1">{section}</p>
+                                        <p className="text-xs text-[#E5E7EB]">{line}</p>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(line)
+                                        }}
+                                        className="p-1.5 hover:bg-[#22283A] rounded transition-colors"
+                                        title="Copy to clipboard"
+                                      >
+                                        <Copy className="h-3.5 w-3.5 text-[#9CA3AF]" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {run.analysis_json.premium_insights.structure.one_sentence_pitch && (
+                            <div className="pt-2 border-t border-[#22283A]">
+                              <p className="text-xs text-[#9CA3AF] mb-2">One-Sentence Pitch</p>
+                              <div className="p-2 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="text-xs text-[#E5E7EB] flex-1">
+                                    {run.analysis_json.premium_insights.structure.one_sentence_pitch}
+                                  </p>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(run.analysis_json.premium_insights.structure.one_sentence_pitch)
+                                    }}
+                                    className="p-1.5 hover:bg-[#22283A] rounded transition-colors flex-shrink-0"
+                                    title="Copy to clipboard"
+                                  >
+                                    <Copy className="h-3.5 w-3.5 text-[#9CA3AF]" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 4. Coaching Plan */}
+                    {run.analysis_json.premium_insights.coaching_plan && (
+                      <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                        <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Coaching Plan</h3>
+                        <div className="space-y-4">
+                          {run.analysis_json.premium_insights.coaching_plan.next_attempt_focus && 
+                           run.analysis_json.premium_insights.coaching_plan.next_attempt_focus.length > 0 && (
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-2">Next Attempt Focus</p>
+                              <ul className="space-y-1.5">
+                                {run.analysis_json.premium_insights.coaching_plan.next_attempt_focus.map((focus: string, idx: number) => (
+                                  <li key={idx} className="flex items-start gap-2 text-xs text-[#E5E7EB]">
+                                    <span className="text-[#F59E0B] mt-0.5 flex-shrink-0">•</span>
+                                    <span>{focus}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          {run.analysis_json.premium_insights.coaching_plan.drills && 
+                           run.analysis_json.premium_insights.coaching_plan.drills.length > 0 && (
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-2">Practice Drills</p>
+                              <div className="space-y-2">
+                                {run.analysis_json.premium_insights.coaching_plan.drills.map((drill: any, idx: number) => (
+                                  <DrillAccordion key={idx} title={drill.title} steps={drill.steps || []} />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
             {/* Transcript Card */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -1053,6 +1536,8 @@ export default function RunPage() {
                       const isFree = userPlan === 'free'
                       const itemsToShow = isFree ? lineByLine.slice(0, 3) : lineByLine
                       const hiddenCount = isFree ? Math.max(lineByLine.length - 3, 0) : 0
+                      const premiumInsights = run.analysis_json?.premium_insights
+                      const fillerWordsData = premiumInsights?.filler_words
                       
                       return (
                         <>
@@ -1068,43 +1553,27 @@ export default function RunPage() {
                             }
                             const isHighlighted = highlightedFeedbackIdx === idx
                             
+                            // Get filler words for this quote (Coach only)
+                            const fillerWordsForQuote = fillerWordsData 
+                              ? getFillerWordsForQuote(item.quote, fillerWordsData)
+                              : null
+                            
+                            // Find matching rewrite from premium insights (Coach only)
+                            const matchingRewrite = fillerWordsData?.top_sentences
+                              ? findMatchingRewrite(item.quote, fillerWordsData.top_sentences)
+                              : null
+                            
                             return (
-                              <motion.div
+                              <LineByLineItem
                                 key={idx}
-                                id={`feedback-${idx}`}
-                                initial={{ opacity: 0, x: -10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ duration: 0.3, delay: idx * 0.05 }}
-                                className={`p-4 rounded-lg border transition-all duration-200 ${
-                                  isHighlighted 
-                                    ? 'border-amber-500/60 bg-amber-500/15 shadow-[0_0_20px_rgba(245,158,11,0.3)]' 
-                                    : typeColors[item.type as keyof typeof typeColors] || 'bg-[#151A23] border-[#22283A]'
-                                }`}
-                              >
-                                <div className="flex items-start justify-between mb-2">
-                                  <blockquote className="text-sm font-medium text-[#E5E7EB] italic flex-1">
-                                    "{item.quote}"
-                                  </blockquote>
-                                  <span className={`text-xs font-semibold ml-2 ${priorityColors[item.priority as keyof typeof priorityColors] || 'text-[#9CA3AF]'}`}>
-                                    {item.priority?.toUpperCase()}
-                                  </span>
-                                </div>
-                                <p className="text-sm text-[#E5E7EB] mb-1">
-                                  <strong>Comment:</strong> {item.comment}
-                                </p>
-                                {item.action && (
-                                  <p className="text-sm text-[#E5E7EB]">
-                                    <strong>Action:</strong> {item.action}
-                                  </p>
-                                )}
-                                {/* Rewrite Suggestions - Only for Coach + Day Pass */}
-                                {item.rewrite && (
-                                  <div className="mt-3 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
-                                    <p className="text-xs font-semibold text-[#F59E0B] mb-1">Suggested Rewrite:</p>
-                                    <p className="text-sm text-[#E5E7EB] italic">{item.rewrite}</p>
-                                  </div>
-                                )}
-                              </motion.div>
+                                idx={idx}
+                                item={item}
+                                typeColors={typeColors}
+                                priorityColors={priorityColors}
+                                isHighlighted={isHighlighted}
+                                fillerWordsForQuote={fillerWordsForQuote}
+                                matchingRewrite={matchingRewrite}
+                              />
                             )
                           })}
                           

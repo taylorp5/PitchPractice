@@ -474,20 +474,30 @@ export default function HomePage() {
       setRecordingStartedAt(startTime)
       setRecordingTime(0)
       
+      // Get plan-based recording limit
+      const getMaxRecordingSeconds = (): number => {
+        if (userPlan === 'coach' || userPlan === 'daypass') return 90 * 60 // 90:00
+        if (userPlan === 'starter') return 30 * 60 // 30:00
+        return 2 * 60 // 2:00 for free
+      }
+      const MAX_RECORDING_SECONDS = getMaxRecordingSeconds()
+      
       // Start timer interval
       timerIntervalRef.current = setInterval(() => {
         setRecordingTime(prev => {
           const newTime = prev + 1
-          // Enforce 30-minute limit for Starter users
-          if (userPlan === 'starter' && newTime >= 30 * 60) {
+          // Auto-stop at plan limit
+          if (newTime >= MAX_RECORDING_SECONDS) {
             stopRecording()
-            return 30 * 60
+            return MAX_RECORDING_SECONDS
           }
           return newTime
         })
       }, 1000)
 
-      mediaRecorder.start()
+      // Use timeslice (3000ms) for stable long recordings
+      const timesliceMs = 3000
+      mediaRecorder.start(timesliceMs)
       setIsRecording(true)
       setIsSilent(false)
       silenceStartRef.current = null
@@ -851,27 +861,23 @@ export default function HomePage() {
                     <span className="text-sm font-medium text-[#E6E8EB]">Recording</span>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-mono text-[#F59E0B]">
-                        {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+                        {formatTime(recordingTime)} / {(() => {
+                          if (userPlan === 'coach' || userPlan === 'daypass') return '90:00'
+                          if (userPlan === 'starter') return '30:00'
+                          return '2:00'
+                        })()}
                       </span>
-                      {userPlan === 'starter' && (
-                        <span className="text-xs text-[#9AA4B2]">
-                          / 30:00
-                        </span>
-                      )}
                     </div>
                   </div>
-                  {userPlan === 'starter' && (
-                    <div className="text-center">
-                      <p className="text-xs text-[#9AA4B2]">
-                        Up to 30 minutes per recording
-                      </p>
-                      {recordingTime >= 29 * 60 + 30 && recordingTime < 30 * 60 && (
-                        <p className="text-xs text-[#F59E0B] font-medium mt-1">
-                          Recording ends at 30:00 on Starter
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  <div className="text-center">
+                    <p className="text-xs text-[#9AA4B2]">
+                      {userPlan === 'coach' || userPlan === 'daypass' 
+                        ? 'Up to 90 minutes per recording'
+                        : userPlan === 'starter'
+                        ? 'Up to 30 minutes per recording'
+                        : 'Up to 2 minutes per recording'}
+                    </p>
+                  </div>
                 </div>
               )}
 

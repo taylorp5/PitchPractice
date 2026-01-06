@@ -1070,7 +1070,9 @@ FEEDBACK SUMMARY
         }
       }, 1500)
 
-      mediaRecorder.start()
+      // Use timeslice (3000ms) for stable long recordings
+      const timesliceMs = 3000
+      mediaRecorder.start(timesliceMs)
       setIsRecording(true)
       setIsPaused(false)
       setIsSilent(false)
@@ -2065,36 +2067,63 @@ FEEDBACK SUMMARY
                       </div>
                     )}
 
-                    {/* Progress status */}
+                    {/* Step-based Progress UI */}
                     {(isUploading || isTranscribing || isGettingFeedback) && (
-                      <div className="text-center py-3">
-                        {isUploading && (
-                          <div className="space-y-1">
-                            <LoadingSpinner size="md" text="Uploading audio..." />
-                            <p className="text-xs text-[#9AA4B2]">ETA ~5–10s</p>
+                      <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            {isUploading ? (
+                              <>
+                                <LoadingSpinner className="h-4 w-4 text-[#F59E0B]" />
+                                <span className="text-sm font-medium text-[#E6E8EB]">Uploading audio…</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="h-4 w-4 text-[#22C55E]" />
+                                <span className="text-sm text-[#9AA4B2]">Uploading audio…</span>
+                              </>
+                            )}
                           </div>
-                        )}
-                        {isTranscribing && !isUploading && (
-                          <div className="space-y-1">
-                            <LoadingSpinner size="md" text="Transcribing..." />
-                            <p className="text-xs text-[#9AA4B2]">ETA ~10–30s</p>
+                          <div className="flex items-center gap-2">
+                            {isTranscribing ? (
+                              <>
+                                <LoadingSpinner className="h-4 w-4 text-[#F59E0B]" />
+                                <span className="text-sm font-medium text-[#E6E8EB]">Transcribing…</span>
+                              </>
+                            ) : isUploading ? (
+                              <>
+                                <div className="h-4 w-4 rounded-full border-2 border-[#9AA4B2]" />
+                                <span className="text-sm text-[#9AA4B2]">Transcribing…</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="h-4 w-4 text-[#22C55E]" />
+                                <span className="text-sm text-[#9AA4B2]">Transcribing…</span>
+                              </>
+                            )}
                           </div>
-                        )}
-                        {isGettingFeedback && !isUploading && !isTranscribing && (
-                          <div className="space-y-1">
-                            <LoadingSpinner size="md" text="Analyzing..." />
-                            <p className="text-xs text-[#9AA4B2]">
-                              ETA {(() => {
-                                const durationSec = durationMs 
-                                  ? durationMs / 1000 
-                                  : (run?.duration_ms 
-                                    ? run.duration_ms / 1000 
-                                    : (run?.audio_seconds || null))
-                                return calculateFeedbackETA(durationSec)
-                              })()}
-                            </p>
+                          <div className="flex items-center gap-2">
+                            {isGettingFeedback ? (
+                              <>
+                                <LoadingSpinner className="h-4 w-4 text-[#F59E0B]" />
+                                <span className="text-sm font-medium text-[#E6E8EB]">Analyzing…</span>
+                              </>
+                            ) : (isUploading || isTranscribing) ? (
+                              <>
+                                <div className="h-4 w-4 rounded-full border-2 border-[#9AA4B2]" />
+                                <span className="text-sm text-[#9AA4B2]">Analyzing…</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle2 className="h-4 w-4 text-[#22C55E]" />
+                                <span className="text-sm text-[#9AA4B2]">Analyzing…</span>
+                              </>
+                            )}
                           </div>
-                        )}
+                        </div>
+                        <p className="text-xs text-[#9AA4B2] mt-3 italic">
+                          Long recordings can take several minutes.
+                        </p>
                       </div>
                     )}
                   </div>

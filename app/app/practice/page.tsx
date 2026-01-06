@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Badge } from '@/components/ui/Badge'
-import { Mic, Upload, Play, Pause, Square, AlertCircle, X, CheckCircle2, Edit2, ExternalLink } from 'lucide-react'
+import { Mic, Upload, Play, Pause, Square, AlertCircle, X, CheckCircle2, Edit2, ExternalLink, Check } from 'lucide-react'
 import Link from 'next/link'
 import { getUserPlan, UserPlan } from '@/lib/plan'
 import CustomRubricBuilder, { CustomRubric } from '@/components/CustomRubricBuilder'
@@ -495,20 +495,11 @@ export default function PracticePage() {
         }
       }, 1500)
 
-      // Chunked recording scaffolding: Use timeslice for Coach plans to support long recordings
-      // Timeslice (10000ms = 10s) causes MediaRecorder to fire ondataavailable every 10 seconds
-      // This enables progressive chunk collection and future chunked upload implementation
-      // Free/Starter plans continue without timeslice to maintain existing behavior
-      const useChunkedRecording = isCoachOrDaypass
-      const timesliceMs = useChunkedRecording ? 10000 : undefined // 10 second chunks for Coach
-      
-      if (timesliceMs) {
-        // Start with timeslice for chunked recording (Coach only)
-        mediaRecorder.start(timesliceMs)
-      } else {
-        // Start without timeslice (Free/Starter - existing behavior)
-        mediaRecorder.start()
-      }
+      // Use timeslice (3000ms) for all plans to ensure stable long recordings
+      // This causes MediaRecorder to fire ondataavailable every 3 seconds
+      // This enables progressive chunk collection and prevents memory issues for long recordings
+      const timesliceMs = 3000 // 3 second chunks for all plans
+      mediaRecorder.start(timesliceMs)
       setIsRecording(true)
       setIsPaused(false)
       setIsSilent(false)
@@ -1785,22 +1776,63 @@ export default function PracticePage() {
             )}
 
             {/* Status Messages */}
-            {isUploading && (
-              <div className="flex items-center gap-2 text-sm text-[#9AA4B2]">
-                <LoadingSpinner className="h-4 w-4" />
-                <span>Uploading audio...</span>
-              </div>
-            )}
-            {isTranscribing && (
-              <div className="flex items-center gap-2 text-sm text-[#9AA4B2]">
-                <LoadingSpinner className="h-4 w-4" />
-                <span>Transcribing...</span>
-              </div>
-            )}
-            {isGettingFeedback && (
-              <div className="flex items-center gap-2 text-sm text-[#9AA4B2]">
-                <LoadingSpinner className="h-4 w-4" />
-                <span>Generating feedback... {formatTime(feedbackTimer)}</span>
+            {/* Step-based Progress UI */}
+            {(isUploading || isTranscribing || isGettingFeedback) && (
+              <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    {isUploading ? (
+                      <>
+                        <LoadingSpinner className="h-4 w-4 text-[#F59E0B]" />
+                        <span className="text-sm font-medium text-[#E6E8EB]">Uploading audio…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 text-[#22C55E]" />
+                        <span className="text-sm text-[#9AA4B2]">Uploading audio…</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isTranscribing ? (
+                      <>
+                        <LoadingSpinner className="h-4 w-4 text-[#F59E0B]" />
+                        <span className="text-sm font-medium text-[#E6E8EB]">Transcribing…</span>
+                      </>
+                    ) : isUploading ? (
+                      <>
+                        <div className="h-4 w-4 rounded-full border-2 border-[#9AA4B2]" />
+                        <span className="text-sm text-[#9AA4B2]">Transcribing…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 text-[#22C55E]" />
+                        <span className="text-sm text-[#9AA4B2]">Transcribing…</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isGettingFeedback ? (
+                      <>
+                        <LoadingSpinner className="h-4 w-4 text-[#F59E0B]" />
+                        <span className="text-sm font-medium text-[#E6E8EB]">Analyzing…</span>
+                      </>
+                    ) : (isUploading || isTranscribing) ? (
+                      <>
+                        <div className="h-4 w-4 rounded-full border-2 border-[#9AA4B2]" />
+                        <span className="text-sm text-[#9AA4B2]">Analyzing…</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 text-[#22C55E]" />
+                        <span className="text-sm text-[#9AA4B2]">Analyzing…</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-[#9AA4B2] mt-3 italic">
+                  Long recordings can take several minutes.
+                </p>
               </div>
             )}
           </div>

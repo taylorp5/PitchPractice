@@ -7,6 +7,7 @@ import { ProfileDropdown } from './ProfileDropdown'
 import { useState, useEffect } from 'react'
 import { colors } from '@/lib/theme'
 import { createClient } from '@/lib/supabase/client-auth'
+import { Mic } from 'lucide-react'
 
 export function Navbar() {
   const pathname = usePathname()
@@ -70,12 +71,10 @@ export function Navbar() {
                 backgroundColor: colors.accent.primary,
               }}
             >
-              <span 
-                className="font-bold text-xl"
+              <Mic 
+                className="w-5 h-5"
                 style={{ color: colors.background.primary }}
-              >
-                P
-              </span>
+              />
             </div>
             <span 
               className="font-bold text-xl tracking-tight"

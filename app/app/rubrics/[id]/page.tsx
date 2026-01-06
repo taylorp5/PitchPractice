@@ -5,8 +5,9 @@ import { useRouter, useParams } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { ArrowLeft, Edit, Trash2, Clock } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Clock, Info } from 'lucide-react'
 import RubricForm from '../RubricForm'
+import { getUserPlan, type UserPlan } from '@/lib/plan'
 
 interface Criterion {
   key: string
@@ -39,9 +40,12 @@ export default function RubricDetailPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [userPlan, setUserPlan] = useState<UserPlan>('free')
+  const [rubricSource, setRubricSource] = useState<string | null>(null)
 
   useEffect(() => {
     fetchRubric()
+    getUserPlan().then(plan => setUserPlan(plan))
   }, [id])
 
   const fetchRubric = async () => {
@@ -55,6 +59,7 @@ export default function RubricDetailPage() {
 
       const data = await response.json()
       setRubric(data)
+      setRubricSource(data.source || null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load rubric')
     } finally {
@@ -210,14 +215,33 @@ export default function RubricDetailPage() {
             </div>
           </div>
           <div className="flex gap-2 ml-4">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setIsEditing(true)}
-            >
-              <Edit className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
+            {(userPlan === 'daypass' || (userPlan === 'starter' && rubricSource !== 'manual')) ? (
+              <div className="relative">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {}}
+                  disabled={true}
+                  className="opacity-50 cursor-not-allowed"
+                  title={userPlan === 'daypass' ? 'Editing available on Coach' : 'Starter plan rubrics cannot be edited after creation'}
+                >
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+                <div className="absolute -top-8 left-0 bg-[#111827] text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 hover:opacity-100 pointer-events-none transition-opacity z-10">
+                  {userPlan === 'daypass' ? 'Editing available on Coach' : 'Starter plan rubrics cannot be edited after creation'}
+                </div>
+              </div>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setIsEditing(true)}
+              >
+                <Edit className="mr-2 h-4 w-4" />
+                Edit
+              </Button>
+            )}
             <Button
               variant="danger"
               size="sm"
@@ -230,6 +254,25 @@ export default function RubricDetailPage() {
             </Button>
           </div>
         </div>
+
+        {/* Plan-based restrictions notice */}
+        {(userPlan === 'daypass' || (userPlan === 'starter' && rubricSource !== 'manual')) && (
+          <Card className="p-4 mb-6 bg-[#FEF3C7] border-[#FCD34D]">
+            <div className="flex items-start gap-3">
+              <Info className="h-5 w-5 text-[#D97706] flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-[#92400E] mb-1">
+                  {userPlan === 'daypass' ? 'Read-only Rubric' : 'Limited Editing'}
+                </p>
+                <p className="text-xs text-[#92400E]">
+                  {userPlan === 'daypass' 
+                    ? 'Day Pass users can view AI-generated rubrics but cannot edit or refine them. Editing is available on Coach plan.'
+                    : 'Starter plan rubrics cannot be edited after creation. Upgrade to Coach for full editing capabilities.'}
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Criteria List */}
         <Card className="p-6 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">

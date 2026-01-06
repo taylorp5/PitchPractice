@@ -6,7 +6,8 @@ import Link from 'next/link'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { Plus, Edit, Trash2, Clock } from 'lucide-react'
+import { Plus, Edit, Trash2, Clock, Info } from 'lucide-react'
+import { getUserPlan, type UserPlan } from '@/lib/plan'
 
 interface Criterion {
   key: string
@@ -34,9 +35,11 @@ export default function RubricsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [userPlan, setUserPlan] = useState<UserPlan>('free')
 
   useEffect(() => {
     fetchRubrics()
+    getUserPlan().then(plan => setUserPlan(plan))
   }, [])
 
   const fetchRubrics = async () => {
@@ -106,14 +109,33 @@ export default function RubricsPage() {
             <h1 className="text-3xl font-bold text-[#111827] mb-2">My Rubrics</h1>
             <p className="text-[#6B7280]">Create and manage custom evaluation rubrics</p>
           </div>
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={() => router.push('/app/rubrics/new')}
-          >
-            <Plus className="mr-2 h-5 w-5" />
-            New Rubric
-          </Button>
+          {userPlan === 'free' ? (
+            <div className="relative">
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => {}}
+                disabled={true}
+                className="opacity-50 cursor-not-allowed"
+                title="Custom rubrics require Starter plan or higher"
+              >
+                <Plus className="mr-2 h-5 w-5" />
+                New Rubric
+              </Button>
+              <div className="absolute -bottom-8 right-0 bg-[#111827] text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 hover:opacity-100 pointer-events-none transition-opacity z-10">
+                Custom rubrics require Starter plan or higher
+              </div>
+            </div>
+          ) : (
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => router.push('/app/rubrics/new')}
+            >
+              <Plus className="mr-2 h-5 w-5" />
+              New Rubric
+            </Button>
+          )}
         </div>
 
         {error && (
@@ -125,14 +147,34 @@ export default function RubricsPage() {
         {/* Rubrics Grid */}
         {rubrics.length === 0 ? (
           <Card className="p-12 bg-white border-[rgba(17,24,39,0.10)] shadow-sm text-center">
-            <p className="text-[#6B7280] mb-4">You haven't created any rubrics yet.</p>
-            <Button
-              variant="primary"
-              onClick={() => router.push('/app/rubrics/new')}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Create Your First Rubric
-            </Button>
+            {userPlan === 'free' ? (
+              <>
+                <p className="text-[#6B7280] mb-4">Free plan users can only use default rubrics.</p>
+                <Card className="p-4 mb-4 bg-[#FEF3C7] border-[#FCD34D] inline-block">
+                  <div className="flex items-start gap-3">
+                    <Info className="h-5 w-5 text-[#D97706] flex-shrink-0 mt-0.5" />
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-[#92400E] mb-1">Upgrade to Create Custom Rubrics</p>
+                      <p className="text-xs text-[#92400E]">
+                        Starter plan: Upload or paste rubrics<br />
+                        Coach plan: Full AI rubric creation and editing
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              </>
+            ) : (
+              <>
+                <p className="text-[#6B7280] mb-4">You haven't created any rubrics yet.</p>
+                <Button
+                  variant="primary"
+                  onClick={() => router.push('/app/rubrics/new')}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Your First Rubric
+                </Button>
+              </>
+            )}
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

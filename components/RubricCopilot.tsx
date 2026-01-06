@@ -27,9 +27,10 @@ interface RubricCopilotProps {
   currentRubric: CustomRubric
   onApply: (rubric: CustomRubric) => void
   disabled?: boolean
+  userPlan?: 'free' | 'starter' | 'coach' | 'daypass'
 }
 
-export default function RubricCopilot({ currentRubric, onApply, disabled }: RubricCopilotProps) {
+export default function RubricCopilot({ currentRubric, onApply, disabled, userPlan = 'free' }: RubricCopilotProps) {
   const [messages, setMessages] = useState<CopilotMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -330,16 +331,24 @@ export default function RubricCopilot({ currentRubric, onApply, disabled }: Rubr
             <Sparkles className="h-4 w-4 mr-1" />
             Generate rubric
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleRefine}
-            disabled={isLoading || disabled}
-            className="flex-1"
-          >
-            <RefreshCw className="h-4 w-4 mr-1" />
-            Refine rubric
-          </Button>
+          <div className="relative flex-1">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleRefine}
+              disabled={isLoading || disabled || userPlan === 'daypass'}
+              className={`w-full ${userPlan === 'daypass' ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={userPlan === 'daypass' ? 'Editing available on Coach' : undefined}
+            >
+              <RefreshCw className="h-4 w-4 mr-1" />
+              Refine rubric
+            </Button>
+            {userPlan === 'daypass' && (
+              <div className="absolute -top-8 left-0 bg-[#111827] text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 hover:opacity-100 pointer-events-none transition-opacity z-10">
+                Editing available on Coach
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <textarea

@@ -26,6 +26,7 @@ interface AIBuilderChatProps {
   onDraftUpdate: (draft: RubricDraft | null) => void
   onAcceptDraft: (draft: RubricDraft) => void
   onParseError?: (error: string | null) => void
+  userPlan?: 'free' | 'starter' | 'coach' | 'daypass'
 }
 
 const QUICK_PROMPTS = [
@@ -35,7 +36,7 @@ const QUICK_PROMPTS = [
   "Make it stricter with more detailed criteria",
 ]
 
-export default function AIBuilderChat({ onDraftUpdate, onAcceptDraft, onParseError }: AIBuilderChatProps) {
+export default function AIBuilderChat({ onDraftUpdate, onAcceptDraft, onParseError, userPlan = 'free' }: AIBuilderChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -386,15 +387,35 @@ export default function AIBuilderChat({ onDraftUpdate, onAcceptDraft, onParseErr
         {/* Accept Button */}
         {currentDraft && (
           <div className="px-4 pb-4 border-t border-[rgba(17,24,39,0.10)] pt-4">
-            <Button
-              variant="primary"
-              size="md"
-              onClick={handleAccept}
-              disabled={isLoading}
-              className="w-full"
-            >
-              Accept & Save Rubric
-            </Button>
+            {userPlan === 'daypass' ? (
+              <div className="relative">
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={handleAccept}
+                  disabled={true}
+                  className="w-full opacity-50 cursor-not-allowed"
+                  title="Editing available on Coach"
+                >
+                  Accept & Save Rubric
+                </Button>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xs text-[#6B7280] bg-white px-2 py-1 rounded border border-[rgba(17,24,39,0.10)]">
+                    Editing available on Coach
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <Button
+                variant="primary"
+                size="md"
+                onClick={handleAccept}
+                disabled={isLoading}
+                className="w-full"
+              >
+                Accept & Save Rubric
+              </Button>
+            )}
           </div>
         )}
       </Card>

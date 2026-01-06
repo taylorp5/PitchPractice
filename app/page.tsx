@@ -627,12 +627,10 @@ export default function LandingPage() {
                     boxShadow: `0 4px 12px ${colors.accent.primary}30`,
                   }}
                 >
-                  <span 
-                    className="font-bold text-xl"
+                  <Mic 
+                    className="w-5 h-5"
                     style={{ color: colors.background.primary }}
-                  >
-                    P
-                  </span>
+                  />
                 </div>
                 <span 
                   className="font-bold text-xl"
@@ -660,16 +658,54 @@ export default function LandingPage() {
               >
                 Try Free
               </Link>
+              <Link 
+                href="/support" 
+                className="transition-all font-medium hover:scale-105 inline-block"
+                style={{ 
+                  color: colors.text.secondary,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = colors.accent.primary}
+                onMouseLeave={(e) => e.currentTarget.style.color = colors.text.secondary}
+              >
+                Support
+              </Link>
             </div>
           </div>
           <div 
-            className="pt-8 border-t text-center text-sm"
+            className="pt-8 border-t"
             style={{
               borderColor: `${colors.border.primary}30`,
-              color: colors.text.tertiary,
             }}
           >
-            © {new Date().getFullYear()} PitchPractice. All rights reserved.
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm">
+              <div style={{ color: colors.text.tertiary }}>
+                © {new Date().getFullYear()} PitchPractice. All rights reserved.
+              </div>
+              <div className="flex flex-wrap gap-6 justify-center">
+                <Link 
+                  href="/terms"
+                  className="transition-all font-medium"
+                  style={{ 
+                    color: colors.text.tertiary,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = colors.text.secondary}
+                  onMouseLeave={(e) => e.currentTarget.style.color = colors.text.tertiary}
+                >
+                  Terms
+                </Link>
+                <Link 
+                  href="/privacy"
+                  className="transition-all font-medium"
+                  style={{ 
+                    color: colors.text.tertiary,
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = colors.text.secondary}
+                  onMouseLeave={(e) => e.currentTarget.style.color = colors.text.tertiary}
+                >
+                  Privacy
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
       </footer>

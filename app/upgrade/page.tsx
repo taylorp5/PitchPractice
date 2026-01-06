@@ -2,15 +2,18 @@
 
 import { Check } from 'lucide-react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
 import { Button } from '@/components/ui/Button'
-import { getUserPlan, UserPlan } from '@/lib/plan'
+import { getUserPlan, UserPlan, setDevPlanOverride } from '@/lib/plan'
 
 function UpgradePageContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const [currentPlan, setCurrentPlan] = useState<UserPlan>('free')
   const [isLoading, setIsLoading] = useState(true)
+  const [devOverrideMessage, setDevOverrideMessage] = useState<string | null>(null)
+  const isDev = typeof window !== 'undefined' && process.env.NODE_ENV !== 'production'
   
   useEffect(() => {
     getUserPlan().then(plan => {
@@ -21,6 +24,26 @@ function UpgradePageContent() {
   
   // Get plan from query param if present (for highlighting)
   const highlightedPlan = searchParams.get('plan') as UserPlan | null
+  
+  // Handle dev simulate upgrade
+  const handleDevSimulate = (plan: UserPlan) => {
+    if (!isDev) return
+    setDevPlanOverride(plan)
+    setDevOverrideMessage(`Dev plan override set to ${plan}`)
+    setTimeout(() => {
+      router.push('/app/practice')
+    }, 1000)
+  }
+  
+  // Handle clear dev override
+  const handleClearDevOverride = () => {
+    if (!isDev) return
+    setDevPlanOverride(null)
+    setDevOverrideMessage('Dev plan override cleared')
+    getUserPlan().then(plan => {
+      setCurrentPlan(plan)
+    })
+  }
 
   return (
     <div className="min-h-screen bg-[#F7F7F8] py-12 px-4">
@@ -34,6 +57,43 @@ function UpgradePageContent() {
             Unlock deeper feedback, custom rubrics, and coaching-level insights.
           </p>
         </div>
+        
+        {/* Dev Override Message */}
+        {devOverrideMessage && (
+          <div className="mb-6 p-4 bg-[#22C55E]/10 border border-[#22C55E]/30 rounded-lg text-center">
+            <p className="text-sm text-[#22C55E] font-medium">{devOverrideMessage}</p>
+          </div>
+        )}
+        
+        {/* Dev Simulate Upgrade Section */}
+        {isDev && highlightedPlan && ['starter', 'coach', 'daypass'].includes(highlightedPlan) && (
+          <div className="mb-8 p-4 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-[#F59E0B] mb-1">DEV MODE: Simulate Upgrade</p>
+                <p className="text-xs text-[#6B7280]">Click to set plan override and test features</p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleDevSimulate(highlightedPlan)}
+                >
+                  Simulate {highlightedPlan === 'daypass' ? 'Day Pass' : highlightedPlan.charAt(0).toUpperCase() + highlightedPlan.slice(1)}
+                </Button>
+                {localStorage.getItem('pp_dev_plan_override') && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearDevOverride}
+                  >
+                    Clear Override
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Pricing Cards - 4 cards: Free, Starter, Coach, Day Pass */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
@@ -136,17 +196,14 @@ function UpgradePageContent() {
               </li>
             </ul>
 
-            <Link href="/upgrade?plan=starter" className="block">
-              <Button
-                variant="primary"
-                size="lg"
-                className="w-full"
-                disabled={currentPlan === 'starter'}
-                title={currentPlan === 'starter' ? 'Current plan' : undefined}
-              >
-                {currentPlan === 'starter' ? 'Current Plan' : 'Upgrade to Starter'}
-              </Button>
-            </Link>
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
+              onClick={() => router.push('/upgrade?plan=starter')}
+            >
+              {currentPlan === 'starter' ? 'Current Plan' : 'Upgrade to Starter'}
+            </Button>
           </div>
 
           {/* Coach */}
@@ -195,17 +252,14 @@ function UpgradePageContent() {
               </li>
             </ul>
 
-            <Link href="/upgrade?plan=coach" className="block">
-              <Button
-                variant="primary"
-                size="lg"
-                className="w-full"
-                disabled={currentPlan === 'coach'}
-                title={currentPlan === 'coach' ? 'Current plan' : undefined}
-              >
-                {currentPlan === 'coach' ? 'Current Plan' : 'Upgrade to Coach'}
-              </Button>
-            </Link>
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
+              onClick={() => router.push('/upgrade?plan=coach')}
+            >
+              {currentPlan === 'coach' ? 'Current Plan' : 'Upgrade to Coach'}
+            </Button>
           </div>
 
           {/* Day Pass */}
@@ -239,17 +293,14 @@ function UpgradePageContent() {
               </li>
             </ul>
 
-            <Link href="/upgrade?plan=daypass" className="block">
-              <Button
-                variant="primary"
-                size="lg"
-                className="w-full"
-                disabled={currentPlan === 'daypass'}
-                title={currentPlan === 'daypass' ? 'Current plan' : undefined}
-              >
-                {currentPlan === 'daypass' ? 'Current Plan' : 'Get Day Pass'}
-              </Button>
-            </Link>
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
+              onClick={() => router.push('/upgrade?plan=daypass')}
+            >
+              {currentPlan === 'daypass' ? 'Current Plan' : 'Get Day Pass'}
+            </Button>
           </div>
         </div>
       </div>

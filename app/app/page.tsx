@@ -1107,11 +1107,13 @@ export default function HomePage() {
                     <span>Rewrite your pitch instantly</span>
                   </li>
                 </ul>
-                <Link href="/upgrade?plan=coach">
-                  <Button variant="primary" className="w-full">
-                    Upgrade to Coach
-                  </Button>
-                </Link>
+                <Button 
+                  variant="primary" 
+                  className="w-full"
+                  onClick={() => router.push('/upgrade?plan=coach')}
+                >
+                  Upgrade to Coach
+                </Button>
               </div>
             </Card>
           )}

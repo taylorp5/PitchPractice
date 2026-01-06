@@ -91,14 +91,22 @@ export default function PracticePage() {
   const silenceStartRef = useRef<number | null>(null)
   const testAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Fetch user plan and rubrics on mount
+  const [isLoadingPlan, setIsLoadingPlan] = useState(true)
+
+  // Fetch user plan on mount (separate effect)
   useEffect(() => {
-    // Get user plan
     getUserPlan().then(plan => {
       setUserPlan(plan)
+      setIsLoadingPlan(false)
+    }).catch(err => {
+      console.error('Failed to fetch user plan:', err)
+      setUserPlan('free')
+      setIsLoadingPlan(false)
     })
+  }, [])
 
-    // Fetch template rubrics
+  // Fetch rubrics on mount (independent of plan)
+  useEffect(() => {
     fetch('/api/rubrics?scope=templates')
       .then(res => res.json())
       .then(data => {
@@ -1007,7 +1015,13 @@ export default function PracticePage() {
             </div>
           </div>
 
-          <div className="space-y-4">
+          {isLoadingPlan ? (
+            <div className="py-8 text-center">
+              <LoadingSpinner className="h-6 w-6 mx-auto mb-2" />
+              <p className="text-sm text-[#9AA4B2]">Loading plan...</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
             {/* Mode Toggle - Only for Starter+ */}
             {isStarterOrAbove && (
               <div>
@@ -1253,7 +1267,8 @@ export default function PracticePage() {
                 </p>
               </div>
             )}
-          </div>
+            </div>
+          )}
         </Card>
 
         {/* Step 2: Record/Upload Audio */}

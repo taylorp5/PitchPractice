@@ -1754,14 +1754,26 @@ export default function PracticePage() {
             {isRecording && (
               <div className="flex gap-3">
                 {isPaused ? (
-                  <Button
-                    onClick={resumeRecording}
-                    variant="secondary"
-                    className="flex-1"
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    Resume
-                  </Button>
+                  <>
+                    <Button
+                      onClick={resumeRecording}
+                      variant="secondary"
+                      className="flex-1"
+                    >
+                      <Play className="h-4 w-4 mr-2" />
+                      Resume
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        handleRerecord()
+                      }}
+                      variant="ghost"
+                      className="flex-1 text-[#EF4444] hover:text-[#EF4444] hover:bg-[#EF4444]/10 border border-[#EF4444]/30"
+                    >
+                      <Square className="h-4 w-4 mr-2" />
+                      Re-record
+                    </Button>
+                  </>
                 ) : (
                   <Button
                     onClick={pauseRecording}

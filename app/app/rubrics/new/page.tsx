@@ -10,6 +10,7 @@ import RubricForm from '../RubricForm'
 import AIBuilderChat from '../AIBuilderChat'
 import RubricDraftPreview from '../RubricDraftPreview'
 import { getUserPlan, type UserPlan } from '@/lib/plan'
+import { canEditRubrics } from '@/lib/entitlements'
 
 type Mode = 'manual' | 'ai'
 
@@ -157,7 +158,7 @@ export default function NewRubricPage() {
           <RubricForm onSubmit={handleSubmit} isSaving={isSaving} />
         ) : (
           <>
-            {userPlan === 'daypass' && (
+            {!canEditRubrics(userPlan) && userPlan === 'daypass' && (
               <Card className="p-4 mb-6 bg-[#FEF3C7] border-[#FCD34D]">
                 <div className="flex items-start gap-3">
                   <Info className="h-5 w-5 text-[#D97706] flex-shrink-0 mt-0.5" />

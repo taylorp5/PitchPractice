@@ -12,7 +12,7 @@ import { StatPill } from '@/components/ui/StatPill'
 import { Badge } from '@/components/ui/Badge'
 import { Check, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, FileText, Download, Copy, Sparkles } from 'lucide-react'
 import { getUserPlan } from '@/lib/plan'
-import { hasCoachAccess } from '@/lib/entitlements'
+import { hasCoachAccess, hasDayPassAccess, canViewPremiumInsights, canViewProgressPanel, canEditRubrics } from '@/lib/entitlements'
 
 // Helper function to log fetch errors with full details
 async function logFetchError(url: string, response: Response, error?: any) {
@@ -449,9 +449,9 @@ export default function RunPage() {
     }
   }
 
-  // Fetch progress data for Coach users
+  // Fetch progress data for Coach users only
   const fetchProgress = useCallback(async () => {
-    if (!routeRunId || !hasCoachAccess(userPlan)) {
+    if (!routeRunId || !canViewProgressPanel(userPlan)) {
       return
     }
 
@@ -482,9 +482,9 @@ export default function RunPage() {
     fetchRun(false)
   }, [routeRunId])
 
-  // Fetch progress when run is loaded and user has coach access
+  // Fetch progress when run is loaded and user can view progress (Coach only)
   useEffect(() => {
-    if (run && hasCoachAccess(userPlan) && run.analysis_json) {
+    if (run && canViewProgressPanel(userPlan) && run.analysis_json) {
       fetchProgress()
     }
   }, [run, userPlan, fetchProgress])
@@ -1155,17 +1155,24 @@ export default function RunPage() {
               </motion.div>
             )}
 
-            {/* Premium Insights Card - Only for Coach plan */}
+            {/* Premium Insights Card - For Coach and active Day Pass */}
             {(() => {
               // Guard: ensure run exists
               if (!run) return null
               
               const coachAccess = hasCoachAccess(userPlan)
+              const dayPassActive = hasDayPassAccess(userPlan)
+              const canViewPremium = canViewPremiumInsights(userPlan)
               const hasPremiumInsights = run.analysis_json?.premium_insights
               const hasPremiumContent = run.analysis_json?.premium
               
-              // Show Premium Insights if user has coach access and insights or premium content exist
-              if (coachAccess && (hasPremiumInsights || hasPremiumContent)) {
+              // Check if Day Pass expired (run was analyzed on daypass but user no longer has active daypass)
+              const runPlanAtTime = run.plan_at_time || run.analysis_json?.meta?.plan_at_time
+              const wasDayPassAtTime = runPlanAtTime === 'daypass' || runPlanAtTime === 'day_pass'
+              const isDayPassExpired = wasDayPassAtTime && !dayPassActive && !coachAccess
+              
+              // Show Premium Insights if user can view premium (Coach or active Day Pass) and insights exist
+              if (canViewPremium && (hasPremiumInsights || hasPremiumContent)) {
                 return (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -1558,14 +1565,85 @@ export default function RunPage() {
                         </div>
                       </div>
                     )}
-                      </div>
+                      
+                      {/* Upsell banner for active Day Pass */}
+                      {dayPassActive && !coachAccess && (
+                        <div className="mt-6 p-4 bg-gradient-to-r from-[#F59E0B]/10 to-[#F59E0B]/5 border border-[#F59E0B]/30 rounded-lg">
+                          <div className="flex items-start gap-3">
+                            <Sparkles className="h-5 w-5 text-[#F59E0B] mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <h3 className="text-sm font-semibold text-[#F59E0B] mb-2">Want ongoing progress tracking + rubric editing?</h3>
+                              <p className="text-xs text-[#E5E7EB] mb-3">
+                                Upgrade to Coach to unlock progress over time comparisons and full rubric editing capabilities.
+                              </p>
+                              <Button
+                                onClick={() => router.push('/upgrade?plan=coach')}
+                                variant="primary"
+                                size="sm"
+                              >
+                                Upgrade to Coach
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     </Card>
                   </motion.div>
                 )
               }
               
-              // Show upsell card if user doesn't have coach access
-              if (!coachAccess) {
+              // Show expired Day Pass banner or upsell card
+              if (!canViewPremium) {
+                // Check if Day Pass expired
+                const runPlanAtTime = run.plan_at_time || run.analysis_json?.meta?.plan_at_time
+                const wasDayPassAtTime = runPlanAtTime === 'daypass' || runPlanAtTime === 'day_pass'
+                const isDayPassExpired = wasDayPassAtTime && !dayPassActive && !coachAccess
+                
+                if (isDayPassExpired) {
+                  // Show expired Day Pass banner
+                  return (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
+                    >
+                      <Card>
+                        <div className="p-4 bg-[#1A1F2E] border border-[#F59E0B]/30 rounded-lg">
+                          <div className="flex items-start gap-3">
+                            <Sparkles className="h-5 w-5 text-[#F59E0B] mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <h3 className="text-sm font-semibold text-[#F59E0B] mb-2">Your Day Pass has ended</h3>
+                              <p className="text-sm text-[#E5E7EB] mb-4">
+                                Upgrade to Coach to unlock Premium Insights again.
+                              </p>
+                              <div className="flex flex-col sm:flex-row gap-3">
+                                <Button
+                                  onClick={() => router.push('/upgrade?plan=coach')}
+                                  variant="primary"
+                                  size="sm"
+                                  className="flex-1"
+                                >
+                                  Upgrade to Coach
+                                </Button>
+                                <Button
+                                  onClick={() => router.push('/app/practice')}
+                                  variant="secondary"
+                                  size="sm"
+                                  className="flex-1"
+                                >
+                                  Record again
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    </motion.div>
+                  )
+                }
+                
+                // Show regular upsell card for non-Day Pass users
                 return (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -1631,11 +1709,11 @@ export default function RunPage() {
               // Guard: ensure run exists
               if (!run) return null
               
-              const coachAccess = hasCoachAccess(userPlan)
+              const canViewProgress = canViewProgressPanel(userPlan)
               const hasAnalysis = run.analysis_json
               
-              // Show Progress card if user has coach access and analysis exists
-              if (coachAccess && hasAnalysis && progressData.comparisons) {
+              // Show Progress card if user can view progress (Coach only) and analysis exists
+              if (canViewProgress && hasAnalysis && progressData.comparisons) {
                 const comparisons = progressData.comparisons
                 
                 // Get current run metrics

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,6 +88,84 @@ export async function GET(
           'Cache-Control': 'no-store',
         },
       }
+    )
+  }
+}
+
+// DELETE - Delete a run
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { id } = params
+    const supabase = await createClient()
+    
+    // Get authenticated user
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    
+    if (userError || !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    // First, check if run exists and user owns it
+    const { data: existingRun, error: fetchError } = await getSupabaseAdmin()
+      .from('pitch_runs')
+      .select('id, user_id, audio_path')
+      .eq('id', id)
+      .single()
+
+    if (fetchError || !existingRun) {
+      return NextResponse.json(
+        { error: 'Run not found' },
+        { status: 404 }
+      )
+    }
+
+    // Check ownership
+    if (existingRun.user_id !== user.id) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 403 }
+      )
+    }
+
+    // Delete audio file from storage if it exists
+    if (existingRun.audio_path) {
+      const { error: storageError } = await getSupabaseAdmin().storage
+        .from('pitchpractice-audio')
+        .remove([existingRun.audio_path])
+      
+      if (storageError) {
+        console.error('Failed to delete audio file:', storageError)
+        // Continue with database deletion even if storage deletion fails
+      }
+    }
+
+    // Delete the run from database
+    const { error } = await getSupabaseAdmin()
+      .from('pitch_runs')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('Database error:', error)
+      return NextResponse.json(
+        { error: 'Failed to delete run' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('Unexpected error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
     )
   }
 }

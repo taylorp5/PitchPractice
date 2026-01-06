@@ -7,6 +7,8 @@ import { createClient } from '@/lib/supabase/client-auth'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { colors } from '@/lib/theme'
+import { getUserPlan, UserPlan } from '@/lib/plan'
+import { canViewPremiumInsights, canEditRubrics } from '@/lib/entitlements'
 
 interface RecentRun {
   id: string
@@ -38,6 +40,9 @@ export default function DashboardPage() {
   const [recentRubrics, setRecentRubrics] = useState<RecentRubric[]>([])
   const [isLoadingRuns, setIsLoadingRuns] = useState(false)
   const [isLoadingRubrics, setIsLoadingRubrics] = useState(false)
+  const [deletingRunId, setDeletingRunId] = useState<string | null>(null)
+  const [deletingRubricId, setDeletingRubricId] = useState<string | null>(null)
+  const [userPlan, setUserPlan] = useState<UserPlan>('free')
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -55,6 +60,11 @@ export default function DashboardPage() {
         router.push('/signin?redirect=/dashboard')
         return
       }
+
+      // Get user plan
+      getUserPlan().then(plan => {
+        setUserPlan(plan)
+      })
 
       // Fetch data if authenticated
       fetchRecentRuns()
@@ -137,6 +147,60 @@ export default function DashboardPage() {
     if (diffDays < 7) return `${diffDays}d ago`
     
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  const handleDeleteRun = async (runId: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (!confirm('Are you sure you want to delete this pitch run? This action cannot be undone.')) {
+      return
+    }
+
+    setDeletingRunId(runId)
+    try {
+      const response = await fetch(`/api/runs/${runId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete run')
+      }
+
+      // Remove from UI immediately
+      setRecentRuns(recentRuns.filter(run => run.id !== runId))
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete run')
+    } finally {
+      setDeletingRunId(null)
+    }
+  }
+
+  const handleDeleteRubric = async (rubricId: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (!confirm('Are you sure you want to delete this rubric? This action cannot be undone.')) {
+      return
+    }
+
+    setDeletingRubricId(rubricId)
+    try {
+      const response = await fetch(`/api/rubrics/${rubricId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete rubric')
+      }
+
+      // Remove from UI immediately
+      setRecentRubrics(recentRubrics.filter(rubric => rubric.id !== rubricId))
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete rubric')
+    } finally {
+      setDeletingRubricId(null)
+    }
   }
 
   const getStatusColor = (status: string): string => {
@@ -229,26 +293,58 @@ export default function DashboardPage() {
                   >
                     View Rubrics
                   </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => router.push('/app/rubrics/new')}
-                  >
-                    Create new rubric (AI)
-                  </Button>
+                  {canViewPremiumInsights(userPlan) && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => router.push('/app/rubrics/new')}
+                    >
+                      Create new rubric (AI)
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
           </Card>
         </div>
 
+        {/* Free-tier helper message for expired Day Pass users */}
+        {!canViewPremiumInsights(userPlan) && (
+          <Card className="mb-6 p-4 bg-[#1A1F2E] border border-[#F59E0B]/30">
+            <div className="flex items-start gap-3">
+              <div className="flex-1">
+                <p className="text-sm text-[#E5E7EB] mb-2">
+                  Upgrade to Coach for Premium Insights, drills, and progress tracking.
+                </p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => router.push('/upgrade?plan=coach')}
+                >
+                  Upgrade to Coach
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Secondary section */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Recent pitch runs */}
           <Card>
-            <h2 className="text-lg font-semibold mb-4" style={{ color: colors.text.primary }}>
-              Recent pitch runs
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold" style={{ color: colors.text.primary }}>
+                Recent pitch runs
+              </h2>
+              <Link
+                href="/runs"
+                className="text-sm hover:underline"
+                style={{ color: colors.accent.primary }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                See all
+              </Link>
+            </div>
             {isLoadingRuns ? (
               <div className="text-center py-8">
                 <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-current border-t-transparent" style={{ color: colors.accent.primary }}></div>
@@ -261,30 +357,49 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {recentRuns.map((run) => (
-                  <Link
+                  <div
                     key={run.id}
-                    href={`/runs/${run.id}`}
-                    className="block p-3 rounded-lg border transition-colors hover:border-[#334155] hover:bg-[#0F172A]/30"
+                    className="group relative p-3 rounded-lg border transition-colors hover:border-[#334155] hover:bg-[#0F172A]/30"
                     style={{ borderColor: colors.border.primary }}
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="text-sm font-medium truncate flex-1" style={{ color: colors.text.primary }}>
-                        {run.title || 'Untitled pitch'}
-                      </h3>
-                      <span className={`text-xs ml-2 ${getStatusColor(run.status)}`}>
-                        {run.status}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs" style={{ color: colors.text.secondary }}>
-                      {run.rubrics && (
-                        <span>{run.rubrics.name}</span>
+                    <Link
+                      href={`/runs/${run.id}`}
+                      className="block"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className="text-sm font-medium truncate flex-1" style={{ color: colors.text.primary }}>
+                          {run.title || 'Untitled pitch'}
+                        </h3>
+                        <span className={`text-xs ml-2 ${getStatusColor(run.status)}`}>
+                          {run.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 text-xs" style={{ color: colors.text.secondary }}>
+                        {run.rubrics && (
+                          <span>{run.rubrics.name}</span>
+                        )}
+                        {run.audio_seconds && (
+                          <span>{formatTime(run.audio_seconds)}</span>
+                        )}
+                        <span>{formatDate(run.created_at)}</span>
+                      </div>
+                    </Link>
+                    <button
+                      onClick={(e) => handleDeleteRun(run.id, e)}
+                      disabled={deletingRunId === run.id}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#1E293B] transition-opacity"
+                      style={{ color: colors.text.secondary }}
+                      aria-label="Delete run"
+                    >
+                      {deletingRunId === run.id ? (
+                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent"></div>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
                       )}
-                      {run.audio_seconds && (
-                        <span>{formatTime(run.audio_seconds)}</span>
-                      )}
-                      <span>{formatDate(run.created_at)}</span>
-                    </div>
-                  </Link>
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -292,9 +407,19 @@ export default function DashboardPage() {
 
           {/* Recent rubrics */}
           <Card>
-            <h2 className="text-lg font-semibold mb-4" style={{ color: colors.text.primary }}>
-              Recent rubrics
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold" style={{ color: colors.text.primary }}>
+                Recent rubrics
+              </h2>
+              <Link
+                href="/rubrics"
+                className="text-sm hover:underline"
+                style={{ color: colors.accent.primary }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                See all
+              </Link>
+            </div>
             {isLoadingRubrics ? (
               <div className="text-center py-8">
                 <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-current border-t-transparent" style={{ color: colors.accent.primary }}></div>
@@ -307,24 +432,43 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-3">
                 {recentRubrics.map((rubric) => (
-                  <Link
+                  <div
                     key={rubric.id}
-                    href={`/app/rubrics/${rubric.id}`}
-                    className="block p-3 rounded-lg border transition-colors hover:border-[#334155] hover:bg-[#0F172A]/30"
+                    className="group relative p-3 rounded-lg border transition-colors hover:border-[#334155] hover:bg-[#0F172A]/30"
                     style={{ borderColor: colors.border.primary }}
                   >
-                    <h3 className="text-sm font-medium mb-1" style={{ color: colors.text.primary }}>
-                      {rubric.title}
-                    </h3>
-                    {rubric.description && (
-                      <p className="text-xs mb-2 line-clamp-2" style={{ color: colors.text.secondary }}>
-                        {rubric.description}
-                      </p>
-                    )}
-                    <span className="text-xs" style={{ color: colors.text.secondary }}>
-                      {formatDate(rubric.created_at)}
-                    </span>
-                  </Link>
+                    <Link
+                      href={`/app/rubrics/${rubric.id}`}
+                      className="block"
+                    >
+                      <h3 className="text-sm font-medium mb-1" style={{ color: colors.text.primary }}>
+                        {rubric.title}
+                      </h3>
+                      {rubric.description && (
+                        <p className="text-xs mb-2 line-clamp-2" style={{ color: colors.text.secondary }}>
+                          {rubric.description}
+                        </p>
+                      )}
+                      <span className="text-xs" style={{ color: colors.text.secondary }}>
+                        {formatDate(rubric.created_at)}
+                      </span>
+                    </Link>
+                    <button
+                      onClick={(e) => handleDeleteRubric(rubric.id, e)}
+                      disabled={deletingRubricId === rubric.id}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-[#1E293B] transition-opacity"
+                      style={{ color: colors.text.secondary }}
+                      aria-label="Delete rubric"
+                    >
+                      {deletingRubricId === rubric.id ? (
+                        <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-current border-t-transparent"></div>
+                      ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 ))}
               </div>
             )}

@@ -25,6 +25,7 @@ export default function RubricsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deletingRubricId, setDeletingRubricId] = useState<string | null>(null)
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -113,6 +114,33 @@ export default function RubricsPage() {
     }
   }
 
+  const handleDelete = async (rubricId: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    if (!confirm('Are you sure you want to delete this rubric? This action cannot be undone.')) {
+      return
+    }
+
+    setDeletingRubricId(rubricId)
+    try {
+      const response = await fetch(`/api/rubrics/${rubricId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete rubric')
+      }
+
+      // Remove from UI immediately
+      setRubrics(rubrics.filter(rubric => rubric.id !== rubricId))
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete rubric')
+    } finally {
+      setDeletingRubricId(null)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: colors.background.primary }}>
@@ -193,42 +221,61 @@ export default function RubricsPage() {
             {rubrics.map((rubric) => (
               <div
                 key={rubric.id}
-                className="cursor-pointer"
-                onClick={() => router.push(`/app/rubrics/${rubric.id}`)}
+                className="group relative"
               >
-                <Card className="hover:border-[#334155] transition-colors">
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="text-lg font-semibold flex-1" style={{ color: colors.text.primary }}>
-                    {rubric.title}
-                  </h3>
-                </div>
-
-                {rubric.description && (
-                  <p className="text-sm mb-4 line-clamp-2" style={{ color: colors.text.secondary }}>
-                    {rubric.description}
-                  </p>
-                )}
-
-                <div className="flex items-center justify-between text-xs mb-4" style={{ color: colors.text.secondary }}>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="px-2 py-1 rounded"
-                      style={{
-                        backgroundColor: `${getSourceColor(rubric.source)}20`,
-                        color: getSourceColor(rubric.source),
-                      }}
-                    >
-                      {getSourceLabel(rubric.source)}
-                    </span>
-                    <span>•</span>
-                    <span>{rubric.criteria?.length || 0} criteria</span>
+                <div
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/app/rubrics/${rubric.id}`)}
+                >
+                  <Card className="hover:border-[#334155] transition-colors">
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-lg font-semibold flex-1" style={{ color: colors.text.primary }}>
+                      {rubric.title}
+                    </h3>
                   </div>
-                </div>
 
-                <div className="text-xs pt-3 border-t" style={{ borderColor: colors.border.primary, color: colors.text.secondary }}>
-                  Last used: {formatDate(rubric.last_used_at)}
+                  {rubric.description && (
+                    <p className="text-sm mb-4 line-clamp-2" style={{ color: colors.text.secondary }}>
+                      {rubric.description}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-between text-xs mb-4" style={{ color: colors.text.secondary }}>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="px-2 py-1 rounded"
+                        style={{
+                          backgroundColor: `${getSourceColor(rubric.source)}20`,
+                          color: getSourceColor(rubric.source),
+                        }}
+                      >
+                        {getSourceLabel(rubric.source)}
+                      </span>
+                      <span>•</span>
+                      <span>{rubric.criteria?.length || 0} criteria</span>
+                    </div>
+                  </div>
+
+                  <div className="text-xs pt-3 border-t" style={{ borderColor: colors.border.primary, color: colors.text.secondary }}>
+                    Last used: {formatDate(rubric.last_used_at)}
+                  </div>
+                  </Card>
                 </div>
-                </Card>
+                <button
+                  onClick={(e) => handleDelete(rubric.id, e)}
+                  disabled={deletingRubricId === rubric.id}
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-2 rounded hover:bg-[#1E293B] transition-opacity z-10"
+                  style={{ color: colors.text.secondary }}
+                  aria-label="Delete rubric"
+                >
+                  {deletingRubricId === rubric.id ? (
+                    <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent"></div>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  )}
+                </button>
               </div>
             ))}
           </div>

@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Send, Sparkles, RotateCcw, CheckCircle2, AlertCircle } from 'lucide-react'
+import { canEditRubrics } from '@/lib/entitlements'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -387,7 +388,7 @@ export default function AIBuilderChat({ onDraftUpdate, onAcceptDraft, onParseErr
         {/* Accept Button */}
         {currentDraft && (
           <div className="px-4 pb-4 border-t border-[rgba(17,24,39,0.10)] pt-4">
-            {userPlan === 'daypass' ? (
+            {!canEditRubrics(userPlan) ? (
               <div className="relative">
                 <Button
                   variant="primary"

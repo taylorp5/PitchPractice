@@ -358,24 +358,27 @@ function UpgradePageContent() {
               <div className="mt-4">
                 <span className="text-4xl font-bold text-[#111827]">$</span>
                 <span className="text-4xl font-bold text-[#111827]">—</span>
-                <p className="text-sm text-[#6B7280] mt-1">One-day access</p>
+                <p className="text-sm text-[#6B7280] mt-1">Coach insights for 24 hours</p>
               </div>
             </div>
 
-            <ul className="space-y-3 mb-8 flex-grow">
+            <ul className="space-y-3 mb-4 flex-grow">
               <li className="flex items-start gap-3">
                 <Check className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
-                <span className="text-sm text-[#6B7280]">Full Coach features for 24 hours</span>
+                <span className="text-sm text-[#6B7280]">Unlimited recordings during your 24-hour access window</span>
               </li>
               <li className="flex items-start gap-3">
                 <Check className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
-                <span className="text-sm text-[#6B7280]">Unlimited recordings during access window</span>
+                <span className="text-sm text-[#6B7280]">Premium insights + structured drills to improve fast</span>
               </li>
               <li className="flex items-start gap-3">
                 <Check className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
-                <span className="text-sm text-[#6B7280]">Ideal for interviews, presentations, or demos</span>
+                <span className="text-sm text-[#6B7280]">Keep your runs and rubrics forever (view anytime)</span>
               </li>
             </ul>
+            <p className="text-xs text-[#6B7280] italic mb-8">
+              Day Pass does not include rubric editing or progress-over-time tracking.
+            </p>
 
             <Button
               variant="primary"

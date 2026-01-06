@@ -29,7 +29,6 @@ export async function GET(request: NextRequest) {
       .select('id, title, created_at, status, audio_seconds, duration_ms, word_count, rubric_id, rubrics(name)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(20)
 
     if (error) {
       console.error('Database error:', error)

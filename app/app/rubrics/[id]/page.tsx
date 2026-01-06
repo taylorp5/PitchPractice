@@ -8,6 +8,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { ArrowLeft, Edit, Trash2, Clock, Info } from 'lucide-react'
 import RubricForm from '../RubricForm'
 import { getUserPlan, type UserPlan } from '@/lib/plan'
+import { canEditRubrics } from '@/lib/entitlements'
 
 interface Criterion {
   key: string
@@ -215,7 +216,7 @@ export default function RubricDetailPage() {
             </div>
           </div>
           <div className="flex gap-2 ml-4">
-            {(userPlan === 'daypass' || (userPlan === 'starter' && rubricSource !== 'manual')) ? (
+            {(!canEditRubrics(userPlan) || (userPlan === 'starter' && rubricSource !== 'manual')) ? (
               <div className="relative">
                 <Button
                   variant="secondary"
@@ -223,13 +224,13 @@ export default function RubricDetailPage() {
                   onClick={() => {}}
                   disabled={true}
                   className="opacity-50 cursor-not-allowed"
-                  title={userPlan === 'daypass' ? 'Editing available on Coach' : 'Starter plan rubrics cannot be edited after creation'}
+                  title={!canEditRubrics(userPlan) ? 'Editing available on Coach' : 'Starter plan rubrics cannot be edited after creation'}
                 >
                   <Edit className="mr-2 h-4 w-4" />
                   Edit
                 </Button>
                 <div className="absolute -top-8 left-0 bg-[#111827] text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 hover:opacity-100 pointer-events-none transition-opacity z-10">
-                  {userPlan === 'daypass' ? 'Editing available on Coach' : 'Starter plan rubrics cannot be edited after creation'}
+                  {!canEditRubrics(userPlan) ? 'Editing available on Coach' : 'Starter plan rubrics cannot be edited after creation'}
                 </div>
               </div>
             ) : (
@@ -256,16 +257,16 @@ export default function RubricDetailPage() {
         </div>
 
         {/* Plan-based restrictions notice */}
-        {(userPlan === 'daypass' || (userPlan === 'starter' && rubricSource !== 'manual')) && (
+        {(!canEditRubrics(userPlan) || (userPlan === 'starter' && rubricSource !== 'manual')) && (
           <Card className="p-4 mb-6 bg-[#FEF3C7] border-[#FCD34D]">
             <div className="flex items-start gap-3">
               <Info className="h-5 w-5 text-[#D97706] flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-[#92400E] mb-1">
-                  {userPlan === 'daypass' ? 'Read-only Rubric' : 'Limited Editing'}
+                  {!canEditRubrics(userPlan) ? 'Read-only Rubric' : 'Limited Editing'}
                 </p>
                 <p className="text-xs text-[#92400E]">
-                  {userPlan === 'daypass' 
+                  {!canEditRubrics(userPlan)
                     ? 'Day Pass users can view AI-generated rubrics but cannot edit or refine them. Editing is available on Coach plan.'
                     : 'Starter plan rubrics cannot be edited after creation. Upgrade to Coach for full editing capabilities.'}
                 </p>

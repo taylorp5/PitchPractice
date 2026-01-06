@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Mic, Upload, Play, Pause, Square, AlertCircle, X, CheckCircle2, Edit2, ExternalLink, Check } from 'lucide-react'
 import Link from 'next/link'
 import { getUserPlan, UserPlan } from '@/lib/plan'
+import { canEditRubrics, canViewPremiumInsights } from '@/lib/entitlements'
 import CustomRubricBuilder, { CustomRubric } from '@/components/CustomRubricBuilder'
 import { SignInModal } from '@/components/SignInModal'
 import { createClient } from '@/lib/supabase/client-auth'
@@ -1052,12 +1053,13 @@ export default function PracticePage() {
   }
 
   const selectedRubric = rubrics.find(r => r.id === selectedRubricId) as any;
-  const isCoachOrDaypass = userPlan === 'coach' || userPlan === 'daypass';
+  const canEdit = canEditRubrics(userPlan);
+  const canViewPremium = canViewPremiumInsights(userPlan);
   const isStarterOrAbove = userPlan !== 'free';
   
   // Plan-based recording duration limits (in seconds)
   const getMaxRecordingSeconds = (): number => {
-    if (userPlan === 'coach' || userPlan === 'daypass') return 5400 // 90:00
+    if (canViewPremium) return 5400 // 90:00 (Coach and Day Pass)
     if (userPlan === 'starter') return 1800 // 30:00
     return 120 // 2:00 for free
   }
@@ -1179,7 +1181,7 @@ export default function PracticePage() {
             </h1>
             {!isLoadingPlan && userPlan !== 'free' && (
               <Badge 
-                variant={userPlan === 'coach' || userPlan === 'daypass' ? 'primary' : 'info'}
+                variant={canViewPremium ? 'primary' : 'info'}
                 size="sm"
               >
                 {userPlan === 'daypass' ? 'Day Pass' : userPlan.charAt(0).toUpperCase() + userPlan.slice(1)}
@@ -1329,20 +1331,20 @@ export default function PracticePage() {
                 <div className="relative group">
                   <Button
                     onClick={() => {
-                      if (selectedRubricId && isCoachOrDaypass) {
+                      if (selectedRubricId && canEdit) {
                         router.push(`/app/rubrics/${selectedRubricId}`)
                       }
                     }}
-                    disabled={!selectedRubricId || !isCoachOrDaypass || rubricMode !== 'default'}
+                    disabled={!selectedRubricId || !canEdit || rubricMode !== 'default'}
                     variant="secondary"
                     size="sm"
                     className="whitespace-nowrap"
                   >
                     Edit rubric
                   </Button>
-                  {(!isCoachOrDaypass && selectedRubricId) && (
+                  {(!canEdit && selectedRubricId) && (
                     <span className="absolute z-50 mt-2 left-1/2 -translate-x-1/2 top-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none px-2 py-1 bg-[#151A23] border border-[#22283A] rounded-lg shadow-lg text-xs text-[#9CA3AF] whitespace-nowrap">
-                      Upgrade to edit rubrics.
+                      {userPlan === 'daypass' ? 'Editing available on Coach plan' : 'Upgrade to edit rubrics.'}
                     </span>
                   )}
                 </div>
@@ -1384,8 +1386,8 @@ export default function PracticePage() {
                       }
                       
                       // Determine how many to show based on plan
-                      const itemsToShow = isCoachOrDaypass ? allItems : allItems.slice(0, 4)
-                      const hasMore = !isCoachOrDaypass && allItems.length > 4
+                      const itemsToShow = canViewPremium ? allItems : allItems.slice(0, 4)
+                      const hasMore = !canViewPremium && allItems.length > 4
                       
                       return (
                         <>
@@ -1556,7 +1558,7 @@ export default function PracticePage() {
             )}
 
             {/* Custom Rubric Builder for Coach/Daypass */}
-            {isCoachOrDaypass && (
+            {canViewPremium && (
               <div className="mt-6 pt-6 border-t border-[rgba(255,255,255,0.08)]">
                 <div className="flex items-center justify-between mb-4">
                   <div>

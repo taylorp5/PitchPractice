@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getSessionId } from '@/lib/session'
 import { getUserPlan, type UserPlan } from '@/lib/plan'
+import { canViewPremiumInsights } from '@/lib/entitlements'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -476,7 +477,7 @@ export default function HomePage() {
       
       // Get plan-based recording limit
       const getMaxRecordingSeconds = (): number => {
-        if (userPlan === 'coach' || userPlan === 'daypass') return 90 * 60 // 90:00
+        if (canViewPremiumInsights(userPlan)) return 90 * 60 // 90:00 (Coach and Day Pass)
         if (userPlan === 'starter') return 30 * 60 // 30:00
         return 2 * 60 // 2:00 for free
       }
@@ -862,7 +863,7 @@ export default function HomePage() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-mono text-[#F59E0B]">
                         {formatTime(recordingTime)} / {(() => {
-                          if (userPlan === 'coach' || userPlan === 'daypass') return '90:00'
+                          if (canViewPremiumInsights(userPlan)) return '90:00'
                           if (userPlan === 'starter') return '30:00'
                           return '2:00'
                         })()}
@@ -871,7 +872,7 @@ export default function HomePage() {
                   </div>
                   <div className="text-center">
                     <p className="text-xs text-[#9AA4B2]">
-                      {userPlan === 'coach' || userPlan === 'daypass' 
+                      {canViewPremiumInsights(userPlan)
                         ? 'Up to 90 minutes per recording'
                         : userPlan === 'starter'
                         ? 'Up to 30 minutes per recording'
@@ -925,7 +926,7 @@ export default function HomePage() {
           </Card>
 
           {/* Rubric Builder - Only for Coach + Day Pass */}
-          {(userPlan === 'coach' || userPlan === 'daypass') && (
+          {canViewPremiumInsights(userPlan) && (
             <Card>
               <div className="mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
                 <h2 className="text-xl font-bold text-[#E6E8EB] mb-2">Your Evaluation Rubric</h2>
@@ -1041,7 +1042,7 @@ export default function HomePage() {
           )}
 
           {/* Custom Rubric Section - Only for Coach + Day Pass */}
-          {(userPlan === 'coach' || userPlan === 'daypass') && (
+          {canViewPremiumInsights(userPlan) && (
             <Card>
               <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
                 <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
@@ -1067,7 +1068,7 @@ export default function HomePage() {
           )}
 
           {/* Edit Rubric Before Recording - Only for Coach + Day Pass */}
-          {(userPlan === 'coach' || userPlan === 'daypass') && selectedRubric && (
+          {canViewPremiumInsights(userPlan) && selectedRubric && (
             <Card>
               <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
                 <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>

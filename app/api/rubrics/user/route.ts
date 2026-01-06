@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server-auth'
+import { getSupabaseAdmin } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
 // GET - List user's rubrics
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     
@@ -18,21 +19,75 @@ export async function GET() {
       )
     }
 
-    const { data: rubrics, error } = await supabase
-      .from('user_rubrics')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    const { searchParams } = new URL(request.url)
+    const withLastUsed = searchParams.get('with_last_used') === 'true'
 
-    if (error) {
-      console.error('Database error:', error)
-      return NextResponse.json(
-        { error: 'Failed to fetch rubrics' },
-        { status: 500 }
-      )
+    let rubrics
+    if (withLastUsed) {
+      // Get rubrics with last used date from pitch_runs
+      const { data: rubricsData, error: rubricsError } = await supabase
+        .from('user_rubrics')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (rubricsError) {
+        console.error('Database error:', rubricsError)
+        return NextResponse.json(
+          { error: 'Failed to fetch rubrics' },
+          { status: 500 }
+        )
+      }
+
+      // Get last used date for each rubric from pitch_runs
+      const supabaseAdmin = getSupabaseAdmin()
+      const rubricIds = (rubricsData || []).map(r => r.id)
+      
+      if (rubricIds.length > 0) {
+        const { data: runsData } = await supabaseAdmin
+          .from('pitch_runs')
+          .select('rubric_id, created_at')
+          .in('rubric_id', rubricIds)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+
+        // Create a map of rubric_id to last used date
+        const lastUsedMap = new Map<string, string>()
+        if (runsData) {
+          for (const run of runsData) {
+            if (run.rubric_id && !lastUsedMap.has(run.rubric_id)) {
+              lastUsedMap.set(run.rubric_id, run.created_at)
+            }
+          }
+        }
+
+        // Add last_used_at to each rubric
+        rubrics = (rubricsData || []).map(rubric => ({
+          ...rubric,
+          last_used_at: lastUsedMap.get(rubric.id) || null,
+        }))
+      } else {
+        rubrics = rubricsData || []
+      }
+    } else {
+      const { data: rubricsData, error: rubricsError } = await supabase
+        .from('user_rubrics')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (rubricsError) {
+        console.error('Database error:', rubricsError)
+        return NextResponse.json(
+          { error: 'Failed to fetch rubrics' },
+          { status: 500 }
+        )
+      }
+
+      rubrics = rubricsData || []
     }
 
-    return NextResponse.json(rubrics || [])
+    return NextResponse.json(rubrics)
   } catch (error) {
     console.error('Unexpected error:', error)
     return NextResponse.json(
@@ -58,7 +113,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, description, target_duration_seconds, criteria, guiding_questions, context_summary } = body
+    const { title, description, target_duration_seconds, criteria, guiding_questions, context_summary, source } = body
 
     // Validation
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
@@ -107,6 +162,7 @@ export async function POST(request: NextRequest) {
         criteria: criteria,
         guiding_questions: guiding_questions || [],
         context_summary: context_summary?.trim() || null,
+        source: source || 'manual',
       })
       .select()
       .single()

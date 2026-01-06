@@ -35,6 +35,11 @@ export default function NewRubricPage() {
     setError(null)
 
     try {
+      // Set source based on mode if not already set
+      if (!formData.source) {
+        formData.source = mode === 'ai' ? 'ai' : 'manual'
+      }
+
       const response = await fetch('/api/rubrics/user', {
         method: 'POST',
         headers: {
@@ -73,6 +78,7 @@ export default function NewRubricPage() {
           min_score: 1,
           max_score: 10,
         })),
+        source: 'ai',
       }
 
       await handleSubmit(formData)

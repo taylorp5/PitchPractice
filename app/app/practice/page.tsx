@@ -124,17 +124,24 @@ export default function PracticePage() {
 
   // Fetch rubrics on mount (independent of plan)
   useEffect(() => {
-    fetch('/api/rubrics?scope=templates')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setRubrics(data)
-          if (data.length > 0) {
-            setSelectedRubricId(data[0].id)
-          }
+    // Fetch both default and user rubrics
+    Promise.all([
+      fetch('/api/rubrics?scope=templates').then(res => res.json()),
+      fetch('/api/rubrics/user').then(res => res.ok ? res.json() : []).catch(() => [])
+    ])
+      .then(([defaultRubrics, userRubrics]) => {
+        // Combine rubrics: default first, then user rubrics
+        // Mark user rubrics with a flag for grouping
+        const allRubrics = [
+          ...(Array.isArray(defaultRubrics) ? defaultRubrics : []),
+          ...(Array.isArray(userRubrics) ? userRubrics.map((r: any) => ({ ...r, isUserRubric: true })) : [])
+        ]
+        setRubrics(allRubrics)
+        if (allRubrics.length > 0) {
+          setSelectedRubricId(allRubrics[0].id)
         }
       })
-      .catch(err => console.error('Failed to fetch template rubrics:', err))
+      .catch(err => console.error('Failed to fetch rubrics:', err))
 
     // Load saved device ID
     const savedDeviceId = localStorage.getItem('pitchpractice_selected_device_id')
@@ -1091,11 +1098,29 @@ export default function PracticePage() {
                 ) : (
                   <>
                     <option value="" className="bg-[#121826]">Select a rubric...</option>
-                    {rubrics.map((rubric) => (
-                      <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
-                        {rubric.title || rubric.id}
-                      </option>
-                    ))}
+                    {(() => {
+                      const defaultRubrics = rubrics.filter((r: any) => !r.isUserRubric)
+                      const userRubrics = rubrics.filter((r: any) => r.isUserRubric)
+                      
+                      return (
+                        <>
+                          {defaultRubrics.map((rubric) => (
+                            <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
+                              {rubric.title || rubric.name || rubric.id}
+                            </option>
+                          ))}
+                          {userRubrics.length > 0 && (
+                            <optgroup label="My rubrics" className="bg-[#121826]">
+                              {userRubrics.map((rubric) => (
+                                <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
+                                  {rubric.title || rubric.id}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </>
+                      )
+                    })()}
                   </>
                 )}
               </select>

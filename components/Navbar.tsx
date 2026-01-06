@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Button } from './ui/Button'
+import { ProfileDropdown } from './ProfileDropdown'
 import { useState, useEffect } from 'react'
 import { colors } from '@/lib/theme'
 import { createClient } from '@/lib/supabase/client-auth'
@@ -12,12 +13,21 @@ export function Navbar() {
   const router = useRouter()
   const [isSignedIn, setIsSignedIn] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [userName, setUserName] = useState<string | null>(null)
 
   useEffect(() => {
     const checkAuth = async () => {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       setIsSignedIn(!!session)
+      if (session?.user) {
+        setUserEmail(session.user.email || null)
+        setUserName(session.user.user_metadata?.full_name || session.user.user_metadata?.name || null)
+      } else {
+        setUserEmail(null)
+        setUserName(null)
+      }
       setIsLoading(false)
     }
 
@@ -26,17 +36,17 @@ export function Navbar() {
     const supabase = createClient()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsSignedIn(!!session)
+      if (session?.user) {
+        setUserEmail(session.user.email || null)
+        setUserName(session.user.user_metadata?.full_name || session.user.user_metadata?.name || null)
+      } else {
+        setUserEmail(null)
+        setUserName(null)
+      }
     })
 
     return () => subscription.unsubscribe()
   }, [])
-
-  const handleSignOut = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/')
-    router.refresh()
-  }
 
   return (
     <nav 
@@ -75,7 +85,7 @@ export function Navbar() {
             </span>
           </Link>
 
-          {/* Right side: Upgrade + Sign in/Sign out */}
+          {/* Right side: Upgrade + Sign in/Profile */}
           <div className="flex items-center gap-6 md:gap-8">
             <Link 
               href="/upgrade" 
@@ -91,27 +101,7 @@ export function Navbar() {
             </Link>
             {!isLoading && (
               isSignedIn ? (
-                <>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    href="/app"
-                    asChild
-                    aria-label="Go to dashboard"
-                    className="border border-[#1E293B] hover:border-[#334155] hover:bg-[#0F172A]/50 transition-all"
-                  >
-                    Dashboard
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={handleSignOut}
-                    aria-label="Sign out"
-                    className="border border-[#1E293B] hover:border-[#334155] hover:bg-[#0F172A]/50 transition-all"
-                  >
-                    Sign out
-                  </Button>
-                </>
+                <ProfileDropdown userEmail={userEmail} userName={userName} />
               ) : (
                 <Button 
                   variant="ghost" 

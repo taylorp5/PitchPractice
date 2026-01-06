@@ -53,8 +53,12 @@ export default function SignInPage() {
         return
       }
 
+      // Check for redirect parameter, otherwise go to dashboard
+      const urlParams = new URLSearchParams(window.location.search)
+      const redirect = urlParams.get('redirect') || '/dashboard'
+      
       // Use window.location for a full page reload to ensure middleware sees the session
-      window.location.href = '/app'
+      window.location.href = redirect
     } catch (err) {
       console.error('Sign in error:', err)
       let errorMessage = 'An unexpected error occurred'

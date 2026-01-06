@@ -56,7 +56,7 @@ export default function SignUpPage() {
       }
 
       // Use window.location for a full page reload to ensure middleware sees the session
-      window.location.href = '/app'
+      window.location.href = '/dashboard'
     } catch (err) {
       setError('An unexpected error occurred')
       setIsLoading(false)

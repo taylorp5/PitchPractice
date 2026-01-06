@@ -438,8 +438,19 @@ export default function HomePage() {
         await logFetchError(url, response)
       }
 
+      // Capture full response for error handling
+      const responseText = await response.text()
+      let data: any = null
+      
+      try {
+        data = JSON.parse(responseText)
+      } catch (e) {
+        // Response might not be JSON
+        console.warn('[Dashboard] Could not parse response as JSON:', responseText.substring(0, 200))
+      }
+
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = data || {}
         // Create a detailed error message with fix suggestion
         let errorMessage = errorData.error || 'Failed to create run'
         if (errorData.details) {
@@ -451,8 +462,31 @@ export default function HomePage() {
         throw new Error(errorMessage)
       }
 
-      const { id } = await response.json()
-      router.push(`/runs/${id}`)
+      // Handle different response formats (matching Try Free page)
+      let runId: string | null = null
+
+      if (data.ok === false) {
+        throw new Error(data.error || 'Run creation failed')
+      }
+
+      if (data.runId) {
+        runId = data.runId
+      } else if (data.run?.id) {
+        runId = data.run.id
+      } else if (data.id) {
+        // Fallback for old format
+        runId = data.id
+      } else {
+        throw new Error(`Run creation failed: no run ID returned. Response: ${JSON.stringify(data)}`)
+      }
+
+      // Guard: NEVER navigate if runId is falsy
+      if (!runId) {
+        throw new Error(`Run creation failed: invalid response format. Response: ${JSON.stringify(data)}`)
+      }
+
+      // Only navigate if we have a valid runId
+      router.push(`/runs/${runId}`)
     } catch (err) {
       console.error('[Fetch Error] Error submitting:', {
         url: '/api/runs/create',

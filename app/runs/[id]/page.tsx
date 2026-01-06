@@ -72,7 +72,12 @@ export default function RunPage() {
   const [lastAction, setLastAction] = useState<string | null>(null)
 
   const fetchRun = async () => {
-    if (!routeRunId) return
+    // Guard: Never fetch if runId is falsy or the string "undefined"
+    if (!routeRunId || routeRunId === 'undefined') {
+      setError('Invalid run ID')
+      setLoading(false)
+      return
+    }
 
     const url = `/api/runs/${routeRunId}`
     try {

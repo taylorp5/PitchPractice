@@ -409,9 +409,21 @@ export default function PracticePage() {
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
+      // TODO: Hook function for chunked upload (future implementation)
+      // This will be called each time a chunk becomes available during recording
+      // For now, this is a no-op but provides the scaffolding for chunked uploads
+      const onChunkAvailable = (blob: Blob) => {
+        // TODO: Implement chunked upload logic here
+        // This will allow progressive upload of chunks during long Coach recordings
+        // to avoid memory issues and enable resumable uploads
+      }
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data)
+          // Call the chunk hook for future chunked upload implementation
+          // For now, chunks are still collected and uploaded as a single blob at the end
+          onChunkAvailable(event.data)
         }
       }
 
@@ -483,7 +495,20 @@ export default function PracticePage() {
         }
       }, 1500)
 
-      mediaRecorder.start()
+      // Chunked recording scaffolding: Use timeslice for Coach plans to support long recordings
+      // Timeslice (10000ms = 10s) causes MediaRecorder to fire ondataavailable every 10 seconds
+      // This enables progressive chunk collection and future chunked upload implementation
+      // Free/Starter plans continue without timeslice to maintain existing behavior
+      const useChunkedRecording = isCoachOrDaypass
+      const timesliceMs = useChunkedRecording ? 10000 : undefined // 10 second chunks for Coach
+      
+      if (timesliceMs) {
+        // Start with timeslice for chunked recording (Coach only)
+        mediaRecorder.start(timesliceMs)
+      } else {
+        // Start without timeslice (Free/Starter - existing behavior)
+        mediaRecorder.start()
+      }
       setIsRecording(true)
       setIsPaused(false)
       setIsSilent(false)
@@ -496,7 +521,16 @@ export default function PracticePage() {
       setPauseStartTime(null)
 
       timerIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1)
+        setRecordingTime(prev => {
+          const newTime = prev + 1
+          // Auto-stop at plan limit (calculate dynamically to use current plan)
+          const maxSeconds = getMaxRecordingSeconds()
+          if (newTime >= maxSeconds) {
+            stopRecording()
+            return maxSeconds
+          }
+          return newTime
+        })
       }, 1000)
     } catch (err) {
       console.error('Error starting recording:', err)
@@ -527,7 +561,16 @@ export default function PracticePage() {
       setIsPaused(false)
       // Resume the timer
       timerIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1)
+        setRecordingTime(prev => {
+          const newTime = prev + 1
+          // Auto-stop at plan limit (calculate dynamically to use current plan)
+          const maxSeconds = getMaxRecordingSeconds()
+          if (newTime >= maxSeconds) {
+            stopRecording()
+            return maxSeconds
+          }
+          return newTime
+        })
       }, 1000)
     }
   }
@@ -1021,6 +1064,16 @@ export default function PracticePage() {
   const isCoachOrDaypass = userPlan === 'coach' || userPlan === 'daypass';
   const isStarterOrAbove = userPlan !== 'free';
   
+  // Plan-based recording duration limits (in seconds)
+  const getMaxRecordingSeconds = (): number => {
+    if (userPlan === 'coach' || userPlan === 'daypass') return 5400 // 90:00
+    if (userPlan === 'starter') return 1800 // 30:00
+    return 120 // 2:00 for free
+  }
+  
+  const MAX_RECORDING_SECONDS = getMaxRecordingSeconds()
+  const WARNING_SECONDS = MAX_RECORDING_SECONDS - 60 // 1 minute before limit
+  
   // Updated validation: Step 2 enabled if default rubric selected OR parsed rubric exists
   const hasValidRubric = rubricMode === 'default'
     ? (selectedRubricId && selectedRubric !== undefined)
@@ -1226,48 +1279,146 @@ export default function PracticePage() {
               <label htmlFor="rubric-select" className="block text-sm font-medium text-[#9AA4B2] mb-2">
                 Select Rubric {rubricMode !== 'default' && '(disabled)'}
               </label>
-              <select
-                id="rubric-select"
-                value={selectedRubricId}
-                onChange={(e) => setSelectedRubricId(e.target.value)}
-                disabled={rubricMode !== 'default' || isUploading || isRecording || rubrics.length === 0}
-                className="w-full px-4 py-3 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {rubrics.length === 0 ? (
-                  <option value="" className="bg-[#121826]">Loading rubrics...</option>
-                ) : (
-                  <>
-                    <option value="" className="bg-[#121826]">Select a rubric...</option>
-                    {(() => {
-                      const defaultRubrics = rubrics.filter((r: any) => !r.isUserRubric)
-                      const userRubrics = rubrics.filter((r: any) => r.isUserRubric)
-                      
-                      return (
-                        <>
-                          {defaultRubrics.map((rubric: any) => (
-                            <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
-                              {rubric.title || rubric.name || rubric.id}
-                            </option>
-                          ))}
-                          {userRubrics.length > 0 && (
-                            <optgroup label="My rubrics" className="bg-[#121826]">
-                              {userRubrics.map((rubric) => (
-                                <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
-                                  {rubric.title || rubric.id}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </>
-                      )
-                    })()}
-                  </>
-                )}
-              </select>
+              <div className="flex gap-2">
+                <select
+                  id="rubric-select"
+                  value={selectedRubricId}
+                  onChange={(e) => setSelectedRubricId(e.target.value)}
+                  disabled={rubricMode !== 'default' || isUploading || isRecording || rubrics.length === 0}
+                  className="flex-1 px-4 py-3 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB] disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {rubrics.length === 0 ? (
+                    <option value="" className="bg-[#121826]">Loading rubrics...</option>
+                  ) : (
+                    <>
+                      <option value="" className="bg-[#121826]">Select a rubric...</option>
+                      {(() => {
+                        const defaultRubrics = rubrics.filter((r: any) => !r.isUserRubric)
+                        const userRubrics = rubrics.filter((r: any) => r.isUserRubric)
+                        
+                        return (
+                          <>
+                            {defaultRubrics.map((rubric: any) => (
+                              <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
+                                {rubric.title || rubric.name || rubric.id}
+                              </option>
+                            ))}
+                            {userRubrics.length > 0 && (
+                              <optgroup label="My rubrics" className="bg-[#121826]">
+                                {userRubrics.map((rubric) => (
+                                  <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
+                                    {rubric.title || rubric.id}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            )}
+                          </>
+                        )
+                      })()}
+                    </>
+                  )}
+                </select>
+                {/* View Rubric Button */}
+                <div className="relative group">
+                  <Button
+                    onClick={() => {
+                      if (selectedRubricId) {
+                        window.open(`/app/rubrics/${selectedRubricId}`, '_blank')
+                      }
+                    }}
+                    disabled={!selectedRubricId || rubricMode !== 'default'}
+                    variant="secondary"
+                    size="sm"
+                    className="whitespace-nowrap"
+                  >
+                    View rubric
+                  </Button>
+                </div>
+                {/* Edit Rubric Button */}
+                <div className="relative group">
+                  <Button
+                    onClick={() => {
+                      if (selectedRubricId && isCoachOrDaypass) {
+                        router.push(`/app/rubrics/${selectedRubricId}`)
+                      }
+                    }}
+                    disabled={!selectedRubricId || !isCoachOrDaypass || rubricMode !== 'default'}
+                    variant="secondary"
+                    size="sm"
+                    className="whitespace-nowrap"
+                  >
+                    Edit rubric
+                  </Button>
+                  {(!isCoachOrDaypass && selectedRubricId) && (
+                    <span className="absolute z-50 mt-2 left-1/2 -translate-x-1/2 top-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none px-2 py-1 bg-[#151A23] border border-[#22283A] rounded-lg shadow-lg text-xs text-[#9CA3AF] whitespace-nowrap">
+                      Upgrade to edit rubrics.
+                    </span>
+                  )}
+                </div>
+              </div>
               {rubricMode === 'default' && selectedRubric && (
                 <p className="mt-2 text-sm text-[#9AA4B2]">
                   {selectedRubric.description}
                 </p>
+              )}
+              
+              {/* Rubric Cheat Sheet */}
+              {rubricMode === 'default' && selectedRubric && (
+                <div className="mt-4 p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                  <h4 className="text-sm font-semibold text-[#E6E8EB] mb-3">Quick rubric review</h4>
+                  <ul className="space-y-2">
+                    {(() => {
+                      const criteria = selectedRubric.criteria || []
+                      const guidingQuestions = selectedRubric.guiding_questions || []
+                      const allItems: Array<{ label: string; description?: string }> = []
+                      
+                      // Add criteria
+                      criteria.forEach((criterion: any) => {
+                        allItems.push({
+                          label: criterion.label || criterion.name || 'Untitled criterion',
+                          description: criterion.description
+                        })
+                      })
+                      
+                      // Add guiding questions
+                      if (Array.isArray(guidingQuestions)) {
+                        guidingQuestions.forEach((question: string) => {
+                          if (question && typeof question === 'string') {
+                            allItems.push({
+                              label: question,
+                              description: undefined
+                            })
+                          }
+                        })
+                      }
+                      
+                      // Determine how many to show based on plan
+                      const itemsToShow = isCoachOrDaypass ? allItems : allItems.slice(0, 4)
+                      const hasMore = !isCoachOrDaypass && allItems.length > 4
+                      
+                      return (
+                        <>
+                          {itemsToShow.map((item, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-sm text-[#E6E8EB]">
+                              <span className="text-[#F59E0B] mt-0.5 flex-shrink-0">•</span>
+                              <div>
+                                <span className="font-medium">{item.label}</span>
+                                {item.description && (
+                                  <span className="text-[#9AA4B2] ml-2">— {item.description}</span>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                          {hasMore && (
+                            <li className="text-xs text-[#9AA4B2] italic mt-2 pt-2 border-t border-[#22283A]">
+                              Upgrade to Coach to see full rubric notes.
+                            </li>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </ul>
+                </div>
               )}
             </div>
 
@@ -1542,9 +1693,14 @@ export default function PracticePage() {
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-[#E6E8EB]">Recording</span>
                   <span className="text-sm font-mono text-[#F59E0B]">
-                    {formatTime(recordingTime)}
+                    {formatTime(recordingTime)} / {formatTime(MAX_RECORDING_SECONDS)}
                   </span>
                 </div>
+                {recordingTime >= WARNING_SECONDS && recordingTime < MAX_RECORDING_SECONDS && (
+                  <p className="text-xs text-[#F59E0B] font-medium mt-2">
+                    ⚠️ Less than 1 minute remaining
+                  </p>
+                )}
               </div>
             )}
 

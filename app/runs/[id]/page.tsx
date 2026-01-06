@@ -6,11 +6,10 @@ import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { StatusBadge } from '@/components/ui/StatusBadge'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { StatPill } from '@/components/ui/StatPill'
-import { Copy, Check, ArrowLeft, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Mic, FileText, Download } from 'lucide-react'
+import { Check, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, FileText, Download } from 'lucide-react'
 import { getUserPlan } from '@/lib/plan'
 
 // Helper function to log fetch errors with full details
@@ -68,7 +67,6 @@ export default function RunPage() {
   const [error, setError] = useState<string | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isGettingFeedback, setIsGettingFeedback] = useState(false)
-  const [copied, setCopied] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [audioError, setAudioError] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
@@ -357,42 +355,6 @@ export default function RunPage() {
     }
   }
 
-  const handleReset = async () => {
-    if (!routeRunId) return
-
-    setError(null)
-    setLastAction(null)
-
-    const url = `/api/runs/${routeRunId}/reset`
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        cache: 'no-store',
-      })
-
-      if (!res.ok) {
-        await logFetchError(url, res)
-        const errorData = await res.json()
-        setError(errorData.message || errorData.error || 'Reset failed')
-        setLastAction(`Reset failed: ${errorData.message || 'Unknown error'}`)
-        return
-      }
-
-      const responseData = await res.json()
-      if (responseData.ok && responseData.run) {
-        setRun(responseData.run)
-        setLastTranscript(null)
-        setLastAction('Run reset successfully')
-      }
-    } catch (err: any) {
-      console.error('Reset error:', err)
-      setError(err.message || 'Failed to reset run')
-      setLastAction(`Reset failed: ${err.message || 'Unknown error'}`)
-    } finally {
-      await fetchRun()
-    }
-  }
-
   const handleGetFeedback = async () => {
     if (!routeRunId) return
 
@@ -458,53 +420,6 @@ export default function RunPage() {
     }
   }
 
-  const copyShareSummary = () => {
-    if (!run) return
-
-    const durationSeconds = run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds
-    const duration = durationSeconds
-      ? `${Math.floor(durationSeconds / 60)}:${String(Math.floor(durationSeconds % 60)).padStart(2, '0')}`
-      : 'N/A'
-    const wpm = run.words_per_minute ? `${run.words_per_minute} WPM` : 'N/A'
-
-    let summary = `🎯 Pitch Practice Results\n\n`
-    summary += `Duration: ${duration} | Pace: ${wpm}\n`
-
-    if (run.analysis_json) {
-      const analysis = run.analysis_json
-      const score = analysis.summary?.overall_score || 'N/A'
-      summary += `Overall Score: ${score}/10\n\n`
-      
-      const strengths = analysis.summary?.top_strengths?.slice(0, 2) || []
-      const improvements = analysis.summary?.top_improvements?.slice(0, 2) || []
-
-      if (strengths.length > 0) {
-        summary += `✅ Top Strengths:\n`
-        strengths.forEach((s: string) => {
-          const cleanStrength = s.replace(/^["']|["']$/g, '').trim()
-          summary += `• ${cleanStrength}\n`
-        })
-        summary += `\n`
-      }
-      
-      if (improvements.length > 0) {
-        summary += `📈 Top Improvements:\n`
-        improvements.forEach((i: string) => {
-          const cleanImprovement = i.replace(/^["']|["']$/g, '').trim()
-          summary += `• ${cleanImprovement}\n`
-        })
-      }
-    } else if (run.transcript) {
-      summary += `\nTranscript available. Analysis pending.`
-    }
-
-    navigator.clipboard.writeText(summary).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }).catch(err => {
-      console.error('Failed to copy:', err)
-    })
-  }
 
   const formatDuration = (seconds: number | null): string => {
     if (seconds === null || seconds === undefined) return '—'
@@ -514,19 +429,181 @@ export default function RunPage() {
     return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
   }
 
-  const formatLastUpdated = (dateString: string): string => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
+  const exportSummaryPDF = (runData: Run) => {
+    if (!runData.analysis_json) return
+
+    // Create a hidden div with the summary content
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      alert('Please allow pop-ups to export PDF')
+      return
+    }
+
+    const durationSeconds = runData.duration_ms ? runData.duration_ms / 1000 : runData.audio_seconds
+    const duration = durationSeconds ? formatDuration(durationSeconds) : 'N/A'
+    const wpm = runData.words_per_minute ? `${runData.words_per_minute} WPM` : 'N/A'
+    const wordCount = runData.word_count !== null && runData.word_count !== undefined ? runData.word_count.toLocaleString() : 'N/A'
+    const title = runData.title || 'Untitled'
+    const date = new Date(runData.created_at).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    })
+
+    const analysis = runData.analysis_json
+    const overallScore = analysis.summary?.overall_score || 'N/A'
+    const overallNotes = analysis.summary?.overall_notes || ''
+    const topStrengths = analysis.summary?.top_strengths || []
+    const topImprovements = analysis.summary?.top_improvements || []
+    const rubricScores = analysis.rubric_scores || []
+
+    let rubricScoresHTML = ''
+    if (rubricScores.length > 0) {
+      rubricScoresHTML = `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+          <thead>
+            <tr style="background-color: #f3f4f6; border-bottom: 2px solid #e5e7eb;">
+              <th style="padding: 10px; text-align: left; font-weight: 600;">Criterion</th>
+              <th style="padding: 10px; text-align: center; font-weight: 600;">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rubricScores.map((score: any) => `
+              <tr style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 10px;">${score.criterion_label || score.criterion || 'N/A'}</td>
+                <td style="padding: 10px; text-align: center; font-weight: 600;">${score.score || 0}/10</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `
+    }
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${title} - Pitch Practice Summary</title>
+          <style>
+            @media print {
+              body { margin: 0; }
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              line-height: 1.6;
+              color: #1f2937;
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 40px 20px;
+            }
+            h1 {
+              font-size: 28px;
+              font-weight: 700;
+              margin-bottom: 10px;
+              color: #111827;
+            }
+            .meta {
+              color: #6b7280;
+              font-size: 14px;
+              margin-bottom: 30px;
+            }
+            .section {
+              margin-top: 30px;
+            }
+            .section-title {
+              font-size: 18px;
+              font-weight: 600;
+              margin-bottom: 15px;
+              color: #111827;
+              border-bottom: 2px solid #e5e7eb;
+              padding-bottom: 8px;
+            }
+            .score {
+              font-size: 24px;
+              font-weight: 700;
+              color: #f59e0b;
+              margin: 10px 0;
+            }
+            ul {
+              margin: 10px 0;
+              padding-left: 20px;
+            }
+            li {
+              margin: 8px 0;
+            }
+            .strengths li {
+              color: #059669;
+            }
+            .improvements li {
+              color: #dc2626;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 20px;
+            }
+            th, td {
+              padding: 10px;
+              text-align: left;
+              border-bottom: 1px solid #e5e7eb;
+            }
+            th {
+              background-color: #f3f4f6;
+              font-weight: 600;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          <div class="meta">
+            <div>Date: ${date}</div>
+            <div>Duration: ${duration} | WPM: ${wpm} | Word Count: ${wordCount}</div>
+          </div>
+
+          ${overallNotes ? `
+            <div class="section">
+              <div class="section-title">Overall Notes</div>
+              <p>${overallNotes}</p>
+            </div>
+          ` : ''}
+
+          ${topStrengths.length > 0 ? `
+            <div class="section">
+              <div class="section-title">Top Strengths</div>
+              <ul class="strengths">
+                ${topStrengths.map((s: string) => `<li>${s.replace(/^["']|["']$/g, '').trim()}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+
+          ${topImprovements.length > 0 ? `
+            <div class="section">
+              <div class="section-title">Top Improvements</div>
+              <ul class="improvements">
+                ${topImprovements.map((i: string) => `<li>${i.replace(/^["']|["']$/g, '').trim()}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+
+          ${rubricScoresHTML ? `
+            <div class="section">
+              <div class="section-title">Rubric Scores</div>
+              ${rubricScoresHTML}
+            </div>
+          ` : ''}
+        </body>
+      </html>
+    `
+
+    printWindow.document.write(htmlContent)
+    printWindow.document.close()
     
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins} min ago`
-    const diffHours = Math.floor(diffMins / 60)
-    if (diffHours < 24) return `${diffHours} hr ago`
-    const diffDays = Math.floor(diffHours / 24)
-    return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`
+    // Wait for content to load, then trigger print
+    setTimeout(() => {
+      printWindow.print()
+    }, 250)
   }
+
 
   // Split transcript into sentences with stable indices
   const splitIntoSentences = (text: string): string[] => {
@@ -851,9 +928,9 @@ export default function RunPage() {
                                     className={`
                                       inline cursor-pointer transition-all rounded px-1.5 py-0.5 mx-0.5 my-0.5
                                       ${isSelected 
-                                        ? 'bg-amber-500/30 border-2 border-amber-500/60' 
+                                        ? 'border-2 border-amber-500/60' 
                                         : hasFeedback
-                                          ? 'hover:border-amber-500/30 border border-transparent'
+                                          ? 'hover:border-amber-500/30 border border-amber-500/20'
                                           : 'hover:border-gray-500/20 border border-transparent'
                                       }
                                     `}
@@ -1222,98 +1299,38 @@ export default function RunPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Status Card - Different for Free vs Paid */}
-            {userPlan === 'free' ? (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
-              >
-                <Card>
+            {/* Status Card */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+            >
+              <Card>
+                <div className="space-y-2">
                   <Button
+                    onClick={handleTranscribe}
                     variant="primary"
                     size="sm"
                     className="w-full"
-                    onClick={() => {
-                      router.push('/app/practice')
-                    }}
+                    disabled={isTranscribing}
+                    isLoading={isTranscribing}
                   >
-                    Practice again
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Re-transcribe (overwrite)
                   </Button>
-                </Card>
-              </motion.div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
-              >
-                <Card>
-                  <div className="mb-4">
-                    <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Status</h3>
-                    <div className="flex items-center gap-2 mb-3">
-                      <StatusBadge status={run.status} />
-                    </div>
-                    <p className="text-xs text-[#9CA3AF]">
-                      Updated {formatLastUpdated(run.created_at)}
-                    </p>
-                  </div>
-                  <div className="space-y-2 pt-4 border-t border-[#22283A]">
-                    {run.transcript && !run.analysis_json && (
-                      <Button
-                        onClick={handleGetFeedback}
-                        variant="primary"
-                        size="sm"
-                        className="w-full"
-                        disabled={isGettingFeedback || (!run.rubrics && !run.rubric_snapshot_json)}
-                        isLoading={isGettingFeedback}
-                      >
-                        {isGettingFeedback ? (
-                          <>
-                            <LoadingSpinner size="sm" />
-                            Generating feedback...
-                          </>
-                        ) : (
-                          <>
-                            Get feedback
-                          </>
-                        )}
-                      </Button>
-                    )}
+                  <Link href="/app" className="block">
                     <Button
-                      onClick={handleTranscribe}
-                      variant="primary"
-                      size="sm"
-                      className="w-full"
-                      disabled={isTranscribing}
-                      isLoading={isTranscribing}
-                    >
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      Re-transcribe (overwrite)
-                    </Button>
-                    <Button
-                      onClick={handleReset}
-                      variant="secondary"
+                      variant="ghost"
                       size="sm"
                       className="w-full"
                     >
-                      <RotateCcw className="mr-2 h-4 w-4" />
-                      Reset
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      Back to /app
                     </Button>
-                    <Link href="/app" className="block">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="w-full"
-                      >
-                        <ArrowLeft className="mr-2 h-4 w-4" />
-                        Back to /app
-                      </Button>
-                    </Link>
-                  </div>
-                </Card>
-              </motion.div>
-            )}
+                  </Link>
+                </div>
+              </Card>
+            </motion.div>
 
             {/* Metrics Card */}
             <motion.div
@@ -1338,49 +1355,15 @@ export default function RunPage() {
               </Card>
             </motion.div>
 
-            {/* Share Card - Only for Paid Users */}
-            {userPlan !== 'free' && (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
-              >
-                <Card>
-                  <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Share</h3>
-                  <Button
-                    onClick={copyShareSummary}
-                    variant="primary"
-                    size="sm"
-                    className="w-full"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="mr-2 h-4 w-4" />
-                        Copied!
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="mr-2 h-4 w-4" />
-                        Copy Share Summary
-                      </>
-                    )}
-                  </Button>
-                  <p className="text-xs text-[#9CA3AF] mt-3">
-                    Copies a LinkedIn-friendly summary with metrics and key feedback.
-                  </p>
-                </Card>
-              </motion.div>
-            )}
-
-            {/* Export Card - Different for Free vs Paid */}
-            {userPlan === 'free' ? (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
-              >
-                <Card>
-                  <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Export</h3>
+            {/* Export Card */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
+            >
+              <Card>
+                <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Export</h3>
+                <div className="space-y-2">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -1398,36 +1381,28 @@ export default function RunPage() {
                       URL.revokeObjectURL(url)
                     }}
                     disabled={!run.transcript}
+                    title={!run.transcript ? 'Transcript not ready' : ''}
                   >
                     <Download className="mr-2 h-4 w-4" />
-                    Download Transcript (.txt)
+                    Download transcript (.txt)
                   </Button>
-                </Card>
-              </motion.div>
-            ) : (userPlan === 'coach' || userPlan === 'day_pass') ? (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, delay: 0.3, ease: "easeOut" }}
-              >
-                <Card>
-                  <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Export</h3>
-                  <div className="space-y-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => {
-                        // Placeholder - export summary
-                      }}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      Export Summary
-                    </Button>
-                  </div>
-                </Card>
-              </motion.div>
-            ) : null}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      if (!run.analysis_json) return
+                      exportSummaryPDF(run)
+                    }}
+                    disabled={!run.analysis_json}
+                    title={!run.analysis_json ? 'Summary not ready' : ''}
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Export summary (.pdf)
+                  </Button>
+                </div>
+              </Card>
+            </motion.div>
 
             {/* Compare Attempts - Only for Coach + Day Pass */}
             {(userPlan === 'coach' || userPlan === 'day_pass') && (

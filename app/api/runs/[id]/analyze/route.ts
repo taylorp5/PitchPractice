@@ -117,6 +117,25 @@ interface AnalysisOutput {
       drills: Array<{ title: string; steps: string[] }>
     }
   }
+  premium?: {
+    signature_insight: string
+    coach_take: string
+    next_focus: string[]
+    filler?: {
+      total: number
+      by_word: Record<string, number>
+      sections: {
+        intro: number
+        middle: number
+        close: number
+      }
+      insight: string
+      drill: {
+        title: string
+        steps: string[]
+      }
+    }
+  } | null
 }
 
 interface PromptRubricItem {
@@ -429,6 +448,167 @@ function analyzeFillerWords(transcript: string): {
   }
 }
 
+// Premium Filler Word Analysis: Breakdown by section and pattern
+function analyzePremiumFillerWords(transcript: string): {
+  total: number
+  by_word: Record<string, number>
+  sections: {
+    intro: number
+    middle: number
+    close: number
+  }
+  insight: string
+  drill: {
+    title: string
+    steps: string[]
+  }
+} {
+  // Words to track (case-insensitive, whole word matches)
+  const fillerWordPatterns: { [key: string]: RegExp } = {
+    'um': /\bum\b/gi,
+    'uh': /\buh\b/gi,
+    'like': /\blike\b/gi,
+    'so': /\bso\b/gi,
+    'well': /\bwell\b/gi,
+    'you know': /\byou\s+know\b/gi,
+    'basically': /\bbasically\b/gi,
+    'actually': /\bactually\b/gi,
+  }
+
+  // Normalize transcript
+  const normalized = transcript.replace(/\s+/g, ' ').trim()
+  const totalLength = normalized.length
+  
+  // Calculate section boundaries (text-position based)
+  const introEnd = Math.floor(totalLength * 0.2) // First 20%
+  const closeStart = Math.floor(totalLength * 0.8) // Last 20%
+  
+  const introText = normalized.substring(0, introEnd)
+  const middleText = normalized.substring(introEnd, closeStart)
+  const closeText = normalized.substring(closeStart)
+
+  // Count by word (total)
+  const by_word: Record<string, number> = {}
+  Object.entries(fillerWordPatterns).forEach(([word, pattern]) => {
+    const matches = normalized.match(pattern)
+    by_word[word] = matches ? matches.length : 0
+  })
+
+  // Count by section
+  const sections = {
+    intro: 0,
+    middle: 0,
+    close: 0,
+  }
+
+  Object.entries(fillerWordPatterns).forEach(([word, pattern]) => {
+    const introMatches = introText.match(pattern)
+    const middleMatches = middleText.match(pattern)
+    const closeMatches = closeText.match(pattern)
+    
+    sections.intro += introMatches ? introMatches.length : 0
+    sections.middle += middleMatches ? middleMatches.length : 0
+    sections.close += closeMatches ? closeMatches.length : 0
+  })
+
+  const total = Object.values(by_word).reduce((sum, count) => sum + count, 0)
+
+  // Generate insight (1-2 sentences about pattern)
+  let insight = ''
+  
+  if (total === 0) {
+    insight = 'No filler words detected. Your delivery is clean and confident.'
+  } else {
+    // Find dominant word
+    const sortedWords = Object.entries(by_word)
+      .filter(([_, count]) => count > 0)
+      .sort(([_, a], [__, b]) => b - a)
+    
+    const dominantWord = sortedWords[0]?.[0] || ''
+    const dominantCount = sortedWords[0]?.[1] || 0
+    
+    // Find section pattern
+    const maxSection = Math.max(sections.intro, sections.middle, sections.close)
+    let sectionPattern = ''
+    if (sections.intro === maxSection && sections.intro > 0) {
+      sectionPattern = 'intro'
+    } else if (sections.close === maxSection && sections.close > 0) {
+      sectionPattern = 'close'
+    } else if (sections.middle === maxSection && sections.middle > 0) {
+      sectionPattern = 'middle'
+    }
+    
+    // Build insight
+    if (sectionPattern === 'intro' && dominantWord) {
+      insight = `You use "${dominantWord}" ${dominantCount} time${dominantCount > 1 ? 's' : ''}, mostly in the opening. Practice your first 20 seconds to start confidently without fillers.`
+    } else if (sectionPattern === 'close' && dominantWord) {
+      insight = `You use "${dominantWord}" ${dominantCount} time${dominantCount > 1 ? 's' : ''}, mostly in the closing. Focus on ending strong without fillers to leave a lasting impression.`
+    } else if (sectionPattern === 'middle' && dominantWord) {
+      insight = `You use "${dominantWord}" ${dominantCount} time${dominantCount > 1 ? 's' : ''} throughout the middle section. Practice pausing instead of using fillers during transitions.`
+    } else if (dominantWord) {
+      insight = `You use "${dominantWord}" ${dominantCount} time${dominantCount > 1 ? 's' : ''} throughout your pitch. Replace fillers with brief pauses for a more confident delivery.`
+    } else {
+      insight = `You use ${total} filler word${total > 1 ? 's' : ''} total. Practice replacing them with brief pauses.`
+    }
+  }
+
+  // Generate drill based on pattern
+  let drillTitle = 'Filler Word Elimination'
+  let drillSteps: string[] = []
+
+  if (total === 0) {
+    drillTitle = 'Maintain Clean Delivery'
+    drillSteps = [
+      'Continue practicing without filler words',
+      'Focus on maintaining your clean delivery style',
+      'Use brief pauses when you need thinking time',
+    ]
+  } else {
+    // Determine drill based on section pattern
+    const maxSection = Math.max(sections.intro, sections.middle, sections.close)
+    
+    if (sections.intro === maxSection && sections.intro > 0) {
+      drillTitle = 'Strong Opening Practice'
+      drillSteps = [
+        'Practice your opening 3-4 sentences 5 times out loud',
+        'Focus on the first 20 seconds - eliminate all fillers',
+        'Record yourself and count fillers in the opening',
+        'Re-record until you have 0 fillers in the first 20 seconds',
+        'Apply this clean opening to your full pitch',
+      ]
+    } else if (sections.close === maxSection && sections.close > 0) {
+      drillTitle = 'Strong Closing Practice'
+      drillSteps = [
+        'Practice your closing 3-4 sentences 5 times out loud',
+        'Focus on the last 20% of your pitch - eliminate all fillers',
+        'Record yourself and count fillers in the closing',
+        'Re-record until you have 0 fillers in the closing',
+        'End with confidence and clarity',
+      ]
+    } else {
+      drillTitle = 'Filler Word Elimination'
+      drillSteps = [
+        'Record yourself speaking for 30 seconds',
+        `Count every filler word you use (focus on "${Object.entries(by_word).sort(([_, a], [__, b]) => b - a)[0]?.[0] || 'fillers'}")`,
+        'Re-record, replacing each filler with a 1-second pause',
+        'Repeat until you use 0-1 fillers per 30 seconds',
+        'Apply this technique to your full pitch practice',
+      ]
+    }
+  }
+
+  return {
+    total,
+    by_word,
+    sections,
+    insight,
+    drill: {
+      title: drillTitle,
+      steps: drillSteps,
+    },
+  }
+}
+
 // Premium Insights: Pacing Analysis
 function analyzePacing(
   transcript: string,
@@ -705,6 +885,187 @@ function generateCoachingPlan(
   return {
     next_attempt_focus: next_attempt_focus,
     drills: drills.slice(0, 3), // Limit to 3 drills
+  }
+}
+
+// Premium Content: Generate Signature Insight and Coach's Take
+function generatePremiumContent(
+  analysis: AnalysisOutput,
+  fillerCount: number,
+  wpm: number | null,
+  pacingSegments: Array<{ label: 'slow' | 'good' | 'fast'; start_sec: number | null; end_sec: number | null; note: string }>,
+  missingSections: string[]
+): {
+  signature_insight: string
+  coach_take: string
+  next_focus: string[]
+  filler?: {
+    total: number
+    by_word: Record<string, number>
+    sections: {
+      intro: number
+      middle: number
+      close: number
+    }
+    insight: string
+    drill: {
+      title: string
+      steps: string[]
+    }
+  }
+} {
+  // Generate Signature Insight (1-2 sentences: the most memorable takeaway)
+  let signature_insight = ''
+  
+  // Priority 1: Pacing issues (especially dramatic changes)
+  if (pacingSegments.length > 0) {
+    const slowSegments = pacingSegments.filter(s => s.label === 'slow')
+    const fastSegments = pacingSegments.filter(s => s.label === 'fast')
+    
+    if (slowSegments.length > 0 && slowSegments[0].start_sec !== null) {
+      const startSec = Math.round(slowSegments[0].start_sec)
+      signature_insight = `Your pacing slows dramatically in the first ${startSec} seconds → warm up before recording to maintain consistent energy.`
+    } else if (fastSegments.length > 0) {
+      signature_insight = `Your pace is too fast in key sections → slow down slightly for better comprehension and impact.`
+    } else if (wpm !== null && wpm < 120) {
+      signature_insight = `Your overall pace is slower than ideal (${Math.round(wpm)} WPM) → aim for 140-160 WPM to maintain engagement.`
+    } else if (wpm !== null && wpm > 180) {
+      signature_insight = `Your overall pace is too fast (${Math.round(wpm)} WPM) → slow down to 140-160 WPM for clarity.`
+    }
+  }
+  
+  // Priority 2: Missing critical sections
+  if (!signature_insight && missingSections.length > 0) {
+    const criticalSections = missingSections.filter(s => 
+      ['cta', 'call to action', 'problem', 'solution'].includes(s.toLowerCase())
+    )
+    if (criticalSections.length > 0) {
+      const section = criticalSections[0]
+      signature_insight = `Your ${section} section is missing even when the rest is strong → add a clear ${section} to complete your pitch.`
+    } else {
+      signature_insight = `You're missing ${missingSections.length} key section${missingSections.length > 1 ? 's' : ''} (${missingSections.join(', ')}) → address these gaps to strengthen your pitch.`
+    }
+  }
+  
+  // Priority 3: Filler words
+  if (!signature_insight && fillerCount > 5) {
+    signature_insight = `You used ${fillerCount} filler words throughout → practice replacing "um" and "uh" with brief pauses for a more confident delivery.`
+  }
+  
+  // Priority 4: High-priority line-by-line issues
+  if (!signature_insight && analysis.line_by_line.length > 0) {
+    const highPriorityIssues = analysis.line_by_line
+      .filter(item => item.type === 'issue' && item.priority === 'high')
+      .slice(0, 1)
+    
+    if (highPriorityIssues.length > 0) {
+      const issue = highPriorityIssues[0]
+      signature_insight = `${issue.comment.substring(0, 100)}${issue.comment.length > 100 ? '...' : ''}`
+    }
+  }
+  
+  // Fallback: Use top improvement
+  if (!signature_insight && analysis.summary.top_improvements.length > 0) {
+    const topImprovement = analysis.summary.top_improvements[0]
+    signature_insight = topImprovement.substring(0, 150) + (topImprovement.length > 150 ? '...' : '')
+  }
+  
+  // Final fallback
+  if (!signature_insight) {
+    signature_insight = `Focus on the key improvement areas identified in your feedback to strengthen your next attempt.`
+  }
+  
+  // Generate Coach's Take (paragraph with 2 focus bullets + goal)
+  const coachTakeParts: string[] = []
+  
+  // Opening sentence: overall delivery assessment
+  const overallScore = analysis.summary.overall_score
+  if (overallScore >= 7) {
+    coachTakeParts.push(`Your pitch shows strong fundamentals with a solid structure and clear messaging.`)
+  } else if (overallScore >= 5) {
+    coachTakeParts.push(`Your pitch has good potential but needs refinement in key areas to maximize impact.`)
+  } else {
+    coachTakeParts.push(`Your pitch needs work, but with focused practice on the areas below, you'll see significant improvement.`)
+  }
+  
+  // Generate next_focus array (2 items)
+  const nextFocus: string[] = []
+  
+  // Focus 1: Based on pacing
+  if (wpm !== null) {
+    if (wpm < 120) {
+      nextFocus.push(`Increase your speaking pace to 140-160 WPM for better engagement`)
+    } else if (wpm > 180) {
+      nextFocus.push(`Slow down your speaking pace to 140-160 WPM for better clarity`)
+    }
+  }
+  
+  // Focus 2: Based on missing sections
+  if (nextFocus.length < 2 && missingSections.length > 0) {
+    const criticalSection = missingSections.find(s => 
+      ['cta', 'call to action', 'problem', 'solution'].includes(s.toLowerCase())
+    ) || missingSections[0]
+    nextFocus.push(`Add a clear ${criticalSection} section to complete your pitch structure`)
+  }
+  
+  // Focus 3: Based on filler words
+  if (nextFocus.length < 2 && fillerCount > 5) {
+    nextFocus.push(`Reduce filler words by practicing brief pauses instead of "um" and "uh"`)
+  }
+  
+  // Focus 4: Based on high-priority issues
+  if (nextFocus.length < 2 && analysis.line_by_line.length > 0) {
+    const highPriorityIssue = analysis.line_by_line
+      .find(item => item.type === 'issue' && item.priority === 'high')
+    if (highPriorityIssue) {
+      const focusText = highPriorityIssue.action.substring(0, 80)
+      if (focusText.length > 0) {
+        nextFocus.push(focusText + (highPriorityIssue.action.length > 80 ? '...' : ''))
+      }
+    }
+  }
+  
+  // Fill remaining slots with top improvements
+  while (nextFocus.length < 2 && analysis.summary.top_improvements.length > 0) {
+    const improvement = analysis.summary.top_improvements[nextFocus.length - 1]
+    if (improvement) {
+      const focusText = improvement.substring(0, 80)
+      if (focusText.length > 0 && !nextFocus.includes(focusText)) {
+        nextFocus.push(focusText + (improvement.length > 80 ? '...' : ''))
+      }
+    }
+    if (nextFocus.length >= 2) break
+  }
+  
+  // Ensure we have at least 2 focus items
+  if (nextFocus.length === 0) {
+    nextFocus.push('Review the feedback and practice the key improvement areas')
+    nextFocus.push('Record another attempt to measure your progress')
+  } else if (nextFocus.length === 1) {
+    nextFocus.push('Review the detailed feedback and practice the identified areas')
+  }
+  
+  // Build coach_take with bullets
+  coachTakeParts.push(`\n\nFocus next:`)
+  nextFocus.forEach((focus, idx) => {
+    coachTakeParts.push(`• ${focus}`)
+  })
+  
+  // Closing sentence: next attempt goal
+  if (overallScore >= 7) {
+    coachTakeParts.push(`\n\nNext attempt goal: Refine the details and polish your delivery to reach a 9-10 score.`)
+  } else if (overallScore >= 5) {
+    coachTakeParts.push(`\n\nNext attempt goal: Address the focus areas above to push your score from ${overallScore} to 7+.`)
+  } else {
+    coachTakeParts.push(`\n\nNext attempt goal: Focus on the two areas above to improve your score from ${overallScore} to 5+.`)
+  }
+  
+  const coach_take = coachTakeParts.join('\n')
+  
+  return {
+    signature_insight,
+    coach_take,
+    next_focus: nextFocus.slice(0, 2), // Ensure exactly 2 items
   }
 }
 
@@ -1288,6 +1649,24 @@ export async function POST(
           structure: structureAnalysis,
           coaching_plan: coachingPlan,
         }
+
+        // Generate premium content (Signature Insight + Coach's Take)
+        const premiumContent = generatePremiumContent(
+          analysisJson,
+          fillerWordsAnalysis.total_count,
+          run.words_per_minute || null,
+          pacingAnalysis.segments,
+          structureAnalysis.missing_sections
+        )
+        
+        // Generate premium filler word breakdown
+        const premiumFiller = analyzePremiumFillerWords(run.transcript)
+        premiumContent.filler = premiumFiller
+        
+        analysisJson.premium = premiumContent
+      } else {
+        // Non-coach users: explicitly set premium to null
+        analysisJson.premium = null
       }
 
       // Add filler word and hesitation detection for Free and Starter plans

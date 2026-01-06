@@ -12,6 +12,7 @@ import { StatPill } from '@/components/ui/StatPill'
 import { Badge } from '@/components/ui/Badge'
 import { Check, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, FileText, Download, Copy, Sparkles } from 'lucide-react'
 import { getUserPlan } from '@/lib/plan'
+import { hasCoachAccess } from '@/lib/entitlements'
 
 // Helper function to log fetch errors with full details
 async function logFetchError(url: string, response: Response, error?: any) {
@@ -278,6 +279,15 @@ export default function RunPage() {
   const [selectedSentenceIdx, setSelectedSentenceIdx] = useState<number | null>(null)
   const [highlightedFeedbackIdx, setHighlightedFeedbackIdx] = useState<number | null>(null)
   const [showNoFeedbackMessage, setShowNoFeedbackMessage] = useState<number | null>(null)
+  const [progressData, setProgressData] = useState<{
+    comparisons: {
+      avg_wpm: number | null
+      avg_filler_words: number | null
+      avg_missing_sections: number | null
+      avg_overall_score: number | null
+    } | null
+    loading: boolean
+  }>({ comparisons: null, loading: false })
   
   // Use ref to track current run for polling logic (avoids stale closures)
   const runRef = useRef<Run | null>(null)
@@ -439,6 +449,30 @@ export default function RunPage() {
     }
   }
 
+  // Fetch progress data for Coach users
+  const fetchProgress = useCallback(async () => {
+    if (!routeRunId || !hasCoachAccess(userPlan)) {
+      return
+    }
+
+    setProgressData(prev => ({ ...prev, loading: true }))
+    try {
+      const res = await fetch(`/api/runs/${routeRunId}/progress`, {
+        cache: 'no-store',
+      })
+      if (!res.ok) {
+        console.error('[Progress] Failed to fetch progress data')
+        setProgressData({ comparisons: null, loading: false })
+        return
+      }
+      const data = await res.json()
+      setProgressData({ comparisons: data.comparisons, loading: false })
+    } catch (err) {
+      console.error('[Progress] Error fetching progress:', err)
+      setProgressData({ comparisons: null, loading: false })
+    }
+  }, [routeRunId, userPlan])
+
   useEffect(() => {
     // Get user plan on mount
     getUserPlan().then(plan => {
@@ -447,6 +481,13 @@ export default function RunPage() {
     })
     fetchRun(false)
   }, [routeRunId])
+
+  // Fetch progress when run is loaded and user has coach access
+  useEffect(() => {
+    if (run && hasCoachAccess(userPlan) && run.analysis_json) {
+      fetchProgress()
+    }
+  }, [run, userPlan, fetchProgress])
 
   // Polling: poll every 1500ms while status is in ["uploaded","transcribing","transcribed"]
   useEffect(() => {
@@ -1114,26 +1155,146 @@ export default function RunPage() {
               </motion.div>
             )}
 
-            {/* Premium Insights Card - Only for Coach plan with coach-at-time runs */}
+            {/* Premium Insights Card - Only for Coach plan */}
             {(() => {
-              const isCurrentUserCoach = userPlan === 'coach'
-              const runPlanAtTime = run.plan_at_time || run.analysis_json?.meta?.plan_at_time
-              const isRunCoachAtTime = runPlanAtTime === 'coach'
-              return isCurrentUserCoach && isRunCoachAtTime && run.analysis_json?.premium_insights
-            })() && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
-              >
-                <Card>
-                  <div className="flex items-center gap-2 mb-6">
-                    <Sparkles className="h-5 w-5 text-[#F59E0B]" />
-                    <SectionHeader title="Premium Insights" />
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* 1. Filler Words */}
+              // Guard: ensure run exists
+              if (!run) return null
+              
+              const coachAccess = hasCoachAccess(userPlan)
+              const hasPremiumInsights = run.analysis_json?.premium_insights
+              const hasPremiumContent = run.analysis_json?.premium
+              
+              // Show Premium Insights if user has coach access and insights or premium content exist
+              if (coachAccess && (hasPremiumInsights || hasPremiumContent)) {
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
+                  >
+                    <Card>
+                      <div className="flex items-center gap-2 mb-6">
+                        <Sparkles className="h-5 w-5 text-[#F59E0B]" />
+                        <SectionHeader title="Premium Insights" />
+                      </div>
+                      
+                      {/* Signature Insight */}
+                      {run.analysis_json.premium?.signature_insight && (
+                        <div className="mb-6 p-4 bg-gradient-to-r from-[#F59E0B]/10 to-[#F59E0B]/5 border border-[#F59E0B]/30 rounded-lg">
+                          <div className="flex items-start gap-3">
+                            <Sparkles className="h-5 w-5 text-[#F59E0B] mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <h3 className="text-sm font-semibold text-[#F59E0B] mb-2">Signature Insight</h3>
+                              <p className="text-sm text-[#E5E7EB] leading-relaxed">
+                                {run.analysis_json.premium.signature_insight}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Coach's Take */}
+                      {run.analysis_json.premium?.coach_take && (
+                        <div className="mb-6 p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                          <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Coach's Take</h3>
+                          <div className="space-y-3">
+                            <p className="text-sm text-[#E5E7EB] leading-relaxed whitespace-pre-line">
+                              {run.analysis_json.premium.coach_take}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Premium Filler Word Breakdown */}
+                      {run.analysis_json.premium?.filler && (
+                        <div className="mb-6 p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                          <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Filler Word Breakdown</h3>
+                          
+                          <div className="space-y-4">
+                            {/* Total Count */}
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-2">Total</p>
+                              <p className="text-2xl font-bold text-[#F59E0B]">
+                                {run.analysis_json.premium.filler.total}
+                              </p>
+                            </div>
+
+                            {/* By Word Chips */}
+                            {Object.keys(run.analysis_json.premium.filler.by_word).length > 0 && (
+                              <div>
+                                <p className="text-xs text-[#9CA3AF] mb-2">By Word</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {Object.entries(run.analysis_json.premium.filler.by_word)
+                                    .filter(([_, count]) => (count as number) > 0)
+                                    .sort(([_, a], [__, b]) => (b as number) - (a as number))
+                                    .map(([word, count]) => (
+                                      <Badge key={word} variant="warning" size="sm">
+                                        {word}: {count as number}
+                                      </Badge>
+                                    ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Where it happens (Intro / Middle / Close) */}
+                            <div>
+                              <p className="text-xs text-[#9CA3AF] mb-2">Where it happens</p>
+                              <div className="flex gap-4 text-sm">
+                                <div className="flex-1 p-2 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                                  <p className="text-xs text-[#9CA3AF] mb-1">Intro</p>
+                                  <p className="text-base font-semibold text-[#E5E7EB]">
+                                    {run.analysis_json.premium.filler.sections.intro}
+                                  </p>
+                                </div>
+                                <div className="flex-1 p-2 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                                  <p className="text-xs text-[#9CA3AF] mb-1">Middle</p>
+                                  <p className="text-base font-semibold text-[#E5E7EB]">
+                                    {run.analysis_json.premium.filler.sections.middle}
+                                  </p>
+                                </div>
+                                <div className="flex-1 p-2 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                                  <p className="text-xs text-[#9CA3AF] mb-1">Close</p>
+                                  <p className="text-base font-semibold text-[#E5E7EB]">
+                                    {run.analysis_json.premium.filler.sections.close}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Insight */}
+                            {run.analysis_json.premium.filler.insight && (
+                              <div className="pt-2 border-t border-[#22283A]">
+                                <p className="text-xs text-[#9CA3AF] mb-2">Pattern</p>
+                                <p className="text-sm text-[#E5E7EB] leading-relaxed">
+                                  {run.analysis_json.premium.filler.insight}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Drill */}
+                            {run.analysis_json.premium.filler.drill && (
+                              <div className="pt-2 border-t border-[#22283A]">
+                                <p className="text-xs text-[#9CA3AF] mb-2">What to do</p>
+                                <div className="p-3 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                                  <h4 className="text-xs font-semibold text-[#F59E0B] mb-2">
+                                    {run.analysis_json.premium.filler.drill.title}
+                                  </h4>
+                                  <ol className="space-y-1.5 list-decimal list-inside">
+                                    {run.analysis_json.premium.filler.drill.steps.map((step: string, idx: number) => (
+                                      <li key={idx} className="text-xs text-[#E5E7EB]">
+                                        {step}
+                                      </li>
+                                    ))}
+                                  </ol>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* 1. Filler Words (Legacy - keeping for backward compatibility) */}
                     {run.analysis_json.premium_insights.filler_words && (
                       <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
                         <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Filler Words</h3>
@@ -1397,10 +1558,201 @@ export default function RunPage() {
                         </div>
                       </div>
                     )}
-                  </div>
-                </Card>
-              </motion.div>
-            )}
+                      </div>
+                    </Card>
+                  </motion.div>
+                )
+              }
+              
+              // Show upsell card if user doesn't have coach access
+              if (!coachAccess) {
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
+                  >
+                    <Card>
+                      <div className="flex items-center gap-2 mb-4">
+                        <Sparkles className="h-5 w-5 text-[#F59E0B]" />
+                        <SectionHeader title="Unlock Premium Insights" />
+                      </div>
+                      
+                      <div className="space-y-4">
+                        <ul className="space-y-2 text-sm text-[#E5E7EB]">
+                          <li className="flex items-start gap-2">
+                            <span className="text-[#F59E0B] mt-0.5 flex-shrink-0">•</span>
+                            <span>Filler word breakdown</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-[#F59E0B] mt-0.5 flex-shrink-0">•</span>
+                            <span>Pacing & pause coaching</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-[#F59E0B] mt-0.5 flex-shrink-0">•</span>
+                            <span>Structure drills</span>
+                          </li>
+                          <li className="flex items-start gap-2">
+                            <span className="text-[#F59E0B] mt-0.5 flex-shrink-0">•</span>
+                            <span>Progress over time</span>
+                          </li>
+                        </ul>
+                        
+                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                          <Button
+                            onClick={() => router.push('/upgrade?plan=coach')}
+                            variant="primary"
+                            size="sm"
+                            className="flex-1"
+                          >
+                            Upgrade to Coach
+                          </Button>
+                          <Button
+                            onClick={() => router.push('/app/practice')}
+                            variant="secondary"
+                            size="sm"
+                            className="flex-1"
+                          >
+                            Back to practice
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  </motion.div>
+                )
+              }
+              
+              // No Premium Insights and user has coach access (insights not generated yet)
+              return null
+            })()}
+
+            {/* Progress Card - Coach only */}
+            {(() => {
+              // Guard: ensure run exists
+              if (!run) return null
+              
+              const coachAccess = hasCoachAccess(userPlan)
+              const hasAnalysis = run.analysis_json
+              
+              // Show Progress card if user has coach access and analysis exists
+              if (coachAccess && hasAnalysis && progressData.comparisons) {
+                const comparisons = progressData.comparisons
+                
+                // Get current run metrics
+                const currentWpm = run.words_per_minute || null
+                const currentFillerWords = run.analysis_json?.premium?.filler?.total ?? 
+                                          run.analysis_json?.premium_insights?.filler_words?.total_count ?? null
+                const currentMissingSections = run.analysis_json?.rubric_scores 
+                  ? run.analysis_json.rubric_scores.filter((score: any) => score.missing === true).length
+                  : null
+                const currentOverallScore = run.analysis_json?.summary?.overall_score ?? null
+
+                // Helper to get trend indicator
+                const getTrendIndicator = (current: number | null, previous: number | null): string => {
+                  if (current === null || previous === null) return '→'
+                  if (current > previous) return '↑'
+                  if (current < previous) return '↓'
+                  return '→'
+                }
+
+                // Helper to format comparison
+                const formatComparison = (current: number | null, previous: number | null, format: 'int' | 'float' = 'int'): string => {
+                  if (current === null || previous === null) return 'N/A'
+                  const diff = current - previous
+                  const sign = diff >= 0 ? '+' : ''
+                  const formattedDiff = format === 'float' ? diff.toFixed(1) : Math.round(diff).toString()
+                  return `${previous.toFixed(format === 'float' ? 1 : 0)} → ${current.toFixed(format === 'float' ? 1 : 0)} (${sign}${formattedDiff})`
+                }
+
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 0.15, ease: "easeOut" }}
+                  >
+                    <Card>
+                      <div className="flex items-center gap-2 mb-4">
+                        <SectionHeader title="Progress" />
+                      </div>
+                      
+                      <p className="text-xs text-[#9CA3AF] mb-4">Compared to your last 3 attempts</p>
+                      
+                      <div className="space-y-3">
+                        {/* Pacing (WPM) */}
+                        {currentWpm !== null && comparisons.avg_wpm !== null && (
+                          <div className="flex items-center justify-between p-2 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[#9CA3AF]">Pacing (WPM):</span>
+                              <span className="text-xs text-[#E5E7EB]">
+                                {formatComparison(currentWpm, comparisons.avg_wpm, 'int')}
+                              </span>
+                            </div>
+                            <span className="text-sm text-[#9CA3AF]">
+                              {getTrendIndicator(currentWpm, comparisons.avg_wpm)}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Filler Words */}
+                        {currentFillerWords !== null && comparisons.avg_filler_words !== null && (
+                          <div className="flex items-center justify-between p-2 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[#9CA3AF]">Filler words:</span>
+                              <span className="text-xs text-[#E5E7EB]">
+                                {formatComparison(currentFillerWords, comparisons.avg_filler_words, 'int')}
+                              </span>
+                            </div>
+                            <span className="text-sm text-[#9CA3AF]">
+                              {getTrendIndicator(currentFillerWords, comparisons.avg_filler_words)}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Missing Sections */}
+                        {currentMissingSections !== null && comparisons.avg_missing_sections !== null && (
+                          <div className="flex items-center justify-between p-2 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[#9CA3AF]">Missing sections:</span>
+                              <span className="text-xs text-[#E5E7EB]">
+                                {formatComparison(currentMissingSections, comparisons.avg_missing_sections, 'int')}
+                              </span>
+                            </div>
+                            <span className="text-sm text-[#9CA3AF]">
+                              {getTrendIndicator(currentMissingSections, comparisons.avg_missing_sections)}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Overall Score */}
+                        {currentOverallScore !== null && comparisons.avg_overall_score !== null && (
+                          <div className="flex items-center justify-between p-2 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[#9CA3AF]">Overall score:</span>
+                              <span className="text-xs text-[#E5E7EB]">
+                                {formatComparison(currentOverallScore, comparisons.avg_overall_score, 'float')}
+                              </span>
+                            </div>
+                            <span className="text-sm text-[#9CA3AF]">
+                              {getTrendIndicator(currentOverallScore, comparisons.avg_overall_score)}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* No data message */}
+                        {(!comparisons.avg_wpm && !comparisons.avg_filler_words && 
+                          !comparisons.avg_missing_sections && !comparisons.avg_overall_score) && (
+                          <p className="text-xs text-[#9CA3AF] text-center py-2">
+                            No previous runs to compare. Keep practicing to see your progress!
+                          </p>
+                        )}
+                      </div>
+                    </Card>
+                  </motion.div>
+                )
+              }
+              
+              return null
+            })()}
 
             {/* Transcript Card */}
             <motion.div

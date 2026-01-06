@@ -855,8 +855,8 @@ export default function RunPage() {
                                       ${isSelected 
                                         ? 'bg-amber-500/30 border-2 border-amber-500/60' 
                                         : hasFeedback
-                                          ? 'hover:bg-amber-500/10 border border-transparent'
-                                          : 'hover:bg-gray-500/8 border border-transparent'
+                                          ? 'hover:border-amber-500/30 border border-transparent'
+                                          : 'hover:border-gray-500/20 border border-transparent'
                                       }
                                     `}
                                     style={{ 
@@ -1366,33 +1366,11 @@ export default function RunPage() {
                       size="sm"
                       className="w-full"
                       onClick={() => {
-                        // Placeholder - export script
-                      }}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      Export Script
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => {
                         // Placeholder - export summary
                       }}
                     >
                       <FileText className="mr-2 h-4 w-4" />
                       Export Summary
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="w-full"
-                      onClick={() => {
-                        // Placeholder - export PDF
-                      }}
-                    >
-                      <FileText className="mr-2 h-4 w-4" />
-                      Export PDF
                     </Button>
                   </div>
                 </Card>
@@ -1412,6 +1390,7 @@ export default function RunPage() {
                     variant="secondary"
                     size="sm"
                     className="w-full"
+                    disabled={true}
                     onClick={() => {
                       // Placeholder - compare attempts
                     }}
@@ -1419,7 +1398,7 @@ export default function RunPage() {
                     View Comparison
                   </Button>
                   <p className="text-xs text-[#9CA3AF] mt-3">
-                    Compare this attempt with your previous recordings.
+                    Coming soon: Compare this attempt with your previous recordings.
                   </p>
                 </Card>
               </motion.div>

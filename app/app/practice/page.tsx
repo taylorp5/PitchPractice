@@ -1506,72 +1506,115 @@ export default function PracticePage() {
           </div>
         </Card>
 
-        {/* Results Section */}
+        {/* Results Section - Simplified Summary */}
         {run && feedback && (
           <Card>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-[#E6E8EB]">Feedback</h2>
-              <div className="flex gap-2">
-                {audioUrl && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={togglePlayback}
-                  >
-                    {isPlaying ? (
-                      <>
-                        <Pause className="h-4 w-4 mr-2" />
-                        Pause
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-4 w-4 mr-2" />
-                        Play
-                      </>
-                    )}
-                  </Button>
-                )}
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => router.push(`/runs/${run.id}`)}
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  View Full
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleNewTake}
-                >
-                  New Take
-                </Button>
-              </div>
-            </div>
-            {audioUrl && (
-              <audio
-                ref={audioRef}
-                src={audioUrl}
-                onEnded={() => setIsPlaying(false)}
-                className="hidden"
-              />
-            )}
-            {feedback.summary && (
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-sm font-semibold text-[#9AA4B2] mb-1">Overall Score</h3>
-                  <p className="text-2xl font-bold text-[#E6E8EB]">
-                    {feedback.summary.overall_score?.toFixed(1) || 'N/A'}/10
+            <div className="space-y-6">
+              {/* Overall Score */}
+              {feedback.summary?.overall_score !== undefined && (
+                <div className="text-center">
+                  <h3 className="text-sm font-semibold text-[#9AA4B2] mb-2">Overall Score</h3>
+                  <p className="text-4xl font-bold text-[#E6E8EB]">
+                    {feedback.summary.overall_score.toFixed(1)}/10
                   </p>
                 </div>
-                {feedback.summary.overall_notes && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-[#9AA4B2] mb-1">Notes</h3>
-                    <p className="text-sm text-[#E6E8EB]">{feedback.summary.overall_notes}</p>
-                  </div>
-                )}
+              )}
+
+              {/* Strengths - Show 1-2 */}
+              {feedback.summary?.top_strengths && feedback.summary.top_strengths.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-[#22C55E] mb-3 uppercase tracking-wide">Strengths</h3>
+                  <ul className="space-y-2">
+                    {feedback.summary.top_strengths.slice(0, 2).map((strength: string, idx: number) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-[#E6E8EB]">
+                        <CheckCircle2 className="h-4 w-4 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                        <span>{strength.replace(/^["']|["']$/g, '').trim()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Improvement Areas - Show 1-2 */}
+              {feedback.summary?.top_improvements && feedback.summary.top_improvements.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-[#F97316] mb-3 uppercase tracking-wide">Improvement Areas</h3>
+                  <ul className="space-y-2">
+                    {feedback.summary.top_improvements.slice(0, 2).map((improvement: string, idx: number) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-[#E6E8EB]">
+                        <span className="text-[#F97316] mt-0.5">•</span>
+                        <span>{improvement.replace(/^["']|["']$/g, '').trim()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Duration vs Target */}
+              {(() => {
+                const durationSeconds = run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds
+                const targetSeconds = selectedRubric?.target_duration_seconds || parsedCustomRubric?.target_duration_seconds || null
+                
+                if (durationSeconds && targetSeconds) {
+                  const durationFormatted = formatTime(durationSeconds)
+                  const targetFormatted = formatTime(targetSeconds)
+                  const diff = durationSeconds - targetSeconds
+                  const diffFormatted = diff >= 0 ? `+${formatTime(Math.abs(diff))}` : `-${formatTime(Math.abs(diff))}`
+                  
+                  return (
+                    <div className="pt-4 border-t border-[rgba(255,255,255,0.08)]">
+                      <h3 className="text-sm font-semibold text-[#9AA4B2] mb-2">Duration</h3>
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <p className="text-lg font-semibold text-[#E6E8EB]">{durationFormatted}</p>
+                          <p className="text-xs text-[#9AA4B2]">Actual</p>
+                        </div>
+                        <div className="text-[#9AA4B2]">vs</div>
+                        <div>
+                          <p className="text-lg font-semibold text-[#E6E8EB]">{targetFormatted}</p>
+                          <p className="text-xs text-[#9AA4B2]">Target</p>
+                        </div>
+                        <div className="ml-auto">
+                          <p className={`text-lg font-semibold ${diff >= 0 ? 'text-[#F97316]' : 'text-[#22C55E]'}`}>
+                            {diffFormatted}
+                          </p>
+                          <p className="text-xs text-[#9AA4B2]">Difference</p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                } else if (durationSeconds) {
+                  return (
+                    <div className="pt-4 border-t border-[rgba(255,255,255,0.08)]">
+                      <h3 className="text-sm font-semibold text-[#9AA4B2] mb-2">Duration</h3>
+                      <p className="text-lg font-semibold text-[#E6E8EB]">{formatTime(durationSeconds)}</p>
+                    </div>
+                  )
+                }
+                return null
+              })()}
+
+              {/* Primary CTA Button */}
+              <div className="pt-4">
+                <Button
+                  variant="primary"
+                  className="w-full"
+                  onClick={() => router.push(`/runs/${run.id}`)}
+                >
+                  Review full feedback →
+                </Button>
               </div>
-            )}
+
+              {/* Hidden audio for playback if needed */}
+              {audioUrl && (
+                <audio
+                  ref={audioRef}
+                  src={audioUrl}
+                  onEnded={() => setIsPlaying(false)}
+                  className="hidden"
+                />
+              )}
+            </div>
           </Card>
         )}
       </div>

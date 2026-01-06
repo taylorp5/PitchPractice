@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button'
 import { SectionHeader } from '@/components/ui/SectionHeader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { StatPill } from '@/components/ui/StatPill'
+import { Badge } from '@/components/ui/Badge'
 import { Check, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, FileText, Download } from 'lucide-react'
 import { getUserPlan } from '@/lib/plan'
 
@@ -1039,59 +1040,124 @@ export default function RunPage() {
                 transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
               >
                 <Card>
-                  <SectionHeader title="Line-by-Line Feedback" />
+                  <SectionHeader title="Line-by-Line Feedback">
+                    {userPlan === 'free' && (
+                      <Badge variant="default" size="sm">
+                        Preview feedback
+                      </Badge>
+                    )}
+                  </SectionHeader>
                   <div className="space-y-4">
-                    {run.analysis_json.line_by_line.map((item: any, idx: number) => {
-                      const typeColors = {
-                        strength: 'bg-green-500/20 border-green-500/50',
-                        issue: 'bg-red-500/20 border-red-500/50',
-                      }
-                      const priorityColors = {
-                        high: 'text-red-400',
-                        medium: 'text-[#F97316]',
-                        low: 'text-[#9CA3AF]',
-                      }
-                      const isHighlighted = highlightedFeedbackIdx === idx
+                    {(() => {
+                      const lineByLine = run.analysis_json.line_by_line
+                      const isFree = userPlan === 'free'
+                      const itemsToShow = isFree ? lineByLine.slice(0, 3) : lineByLine
+                      const hiddenCount = isFree ? Math.max(lineByLine.length - 3, 0) : 0
                       
                       return (
-                        <motion.div
-                          key={idx}
-                          id={`feedback-${idx}`}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.3, delay: idx * 0.05 }}
-                          className={`p-4 rounded-lg border transition-all duration-200 ${
-                            isHighlighted 
-                              ? 'border-amber-500/60 bg-amber-500/15 shadow-[0_0_20px_rgba(245,158,11,0.3)]' 
-                              : typeColors[item.type as keyof typeof typeColors] || 'bg-[#151A23] border-[#22283A]'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <blockquote className="text-sm font-medium text-[#E5E7EB] italic flex-1">
-                              "{item.quote}"
-                            </blockquote>
-                            <span className={`text-xs font-semibold ml-2 ${priorityColors[item.priority as keyof typeof priorityColors] || 'text-[#9CA3AF]'}`}>
-                              {item.priority?.toUpperCase()}
-                            </span>
-                          </div>
-                          <p className="text-sm text-[#E5E7EB] mb-1">
-                            <strong>Comment:</strong> {item.comment}
-                          </p>
-                          {item.action && (
-                            <p className="text-sm text-[#E5E7EB]">
-                              <strong>Action:</strong> {item.action}
-                            </p>
+                        <>
+                          {itemsToShow.map((item: any, idx: number) => {
+                            const typeColors = {
+                              strength: 'bg-green-500/20 border-green-500/50',
+                              issue: 'bg-red-500/20 border-red-500/50',
+                            }
+                            const priorityColors = {
+                              high: 'text-red-400',
+                              medium: 'text-[#F97316]',
+                              low: 'text-[#9CA3AF]',
+                            }
+                            const isHighlighted = highlightedFeedbackIdx === idx
+                            
+                            return (
+                              <motion.div
+                                key={idx}
+                                id={`feedback-${idx}`}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ duration: 0.3, delay: idx * 0.05 }}
+                                className={`p-4 rounded-lg border transition-all duration-200 ${
+                                  isHighlighted 
+                                    ? 'border-amber-500/60 bg-amber-500/15 shadow-[0_0_20px_rgba(245,158,11,0.3)]' 
+                                    : typeColors[item.type as keyof typeof typeColors] || 'bg-[#151A23] border-[#22283A]'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between mb-2">
+                                  <blockquote className="text-sm font-medium text-[#E5E7EB] italic flex-1">
+                                    "{item.quote}"
+                                  </blockquote>
+                                  <span className={`text-xs font-semibold ml-2 ${priorityColors[item.priority as keyof typeof priorityColors] || 'text-[#9CA3AF]'}`}>
+                                    {item.priority?.toUpperCase()}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-[#E5E7EB] mb-1">
+                                  <strong>Comment:</strong> {item.comment}
+                                </p>
+                                {item.action && (
+                                  <p className="text-sm text-[#E5E7EB]">
+                                    <strong>Action:</strong> {item.action}
+                                  </p>
+                                )}
+                                {/* Rewrite Suggestions - Only for Coach + Day Pass */}
+                                {item.rewrite && (
+                                  <div className="mt-3 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
+                                    <p className="text-xs font-semibold text-[#F59E0B] mb-1">Suggested Rewrite:</p>
+                                    <p className="text-sm text-[#E5E7EB] italic">{item.rewrite}</p>
+                                  </div>
+                                )}
+                              </motion.div>
+                            )
+                          })}
+                          
+                          {/* Locked Teaser Card for Free Users */}
+                          {isFree && hiddenCount > 0 && (
+                            <>
+                              <p className="text-sm text-[#9CA3AF] mb-3">
+                                You're seeing a preview of your coaching.
+                              </p>
+                              <motion.div
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.3, delay: 0.15 }}
+                                className="p-6 bg-[#151A23] rounded-lg border border-[#22283A]"
+                              >
+                              <div className="flex items-start gap-3 mb-4">
+                                <span className="text-2xl">🔒</span>
+                                <div className="flex-1">
+                                  <h3 className="text-lg font-bold text-[#E5E7EB] mb-2">Unlock full coaching</h3>
+                                  <p className="text-sm text-[#9CA3AF] mb-3">
+                                    Upgrade to see the rest of your line-by-line feedback, filler word detection, pause insights, and saved pitch history.
+                                  </p>
+                                  {hiddenCount > 0 && (
+                                    <p className="text-xs text-[#6B7280] mb-4">
+                                      Hidden: {hiddenCount} more insights
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex gap-3">
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  className="flex-1"
+                                  asChild
+                                >
+                                  <Link href="/upgrade?plan=starter">Upgrade to Starter</Link>
+                                </Button>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  className="flex-1"
+                                  asChild
+                                >
+                                  <Link href="/upgrade?plan=coach">Upgrade to Coach</Link>
+                                </Button>
+                              </div>
+                            </motion.div>
+                            </>
                           )}
-                          {/* Rewrite Suggestions - Only for Coach + Day Pass */}
-                          {item.rewrite && (
-                            <div className="mt-3 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
-                              <p className="text-xs font-semibold text-[#F59E0B] mb-1">Suggested Rewrite:</p>
-                              <p className="text-sm text-[#E5E7EB] italic">{item.rewrite}</p>
-                            </div>
-                          )}
-                        </motion.div>
+                        </>
                       )
-                    })}
+                    })()}
                   </div>
                 </Card>
               </motion.div>
@@ -1299,35 +1365,42 @@ export default function RunPage() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Status Card */}
+            {/* Next Steps Card */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.4, ease: "easeOut" }}
             >
               <Card>
+                <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Next steps</h3>
+                <p className="text-sm text-[#9CA3AF] mb-4">
+                  Want a deeper breakdown? Upgrade to unlock full coaching, exports, saved history, and advanced pacing insights.
+                </p>
                 <div className="space-y-2">
                   <Button
-                    onClick={handleTranscribe}
+                    onClick={() => router.push('/try')}
                     variant="primary"
                     size="sm"
                     className="w-full"
-                    disabled={isTranscribing}
-                    isLoading={isTranscribing}
                   >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Re-transcribe (overwrite)
+                    Re-record
                   </Button>
-                  <Link href="/app" className="block">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full"
-                    >
-                      <ArrowLeft className="mr-2 h-4 w-4" />
-                      Back to /app
-                    </Button>
-                  </Link>
+                  <Button
+                    onClick={() => router.push('/upgrade?plan=starter')}
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                  >
+                    Upgrade to Starter
+                  </Button>
+                  <Button
+                    onClick={() => router.push('/upgrade?plan=coach')}
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                  >
+                    Upgrade to Coach
+                  </Button>
                 </div>
               </Card>
             </motion.div>
@@ -1364,42 +1437,59 @@ export default function RunPage() {
               <Card>
                 <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Export</h3>
                 <div className="space-y-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => {
-                      if (!run.transcript) return
-                      const blob = new Blob([run.transcript], { type: 'text/plain' })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = `transcript-${run.id}.txt`
-                      document.body.appendChild(a)
-                      a.click()
-                      document.body.removeChild(a)
-                      URL.revokeObjectURL(url)
-                    }}
-                    disabled={!run.transcript}
-                    title={!run.transcript ? 'Transcript not ready' : ''}
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download transcript (.txt)
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => {
-                      if (!run.analysis_json) return
-                      exportSummaryPDF(run)
-                    }}
-                    disabled={!run.analysis_json}
-                    title={!run.analysis_json ? 'Summary not ready' : ''}
-                  >
-                    <FileText className="mr-2 h-4 w-4" />
-                    Export summary (.pdf)
-                  </Button>
+                  {/* Download transcript button */}
+                  <div className="relative group">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        if (!run.transcript) return
+                        const blob = new Blob([run.transcript], { type: 'text/plain' })
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = `transcript-${run.id}.txt`
+                        document.body.appendChild(a)
+                        a.click()
+                        document.body.removeChild(a)
+                        URL.revokeObjectURL(url)
+                      }}
+                      disabled={!run.transcript || userPlan === 'free'}
+                      title={!run.transcript ? 'Transcript not ready' : ''}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Download transcript (.txt)
+                    </Button>
+                    {userPlan === 'free' && (
+                      <span className="absolute z-50 mt-2 left-1/2 -translate-x-1/2 top-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none px-2 py-1 bg-[#151A23] border border-[#22283A] rounded-lg shadow-lg text-xs text-[#9CA3AF] whitespace-nowrap">
+                        Upgrade to export
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* Export PDF button */}
+                  <div className="relative group">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        if (!run.analysis_json) return
+                        exportSummaryPDF(run)
+                      }}
+                      disabled={!run.analysis_json || userPlan === 'free' || userPlan === 'starter'}
+                      title={!run.analysis_json ? 'Summary not ready' : ''}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      Export summary (.pdf)
+                    </Button>
+                    {(userPlan === 'free' || userPlan === 'starter') && (
+                      <span className="absolute z-50 mt-2 left-1/2 -translate-x-1/2 top-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none px-2 py-1 bg-[#151A23] border border-[#22283A] rounded-lg shadow-lg text-xs text-[#9CA3AF] whitespace-nowrap">
+                        {userPlan === 'free' ? 'Upgrade to export' : 'Upgrade to Coach to export PDF'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </Card>
             </motion.div>

@@ -87,23 +87,24 @@ export function SignInModal({ isOpen, onClose, runId }: SignInModalProps) {
         return
       }
 
-      // Attach anonymous run to user if runId exists
+      // Claim run if runId exists
       if (runId) {
         try {
-          const response = await fetch(`/api/runs/${runId}/attach`, {
+          const response = await fetch('/api/runs/claim', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
+            body: JSON.stringify({ runId }),
           })
 
           if (!response.ok) {
-            console.error('Failed to attach run to user')
-            // Don't block the flow if attachment fails
+            console.error('Failed to claim run')
+            // Don't block the flow if claim fails
           }
         } catch (err) {
-          console.error('Error attaching run:', err)
-          // Don't block the flow if attachment fails
+          console.error('Error claiming run:', err)
+          // Don't block the flow if claim fails
         }
       }
 

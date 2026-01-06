@@ -70,6 +70,7 @@ export default function RunPage() {
   const [isGettingFeedback, setIsGettingFeedback] = useState(false)
   const [copied, setCopied] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const [audioError, setAudioError] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
   const [lastTranscribeResponse, setLastTranscribeResponse] = useState<any>(null)
   const [lastTranscript, setLastTranscript] = useState<string | null>(null)
@@ -217,19 +218,24 @@ export default function RunPage() {
     if (!routeRunId || !run?.audio_path) return
 
     try {
-      const res = await fetch(`/api/runs/${routeRunId}/audio-url`, {
+      setAudioError(false)
+      const res = await fetch(`/api/runs/audio-url?runId=${routeRunId}`, {
         cache: 'no-store',
       })
       if (!res.ok) {
-        await logFetchError(`/api/runs/${routeRunId}/audio-url`, res)
+        await logFetchError(`/api/runs/audio-url?runId=${routeRunId}`, res)
+        setAudioError(true)
         return
       }
       const data = await res.json()
       if (data.url) {
         setAudioUrl(data.url)
+      } else {
+        setAudioError(true)
       }
     } catch (err) {
       console.error('Error fetching audio URL:', err)
+      setAudioError(true)
     }
   }
 
@@ -272,6 +278,7 @@ export default function RunPage() {
 
   useEffect(() => {
     if (run?.audio_path) {
+      setAudioError(false)
       fetchAudioUrl()
     }
   }, [run?.audio_path, routeRunId])
@@ -766,14 +773,20 @@ export default function RunPage() {
                     transition={{ duration: 0.3, delay: 0.1 }}
                     className="mb-6"
                   >
-                    {audioUrl ? (
+                    {audioError || (run.audio_path && !audioUrl) ? (
+                      <div className="p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
+                        <p className="text-yellow-400 text-sm">
+                          Audio unavailable for this run.
+                        </p>
+                      </div>
+                    ) : audioUrl ? (
                       <audio 
                         controls 
                         className="w-full"
                         preload="metadata"
                         onError={(e) => {
-                          console.error('Audio playback error:', e)
-                          setError('Failed to load audio. The file may be corrupted or the URL expired.')
+                          console.error(`Audio playback error for runId: ${routeRunId}`)
+                          setAudioError(true)
                         }}
                       >
                         <source src={audioUrl} type="audio/webm" />

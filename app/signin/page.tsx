@@ -57,27 +57,28 @@ export default function SignInPage() {
       const urlParams = new URLSearchParams(window.location.search)
       let redirect = urlParams.get('redirect') || '/dashboard'
       
-      // Extract runId from redirect URL if present (e.g., /runs/[id] or ?runId=...)
+      // Extract runId from redirect URL if present (e.g., /runs/[id])
       const runIdMatch = redirect.match(/\/runs\/([^\/]+)/)
-      const runId = runIdMatch ? runIdMatch[1] : urlParams.get('runId')
+      const runId = runIdMatch ? runIdMatch[1] : null
       
-      // Attach anonymous run to user if runId exists
+      // Claim run if redirect matches /runs/<runId>
       if (runId) {
         try {
-          const attachResponse = await fetch(`/api/runs/${runId}/attach`, {
+          const claimResponse = await fetch('/api/runs/claim', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
+            body: JSON.stringify({ runId }),
           })
 
-          if (!attachResponse.ok) {
-            console.error('Failed to attach run to user')
-            // Don't block the flow if attachment fails
+          if (!claimResponse.ok) {
+            console.error('Failed to claim run')
+            // Don't block the flow if claim fails
           }
         } catch (err) {
-          console.error('Error attaching run:', err)
-          // Don't block the flow if attachment fails
+          console.error('Error claiming run:', err)
+          // Don't block the flow if claim fails
         }
       }
       

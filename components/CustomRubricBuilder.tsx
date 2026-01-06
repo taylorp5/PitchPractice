@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { Plus, Trash2, GripVertical, ChevronLeft, ChevronRight } from 'lucide-react'
 import RubricCopilot from './RubricCopilot'
 import SavedRubricsList from './SavedRubricsList'
+import { hasCoachAccess } from '@/lib/entitlements'
 
 export interface CustomRubricCriterion {
   id: string
@@ -25,6 +26,7 @@ interface CustomRubricBuilderProps {
   onSave: (rubric: CustomRubric, rubricId?: string) => void
   onUse: (rubric: CustomRubric, rubricId?: string) => void
   disabled?: boolean
+  userPlan?: 'free' | 'starter' | 'coach' | 'daypass'
 }
 
 const DEFAULT_CRITERIA: CustomRubricCriterion[] = [
@@ -38,7 +40,7 @@ const DEFAULT_CRITERIA: CustomRubricCriterion[] = [
   { id: '8', name: 'CTA', description: 'Is there a clear and compelling call to action?', scoringGuide: '0-10: CTA should be specific and actionable' },
 ]
 
-export default function CustomRubricBuilder({ initialData, onSave, onUse, disabled }: CustomRubricBuilderProps) {
+export default function CustomRubricBuilder({ initialData, onSave, onUse, disabled, userPlan = 'free' }: CustomRubricBuilderProps) {
   const [title, setTitle] = useState(initialData?.title || '')
   const [context, setContext] = useState(initialData?.context || '')
   const [criteria, setCriteria] = useState<CustomRubricCriterion[]>(
@@ -49,7 +51,8 @@ export default function CustomRubricBuilder({ initialData, onSave, onUse, disabl
   const [guidingQuestions, setGuidingQuestions] = useState<string[]>(
     initialData?.guidingQuestions || []
   )
-  const [showCopilot, setShowCopilot] = useState(true)
+  const canUseCopilot = hasCoachAccess(userPlan)
+  const [showCopilot, setShowCopilot] = useState(canUseCopilot)
 
   // Load from localStorage on mount if no initialData
   useEffect(() => {
@@ -445,30 +448,33 @@ export default function CustomRubricBuilder({ initialData, onSave, onUse, disabl
         </div>
       </div>
 
-      {/* Right: Rubric Copilot */}
-      {showCopilot && (
+      {/* Right: Rubric Copilot - Coach only */}
+      {canUseCopilot && showCopilot && (
         <div className="w-96 flex-shrink-0 flex flex-col border border-[rgba(17,24,39,0.10)] rounded-lg overflow-hidden bg-white" style={{ height: '600px' }}>
           <RubricCopilot
             currentRubric={currentRubric}
             onApply={handleCopilotApply}
             disabled={disabled}
+            userPlan={userPlan}
           />
         </div>
       )}
 
-      {/* Toggle Button */}
-      <button
-        onClick={() => setShowCopilot(!showCopilot)}
-        className="flex-shrink-0 w-6 h-12 self-center border border-[rgba(17,24,39,0.10)] rounded-md bg-white hover:bg-[#F9FAFB] flex items-center justify-center transition-colors"
-        disabled={disabled}
-        aria-label={showCopilot ? 'Hide copilot' : 'Show copilot'}
-      >
-        {showCopilot ? (
-          <ChevronRight className="h-4 w-4 text-[#6B7280]" />
-        ) : (
-          <ChevronLeft className="h-4 w-4 text-[#6B7280]" />
-        )}
-      </button>
+      {/* Toggle Button - Coach only */}
+      {canUseCopilot && (
+        <button
+          onClick={() => setShowCopilot(!showCopilot)}
+          className="flex-shrink-0 w-6 h-12 self-center border border-[rgba(17,24,39,0.10)] rounded-md bg-white hover:bg-[#F9FAFB] flex items-center justify-center transition-colors"
+          disabled={disabled}
+          aria-label={showCopilot ? 'Hide copilot' : 'Show copilot'}
+        >
+          {showCopilot ? (
+            <ChevronRight className="h-4 w-4 text-[#6B7280]" />
+          ) : (
+            <ChevronLeft className="h-4 w-4 text-[#6B7280]" />
+          )}
+        </button>
+      )}
       </div>
     </div>
   )

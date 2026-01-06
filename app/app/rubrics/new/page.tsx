@@ -10,7 +10,7 @@ import RubricForm from '../RubricForm'
 import AIBuilderChat from '../AIBuilderChat'
 import RubricDraftPreview from '../RubricDraftPreview'
 import { getUserPlan, type UserPlan } from '@/lib/plan'
-import { canEditRubrics } from '@/lib/entitlements'
+import { canEditRubrics, hasCoachAccess } from '@/lib/entitlements'
 
 type Mode = 'manual' | 'ai'
 
@@ -38,8 +38,8 @@ export default function NewRubricPage() {
     getUserPlan().then(plan => {
       setUserPlan(plan)
       setIsLoadingPlan(false)
-      // Free users can only use manual mode
-      if (plan === 'free' && mode === 'ai') {
+      // Only Coach users can use AI mode
+      if (!hasCoachAccess(plan) && mode === 'ai') {
         setMode('manual')
       }
     })
@@ -132,15 +132,15 @@ export default function NewRubricPage() {
             </button>
             <button
               onClick={() => setMode('ai')}
-              disabled={userPlan === 'free'}
+              disabled={!hasCoachAccess(userPlan)}
               className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors relative ${
                 mode === 'ai'
                   ? 'bg-[#F59E0B] text-[#0B0F14]'
-                  : userPlan === 'free'
+                  : !hasCoachAccess(userPlan)
                   ? 'text-[#9CA3AF] cursor-not-allowed opacity-50'
                   : 'text-[#6B7280] hover:text-[#111827]'
               }`}
-              title={userPlan === 'free' ? 'AI rubric generation requires Coach or Day Pass plan' : undefined}
+              title={!hasCoachAccess(userPlan) ? 'AI rubric builder is available on the Coach plan' : undefined}
             >
               <Sparkles className="h-4 w-4" />
               Build with AI
@@ -158,32 +158,40 @@ export default function NewRubricPage() {
           <RubricForm onSubmit={handleSubmit} isSaving={isSaving} />
         ) : (
           <>
-            {!canEditRubrics(userPlan) && userPlan === 'daypass' && (
+            {!hasCoachAccess(userPlan) ? (
               <Card className="p-4 mb-6 bg-[#FEF3C7] border-[#FCD34D]">
                 <div className="flex items-start gap-3">
                   <Info className="h-5 w-5 text-[#D97706] flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-[#92400E] mb-1">Read-only Mode</p>
-                    <p className="text-xs text-[#92400E]">
-                      Day Pass users can generate AI rubrics, but they cannot be saved or edited. Editing is available on Coach plan.
+                    <p className="text-sm font-medium text-[#92400E] mb-1">AI Rubric Builder Unavailable</p>
+                    <p className="text-xs text-[#92400E] mb-3">
+                      AI rubric builder is available on the Coach plan.
                     </p>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => router.push('/upgrade?plan=coach')}
+                    >
+                      Upgrade to Coach
+                    </Button>
                   </div>
                 </div>
               </Card>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" style={{ height: 'calc(100vh - 16rem)' }}>
+                <div className="flex flex-col min-h-0">
+                  <AIBuilderChat
+                    onDraftUpdate={setAiDraft}
+                    onAcceptDraft={handleAcceptAIDraft}
+                    onParseError={setParseError}
+                    userPlan={userPlan}
+                  />
+                </div>
+                <div className="flex flex-col min-h-0">
+                  <RubricDraftPreview draft={aiDraft} parseError={parseError} />
+                </div>
+              </div>
             )}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" style={{ height: 'calc(100vh - 16rem)' }}>
-              <div className="flex flex-col min-h-0">
-                <AIBuilderChat
-                  onDraftUpdate={setAiDraft}
-                  onAcceptDraft={handleAcceptAIDraft}
-                  onParseError={setParseError}
-                  userPlan={userPlan}
-                />
-              </div>
-              <div className="flex flex-col min-h-0">
-                <RubricDraftPreview draft={aiDraft} parseError={parseError} />
-              </div>
-            </div>
           </>
         )}
       </div>

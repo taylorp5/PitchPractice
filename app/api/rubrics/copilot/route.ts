@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server-auth'
+import { getUserPlanFromDB } from '@/lib/plan-server'
 import OpenAI from 'openai'
 
 export const dynamic = 'force-dynamic'
@@ -117,6 +118,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { ok: false, error: 'Unauthorized' },
         { status: 401 }
+      )
+    }
+
+    // Check user plan - AI rubric copilot is Coach only
+    const userPlan = await getUserPlanFromDB()
+    if (userPlan !== 'coach') {
+      return NextResponse.json(
+        { ok: false, error: 'AI rubric builder is available on the Coach plan only' },
+        { status: 403 }
       )
     }
 

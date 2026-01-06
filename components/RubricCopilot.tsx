@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Send, Sparkles, RefreshCw, Check, X } from 'lucide-react'
 import { CustomRubric, CustomRubricCriterion } from './CustomRubricBuilder'
+import { hasCoachAccess } from '@/lib/entitlements'
 
 interface CopilotMessage {
   role: 'user' | 'assistant'
@@ -31,6 +32,7 @@ interface RubricCopilotProps {
 }
 
 export default function RubricCopilot({ currentRubric, onApply, disabled, userPlan = 'free' }: RubricCopilotProps) {
+  const canUseAI = hasCoachAccess(userPlan)
   const [messages, setMessages] = useState<CopilotMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -62,6 +64,17 @@ export default function RubricCopilot({ currentRubric, onApply, disabled, userPl
   }
 
   const handleGenerate = async () => {
+    if (!canUseAI) {
+      setMessages([
+        {
+          role: 'assistant',
+          content: 'AI rubric builder is available on the Coach plan only.',
+          timestamp: Date.now(),
+        },
+      ])
+      return
+    }
+
     if (!currentRubric.context.trim() && !inputText.trim()) {
       setMessages([
         {
@@ -133,6 +146,17 @@ export default function RubricCopilot({ currentRubric, onApply, disabled, userPl
   }
 
   const handleRefine = async () => {
+    if (!canUseAI) {
+      setMessages([
+        {
+          role: 'assistant',
+          content: 'AI rubric builder is available on the Coach plan only.',
+          timestamp: Date.now(),
+        },
+      ])
+      return
+    }
+
     if (!inputText.trim()) {
       setMessages([
         {
@@ -320,68 +344,77 @@ export default function RubricCopilot({ currentRubric, onApply, disabled, userPl
 
       {/* Input Area */}
       <div className="p-4 border-t border-[rgba(17,24,39,0.10)] bg-white">
-        <div className="flex gap-2 mb-2">
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleGenerate}
-            disabled={isLoading || disabled}
-            className="flex-1"
-          >
-            <Sparkles className="h-4 w-4 mr-1" />
-            Generate rubric
-          </Button>
-          <div className="relative flex-1">
+        {!canUseAI ? (
+          <div className="p-4 bg-[#FEF3C7] border border-[#FCD34D] rounded-lg">
+            <p className="text-sm text-[#92400E] mb-2">
+              AI rubric builder is available on the Coach plan.
+            </p>
             <Button
-              variant="secondary"
+              variant="primary"
               size="sm"
-              onClick={handleRefine}
-              disabled={isLoading || disabled || userPlan === 'daypass'}
-              className={`w-full ${userPlan === 'daypass' ? 'opacity-50 cursor-not-allowed' : ''}`}
-              title={userPlan === 'daypass' ? 'Editing available on Coach' : undefined}
+              onClick={() => window.open('/upgrade?plan=coach', '_blank')}
             >
-              <RefreshCw className="h-4 w-4 mr-1" />
-              Refine rubric
+              Upgrade to Coach
             </Button>
-            {userPlan === 'daypass' && (
-              <div className="absolute -top-8 left-0 bg-[#111827] text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 hover:opacity-100 pointer-events-none transition-opacity z-10">
-                Editing available on Coach
-              </div>
-            )}
           </div>
-        </div>
-        <div className="flex gap-2">
-          <textarea
-            ref={inputRef}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                if (inputText.trim()) {
-                  handleRefine()
-                }
-              }
-            }}
-            placeholder="Type your edits or additional context..."
-            rows={2}
-            className="flex-1 px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-sm text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
-            disabled={isLoading || disabled}
-          />
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              if (inputText.trim()) {
-                handleRefine()
-              }
-            }}
-            disabled={isLoading || !inputText.trim() || disabled}
-            className="px-3"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
+        ) : (
+          <>
+            <div className="flex gap-2 mb-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleGenerate}
+                disabled={isLoading || disabled}
+                className="flex-1"
+              >
+                <Sparkles className="h-4 w-4 mr-1" />
+                Generate rubric
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleRefine}
+                disabled={isLoading || disabled}
+                className="flex-1"
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Refine rubric
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <textarea
+                ref={inputRef}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    if (inputText.trim()) {
+                      handleRefine()
+                    }
+                  }
+                }}
+                placeholder="Type your edits or additional context..."
+                rows={2}
+                className="flex-1 px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-sm text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
+                disabled={isLoading || disabled}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  if (inputText.trim()) {
+                    handleRefine()
+                  }
+                }}
+                disabled={isLoading || !inputText.trim() || disabled}
+                className="px-3"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

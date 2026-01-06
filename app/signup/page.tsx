@@ -14,6 +14,7 @@ export default function SignUpPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,7 +34,7 @@ export default function SignUpPage() {
 
     try {
       const supabase = createClient()
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
       })
@@ -44,13 +45,23 @@ export default function SignUpPage() {
         return
       }
 
+      // Check if email confirmation is required
+      // If user is null or session is null, email confirmation is likely required
+      if (!signUpData.user || !signUpData.session) {
+        // Email verification required
+        setShowSuccessMessage(true)
+        setIsLoading(false)
+        return
+      }
+
       // Wait for session to be established and cookies to be set
       await new Promise(resolve => setTimeout(resolve, 300))
       
       // Verify session is established
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
-        setError('Session not established. Please try again.')
+        // Email verification might be required
+        setShowSuccessMessage(true)
         setIsLoading(false)
         return
       }
@@ -103,6 +114,15 @@ export default function SignUpPage() {
         {error && (
           <div className="mb-4 p-3 bg-[#FEE2E2] border border-[#FCA5A5] rounded-lg">
             <p className="text-sm text-[#DC2626]">{error}</p>
+          </div>
+        )}
+
+        {showSuccessMessage && (
+          <div className="mb-4 p-4 bg-[#D1FAE5] border border-[#6EE7B7] rounded-lg">
+            <h3 className="text-sm font-semibold text-[#065F46] mb-2">Check your email</h3>
+            <p className="text-sm text-[#047857]">
+              We've sent a verification link to <strong>{email}</strong>. Please check your email and click the link to verify your account before signing in.
+            </p>
           </div>
         )}
 
@@ -161,12 +181,20 @@ export default function SignUpPage() {
             variant="primary"
             size="lg"
             className="w-full"
-            disabled={isLoading}
+            disabled={isLoading || showSuccessMessage}
             isLoading={isLoading}
           >
-            Sign Up
+            {showSuccessMessage ? 'Email Sent' : 'Sign Up'}
           </Button>
         </form>
+
+        {!showSuccessMessage && (
+          <div className="mt-4 p-3 bg-[#FEF3C7] border border-[#FCD34D] rounded-lg">
+            <p className="text-xs text-[#92400E]">
+              <strong>Note:</strong> After signing up, you'll receive an email with a verification link. Please check your inbox and click the link to verify your account.
+            </p>
+          </div>
+        )}
 
         <div className="mt-6 text-center">
           <p className="text-sm text-[#6B7280]">

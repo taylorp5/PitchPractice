@@ -1373,9 +1373,21 @@ export default function RunPage() {
             >
               <Card>
                 <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Next steps</h3>
-                <p className="text-sm text-[#9CA3AF] mb-4">
-                  Want a deeper breakdown? Upgrade to unlock full coaching, exports, saved history, and advanced pacing insights.
-                </p>
+                {(userPlan === 'free' || userPlan === 'day_pass') && (
+                  <p className="text-sm text-[#9CA3AF] mb-4">
+                    Want a deeper breakdown? Upgrade to unlock full coaching, exports, saved history, and advanced pacing insights.
+                  </p>
+                )}
+                {userPlan === 'starter' && (
+                  <p className="text-sm text-[#9CA3AF] mb-4">
+                    Want deeper feedback? Upgrade to Coach for custom rubrics, line-by-line suggestions, and rewrite capabilities.
+                  </p>
+                )}
+                {userPlan === 'coach' && (
+                  <p className="text-sm text-[#9CA3AF] mb-4">
+                    Record another pitch to continue improving.
+                  </p>
+                )}
                 <div className="space-y-2">
                   <Button
                     onClick={() => router.push('/try')}
@@ -1385,22 +1397,36 @@ export default function RunPage() {
                   >
                     Re-record
                   </Button>
-                  <Button
-                    onClick={() => router.push('/upgrade?plan=starter')}
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                  >
-                    Upgrade to Starter
-                  </Button>
-                  <Button
-                    onClick={() => router.push('/upgrade?plan=coach')}
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                  >
-                    Upgrade to Coach
-                  </Button>
+                  {(userPlan === 'free' || userPlan === 'day_pass') && (
+                    <>
+                      <Button
+                        onClick={() => router.push('/upgrade?plan=starter')}
+                        variant="secondary"
+                        size="sm"
+                        className="w-full"
+                      >
+                        Upgrade to Starter
+                      </Button>
+                      <Button
+                        onClick={() => router.push('/upgrade?plan=coach')}
+                        variant="secondary"
+                        size="sm"
+                        className="w-full"
+                      >
+                        Upgrade to Coach
+                      </Button>
+                    </>
+                  )}
+                  {userPlan === 'starter' && (
+                    <Button
+                      onClick={() => router.push('/upgrade?plan=coach')}
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                    >
+                      Upgrade to Coach
+                    </Button>
+                  )}
                 </div>
               </Card>
             </motion.div>

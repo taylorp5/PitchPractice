@@ -95,6 +95,9 @@ export default function PracticePage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const silenceStartRef = useRef<number | null>(null)
   const testAudioRef = useRef<HTMLAudioElement | null>(null)
+  const shouldDiscardRecordingRef = useRef<boolean>(false)
+  const feedbackTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const [feedbackTimer, setFeedbackTimer] = useState(0)
 
   const [isLoadingPlan, setIsLoadingPlan] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -415,6 +418,20 @@ export default function PracticePage() {
       mediaRecorder.onstop = async () => {
         stopMicLevelMeter()
         
+        // Check if recording should be discarded
+        if (shouldDiscardRecordingRef.current) {
+          shouldDiscardRecordingRef.current = false
+          stream.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+          setIsRecording(false)
+          setIsPaused(false)
+          setRecordingTime(0)
+          setPausedTotalMs(0)
+          setPauseStartTime(null)
+          audioChunksRef.current = []
+          return
+        }
+        
         const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
         const actualMimeType = mediaRecorder.mimeType || mimeType
         
@@ -493,6 +510,11 @@ export default function PracticePage() {
       mediaRecorderRef.current.pause()
       setIsPaused(true)
       setPauseStartTime(Date.now())
+      // Pause the timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+        timerIntervalRef.current = null
+      }
     }
   }
 
@@ -503,6 +525,10 @@ export default function PracticePage() {
       setPausedTotalMs(prev => prev + pauseDuration)
       setPauseStartTime(null)
       setIsPaused(false)
+      // Resume the timer
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1)
+      }, 1000)
     }
   }
 
@@ -521,6 +547,42 @@ export default function PracticePage() {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
       }
+    }
+  }
+
+  // Re-record handler: stops recorder safely and resets local state
+  const handleRerecord = () => {
+    // Set flag to prevent onstop callback from uploading
+    shouldDiscardRecordingRef.current = true
+    
+    // Stop recorder safely if active (paused or recording)
+    try {
+      if (mediaRecorderRef.current && (isPaused || isRecording)) {
+        mediaRecorderRef.current.stop()
+      }
+    } catch (e) {
+      // Ignore errors if recorder already stopped
+    }
+    
+    // Stop and clear stream tracks immediately
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+    
+    // Reset all recording state
+    setIsRecording(false)
+    setIsPaused(false)
+    setRecordingTime(0)
+    setPausedTotalMs(0)
+    setPauseStartTime(null)
+    setRecordingStartedAt(null)
+    audioChunksRef.current = []
+    stopMicLevelMeter()
+    
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current)
+      timerIntervalRef.current = null
     }
   }
 
@@ -824,11 +886,43 @@ export default function PracticePage() {
       }
 
       setIsGettingFeedback(false)
+      setFeedbackTimer(0)
+      if (feedbackTimerRef.current) {
+        clearInterval(feedbackTimerRef.current)
+        feedbackTimerRef.current = null
+      }
     } catch (err: any) {
       setError(err.message || 'Feedback generation failed')
       setIsGettingFeedback(false)
+      setFeedbackTimer(0)
+      if (feedbackTimerRef.current) {
+        clearInterval(feedbackTimerRef.current)
+        feedbackTimerRef.current = null
+      }
     }
   }
+
+  // Timer helper for feedback generation
+  useEffect(() => {
+    if (isGettingFeedback) {
+      setFeedbackTimer(0)
+      feedbackTimerRef.current = setInterval(() => {
+        setFeedbackTimer(prev => prev + 1)
+      }, 1000)
+    } else {
+      if (feedbackTimerRef.current) {
+        clearInterval(feedbackTimerRef.current)
+        feedbackTimerRef.current = null
+      }
+    }
+    
+    return () => {
+      if (feedbackTimerRef.current) {
+        clearInterval(feedbackTimerRef.current)
+        feedbackTimerRef.current = null
+      }
+    }
+  }, [isGettingFeedback])
 
   // Fetch run data
   const fetchRun = async (runId: string) => {
@@ -1392,14 +1486,27 @@ export default function PracticePage() {
             )}
 
             {/* Test Mic Button */}
-            <Button
-              onClick={testMicrophone}
-              disabled={isRecording || isUploading}
-              variant={isTestingMic ? 'danger' : 'secondary'}
-              className="w-full"
-            >
-              {isTestingMic ? '⏹ Stop Test' : '🎤 Test Mic'}
-            </Button>
+            {!isTestingMic && hasMicPermission && (
+              <Button
+                onClick={testMicrophone}
+                disabled={isRecording || isUploading}
+                variant="ghost"
+                size="sm"
+                className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
+              >
+                🎤 Test microphone
+              </Button>
+            )}
+            {isTestingMic && (
+              <Button
+                onClick={testMicrophone}
+                variant="ghost"
+                size="sm"
+                className="w-full text-[#9AA4B2] hover:text-[#E6E8EB] border border-[#22283A]"
+              >
+                ⏹ End test
+              </Button>
+            )}
 
             {/* Mic Level Meter */}
             {(isRecording || isTestingMic) && (
@@ -1533,7 +1640,7 @@ export default function PracticePage() {
             {isGettingFeedback && (
               <div className="flex items-center gap-2 text-sm text-[#9AA4B2]">
                 <LoadingSpinner className="h-4 w-4" />
-                <span>Generating feedback...</span>
+                <span>Generating feedback... {formatTime(feedbackTimer)}</span>
               </div>
             )}
           </div>
@@ -1628,7 +1735,7 @@ export default function PracticePage() {
               })()}
 
               {/* Primary CTA Button */}
-              <div className="pt-4">
+              <div className="pt-4 space-y-2">
                 <Button
                   variant="primary"
                   className="w-full"
@@ -1641,6 +1748,22 @@ export default function PracticePage() {
                   }}
                 >
                   Review full feedback →
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
+                  onClick={() => {
+                    setRun(null)
+                    setFeedback(null)
+                    setError(null)
+                    setIsTranscribing(false)
+                    setIsGettingFeedback(false)
+                    setAudioUrl(null)
+                    handleRerecord()
+                  }}
+                >
+                  Re-record
                 </Button>
               </div>
 

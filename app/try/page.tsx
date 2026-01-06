@@ -1723,6 +1723,17 @@ FEEDBACK SUMMARY
 
                     {!isRecording && !run && (
                       <div className="space-y-3">
+                        <Button
+                          variant="primary"
+                          size="lg"
+                          onClick={startRecording}
+                          className="w-full shadow-lg shadow-[#F59E0B]/20"
+                          disabled={!selectedPrompt || isSilent || recordingTime >= FREE_MAX_SECONDS}
+                          title={recordingTime >= FREE_MAX_SECONDS ? 'Free trial limit reached (2:00)' : undefined}
+                        >
+                          <Mic className="mr-2 h-5 w-5" />
+                          Start recording
+                        </Button>
                         {!isTestingMic && hasMicPermission && (
                           <Button
                             variant="ghost"

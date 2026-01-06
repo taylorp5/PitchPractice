@@ -47,6 +47,7 @@ interface Run {
   word_count: number | null
   words_per_minute: number | null
   rubric_snapshot_json: any | null
+  plan_at_time?: string | null
   rubrics: {
     id: string
     name: string
@@ -1034,24 +1035,91 @@ export default function RunPage() {
               </motion.div>
             ) : null}
 
-            {/* Premium Insights Card - Only for Coach plan */}
+            {/* Banner for Coach users with non-coach-at-time runs */}
             {(() => {
-              const hasPremiumInsights = run.analysis_json?.premium_insights
-              if (hasPremiumInsights) {
-                // Debug log to help troubleshoot
-                console.log('[Run Page] Premium Insights found:', {
-                  hasFillerWords: !!run.analysis_json.premium_insights.filler_words,
-                  hasPacing: !!run.analysis_json.premium_insights.pacing,
-                  hasStructure: !!run.analysis_json.premium_insights.structure,
-                  hasCoachingPlan: !!run.analysis_json.premium_insights.coaching_plan,
-                })
-              } else {
-                console.log('[Run Page] No Premium Insights:', {
-                  hasAnalysisJson: !!run.analysis_json,
-                  planAtTime: run.analysis_json?.meta?.plan_at_time,
-                })
-              }
-              return hasPremiumInsights
+              const isCurrentUserCoach = userPlan === 'coach'
+              const runPlanAtTime = run.plan_at_time || run.analysis_json?.meta?.plan_at_time
+              const isRunCoachAtTime = runPlanAtTime === 'coach'
+              return isCurrentUserCoach && !isRunCoachAtTime && run.analysis_json
+            })() && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
+              >
+                <Card>
+                  <div className="flex items-start gap-3 p-4 bg-[#1A1F2E] border border-[#F59E0B]/30 rounded-lg">
+                    <div className="flex-1">
+                      <p className="text-sm text-[#E5E7EB] mb-3">
+                        This run was analyzed on Starter. Re-run analysis on Coach to unlock Premium Insights.
+                      </p>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={async () => {
+                          if (!routeRunId) return
+                          setIsGettingFeedback(true)
+                          setError(null)
+                          const url = `/api/runs/${routeRunId}/analyze`
+                          try {
+                            const res = await fetch(url, {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              body: JSON.stringify({
+                                rubric_id: run?.rubrics?.id || null,
+                              }),
+                              cache: 'no-store',
+                            })
+                            if (!res.ok) {
+                              await logFetchError(url, res)
+                              const errorData = await res.json()
+                              const errorMsg = errorData.message || errorData.error || 'Re-analysis failed'
+                              setError(errorMsg)
+                              return
+                            }
+                            const responseData = await res.json()
+                            const normalizedRun = responseData.ok && responseData.run ? responseData.run : responseData
+                            const normalizedAnalysis = responseData.analysis ?? responseData.run?.analysis_json ?? normalizedRun?.analysis_json ?? null
+                            if (normalizedRun) {
+                              const runData: Run = {
+                                ...normalizedRun,
+                                analysis_json: normalizedAnalysis ?? normalizedRun.analysis_json ?? null,
+                              }
+                              const currentRun = runRef.current
+                              const currentPriority = getStatusPriority(currentRun?.status)
+                              const newPriority = getStatusPriority(runData.status)
+                              if (newPriority >= currentPriority) {
+                                setRun(runData)
+                              }
+                            }
+                            // Refresh the run data
+                            await fetchRun(false)
+                          } catch (err: any) {
+                            console.error('Re-analysis error:', err)
+                            setError(err.message || 'Re-analysis failed')
+                          } finally {
+                            setIsGettingFeedback(false)
+                          }
+                        }}
+                        disabled={isGettingFeedback || !run.transcript}
+                      >
+                        <RefreshCw className={`mr-2 h-4 w-4 ${isGettingFeedback ? 'animate-spin' : ''}`} />
+                        {isGettingFeedback ? 'Re-analyzing...' : 'Re-analyze with Coach'}
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* Premium Insights Card - Only for Coach plan with coach-at-time runs */}
+            {(() => {
+              const isCurrentUserCoach = userPlan === 'coach'
+              const runPlanAtTime = run.plan_at_time || run.analysis_json?.meta?.plan_at_time
+              const isRunCoachAtTime = runPlanAtTime === 'coach'
+              return isCurrentUserCoach && isRunCoachAtTime && run.analysis_json?.premium_insights
             })() && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}

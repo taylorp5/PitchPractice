@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/server'
 import { createClient } from '@/lib/supabase/server-auth'
+import { getUserPlanFromDB } from '@/lib/plan-server'
 import OpenAI from 'openai'
 
 export const dynamic = 'force-dynamic'
@@ -1185,25 +1186,15 @@ export async function POST(
     // Use duration_ms as source of truth, fallback to audio_seconds
     const audioSeconds = run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds
 
-    // Get user plan before building prompt
-    let userPlan: 'free' | 'starter' | 'coach' | 'daypass' = 'free'
-    try {
-      const supabase = await createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        // Check user metadata for plan
-        const plan = user.user_metadata?.plan || user.user_metadata?.entitlement
-        if (plan === 'starter' || plan === 'coach' || plan === 'daypass') {
-          userPlan = plan
-        } else {
-          // Default authenticated users to 'starter'
-          userPlan = 'starter'
-        }
-      }
-    } catch (err) {
-      // If we can't determine plan, default to 'free'
-      console.warn('[Analyze] Could not determine user plan, defaulting to free:', err)
-    }
+    // Get user plan from database (source of truth) - NOT from client input or user_metadata
+    // This ensures plan_at_time is accurate for feature gating
+    const userPlan = await getUserPlanFromDB(run.session_id)
+    console.log('[Analyze] Resolved user plan from database:', {
+      runId: id,
+      sessionId: run.session_id,
+      userId: run.user_id,
+      plan: userPlan,
+    })
 
     // Build the analysis prompt
     // Use prompt-specific rubric if provided, otherwise use generic criteria
@@ -1367,11 +1358,12 @@ export async function POST(
       )
     }
 
-    // Update the run with analysis
+    // Update the run with analysis and plan_at_time
     const { data: updatedRun, error: updateError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .update({
         analysis_json: analysisJson,
+        plan_at_time: userPlan, // Store plan_at_time on run record for reliable UI gating
         status: 'analyzed',
         error_message: null,
       })

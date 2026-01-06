@@ -62,7 +62,7 @@ interface AnalysisOutput {
   }>
   line_by_line: Array<{
     quote: string
-    type: 'praise' | 'issue' | 'suggestion'
+    type: 'strength' | 'issue'
     comment: string
     action: string
     priority: 'high' | 'medium' | 'low'
@@ -132,7 +132,7 @@ ${guidingQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
 
 For each question, determine:
 - Was it answered? (answered: true/false)
-- What evidence supports your answer? (evidence_quotes: array of verbatim quotes from transcript)
+- What evidence supports your answer? (evidence_quotes: array of verbatim quotes from transcript, ≤120 characters each)
 - If not answered or partially answered, what improvement is needed? (improvement: specific suggestion with quote citation)`
     : ''
 
@@ -140,10 +140,15 @@ For each question, determine:
 
 CRITICAL RULES (STRICTLY ENFORCED):
 1. ALL feedback MUST cite specific quotes from the transcript. If you cannot cite a quote, do not make the claim.
-2. Quotes must be verbatim excerpts (≤20 words) from the transcript - copy them exactly as they appear.
+2. Quotes must be verbatim excerpts (≤120 characters) from the transcript - copy them exactly as they appear.
 3. Be specific and actionable. Avoid generic advice like "be more engaging" - instead say "When you said '[quote]', try [specific action]."
 4. Reference exact transcript segments for every point. No exceptions.
 5. If you cannot find a specific quote to support a point, omit that point entirely rather than making a generic claim.
+6. EVIDENCE QUOTES ARE MANDATORY: For every criterion in rubric_scores, always include evidence_quotes array.
+   - If score >= 1: Include 1-2 verbatim quotes from transcript (≤120 characters each)
+   - If score = 0: Include empty array [] and explain what was missing in notes
+7. LINE-BY-LINE COACHING: Provide 3-8 items (fewer for shorter pitches). Each quote must be a verbatim substring from transcript (≤120 characters).
+8. TRANSCRIPT SENTENCE ALIGNMENT: Prefer quotes that align to single sentences or short phrases for UI hover matching. Avoid combining multiple sentences.
 
 TRANSCRIPT:
 ${transcript}${pitchContextSection}${guidingQuestionsSection}
@@ -182,8 +187,8 @@ Return a JSON object with this exact structure:
       "criterion_id": "<criterion id from rubric>",
       "criterion_label": "<criterion label>",
       "score": <0-10 integer>,
-      "notes": "<specific feedback with quote citation>",
-      "evidence_quotes": ["<verbatim quote 1>", "<verbatim quote 2>"],
+      "notes": "<specific feedback with quote citation. If score=0, explain what was missing>",
+      "evidence_quotes": <MANDATORY: If score >= 1, include 1-2 verbatim quotes (≤120 chars each) from transcript. If score = 0, use empty array []>,
       "missing": <boolean, true if this criterion is not addressed at all>
     },
     ... (one for each criterion in rubric)
@@ -192,7 +197,7 @@ Return a JSON object with this exact structure:
     {
       "question": "<guiding question text>",
       "answered": <boolean, true if the question is addressed in the pitch>,
-      "evidence_quotes": ["<verbatim quote 1>", "<verbatim quote 2>"],
+      "evidence_quotes": ["<verbatim quote 1 (≤120 chars)>", "<verbatim quote 2 (≤120 chars)>"],
       "improvement": "<specific suggestion if not answered, or null if fully answered>"
     },
     ... (one for each guiding question)
@@ -211,17 +216,17 @@ Return a JSON object with this exact structure:
   ],
   "line_by_line": [
     {
-      "quote": "<verbatim excerpt ≤20 words>",
-      "type": "<praise|issue|suggestion>",
+      "quote": "<verbatim excerpt ≤120 characters, must be exact substring from transcript>",
+      "type": "<strength|issue>",
       "comment": "<what's good/bad about this>",
       "action": "<what to change/keep>",
       "priority": "<high|medium|low>"
     },
-    ... (5-15 items covering key moments)
+    ... (3-8 items covering key moments, fewer for shorter pitches)
   ],
   "pause_suggestions": [
     {
-      "after_quote": "<verbatim excerpt ≤20 words where pause should occur>",
+      "after_quote": "<verbatim excerpt ≤120 characters where pause should occur>",
       "why": "<reason for pause>",
       "duration_ms": <300-900>
     },
@@ -229,7 +234,7 @@ Return a JSON object with this exact structure:
   ],
   "cut_suggestions": [
     {
-      "quote": "<verbatim excerpt ≤20 words to remove>",
+      "quote": "<verbatim excerpt ≤120 characters to remove>",
       "why": "<reason to cut>",
       "replacement": "<optional rewrite or null>"
     },
@@ -244,16 +249,34 @@ CHUNKING INSTRUCTIONS:
 - If a chunk doesn't clearly map to any criterion, use purpose "other" or "transition"
 - Chunks should cover the entire transcript with minimal overlap
 
+EVIDENCE + LINE-BY-LINE REQUIREMENTS (MANDATORY):
+You must produce outputs that are directly grounded in the transcript.
+
+Evidence quotes:
+- For EVERY criterion in rubric_scores, always include evidence_quotes array.
+- If score >= 1: Include 1-2 verbatim quotes from transcript (≤120 characters each, exact substrings)
+- If score = 0: Use empty array [] and explain what was missing in notes
+- Each quote must be verbatim and appear in the transcript exactly
+- If criterion is missing/not addressed (missing=true or score=0), set evidence_quotes: [] and explain in notes
+
+Line-by-line coaching:
+- Provide 3-8 items (fewer for shorter pitches)
+- Every line_by_line[i].quote MUST be a verbatim substring from the transcript (≤120 characters)
+- Prefer quotes that align to single sentences or short phrases for UI hover matching
+- Each item must include: type ("strength" or "issue"), quote (exact transcript substring), comment, action, priority
+- If you cannot find a good quote, DO NOT invent one; omit the item
+
 REMEMBER (STRICT ENFORCEMENT):
 - Every claim must have a quote. No exceptions. If you cannot cite a quote, do not include that feedback.
-- Quotes must be exact verbatim excerpts from the transcript (≤20 words).
+- Quotes must be exact verbatim excerpts from the transcript (≤120 characters).
 - Be specific and actionable. Generic advice will be rejected.
 - Focus on the most impactful feedback first.
 - For chunks: Break transcript naturally by idea, not just by sentence count.
-- For rubric_scores: Calculate overall_score as weighted average: sum(score * weight) / sum(weight) for non-optional items.
-- For line_by_line: Each item MUST have a quote that appears exactly in the transcript.
-- For pause_suggestions: The "after_quote" must be an exact excerpt from the transcript.
-- For cut_suggestions: The "quote" must be an exact excerpt from the transcript.
+- For rubric_scores: Calculate overall_score as weighted average: sum(score * weight) / sum(weight) for non-optional items. ALWAYS include evidence_quotes for every criterion.
+- For line_by_line: Each item MUST have a quote that appears exactly in the transcript. Provide 3-8 items.
+- For pause_suggestions: The "after_quote" must be an exact excerpt from the transcript (≤120 characters).
+- For cut_suggestions: The "quote" must be an exact excerpt from the transcript (≤120 characters).
+- NO HALLUCINATIONS: Do not invent evidence. If a criterion is not supported by transcript content, set score low and evidence_quotes empty.
 
 VALIDATION: Before including any feedback item, verify that the quote appears verbatim in the transcript.`
 }
@@ -531,7 +554,7 @@ export async function POST(
         messages: [
           {
             role: 'system',
-            content: 'You are an expert pitch coach. You provide detailed, actionable feedback that ALWAYS cites specific verbatim quotes from the transcript. You NEVER make generic claims without evidence. If you cannot cite an exact quote (≤20 words) from the transcript, you must omit that feedback point entirely. Every piece of feedback must be anchored to a specific transcript excerpt.',
+            content: 'You are an expert pitch coach. You provide detailed, actionable feedback that ALWAYS cites specific verbatim quotes from the transcript. You NEVER make generic claims without evidence. If you cannot cite an exact quote (≤120 characters) from the transcript, you must omit that feedback point entirely. Every piece of feedback must be anchored to a specific transcript excerpt. For rubric_scores, ALWAYS include evidence_quotes: if score >= 1, provide 1-2 quotes; if score = 0, use empty array [] and explain in notes. For line_by_line, provide 3-8 items with exact transcript substrings (≤120 characters each).',
           },
           {
             role: 'user',

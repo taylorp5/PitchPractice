@@ -791,8 +791,8 @@ export default function RunPage() {
               </motion.div>
             )}
 
-            {/* Line-by-Line Feedback - Only for Coach + Day Pass */}
-            {(userPlan === 'coach' || userPlan === 'day_pass') && run.analysis_json?.line_by_line && run.analysis_json.line_by_line.length > 0 && (
+            {/* Line-by-Line Feedback - Available for all plans */}
+            {run.analysis_json?.line_by_line && run.analysis_json.line_by_line.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -803,9 +803,8 @@ export default function RunPage() {
                   <div className="space-y-4">
                     {run.analysis_json.line_by_line.map((item: any, idx: number) => {
                       const typeColors = {
-                        praise: 'bg-green-500/20 border-green-500/50',
+                        strength: 'bg-green-500/20 border-green-500/50',
                         issue: 'bg-red-500/20 border-red-500/50',
-                        suggestion: 'bg-[#F97316]/20 border-[#F97316]/50',
                       }
                       const priorityColors = {
                         high: 'text-red-400',

@@ -121,6 +121,7 @@ export default function TryPage() {
   const [pinnedSentenceIdx, setPinnedSentenceIdx] = useState<number | null>(null)
   const [highlightedCriterion, setHighlightedCriterion] = useState<string | null>(null)
   const [expandedRewrites, setExpandedRewrites] = useState<Set<number>>(new Set())
+  const [expandedEvidence, setExpandedEvidence] = useState<Set<number>>(new Set())
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null)
   const [pausedTotalMs, setPausedTotalMs] = useState(0)
   const [pauseStartTime, setPauseStartTime] = useState<number | null>(null)
@@ -577,49 +578,52 @@ FEEDBACK SUMMARY
     return merged.filter(s => s.length > 0)
   }
 
-  // Map chunks to sentences for feedback
-  const createSentenceFeedbackMap = (transcript: string, chunks: any[]): Map<number, any> => {
+  // Map line_by_line to sentences for feedback
+  const createSentenceFeedbackMap = (transcript: string, lineByLine: any[]): Map<number, any> => {
     const sentences = splitIntoSentences(transcript)
     const feedbackMap = new Map<number, any>()
     
     sentences.forEach((sentence, idx) => {
-      // Find best matching chunk
+      const sentenceLower = sentence.toLowerCase().trim()
       let bestMatch: any = null
       let bestScore = 0
       
-      chunks.forEach(chunk => {
-        const chunkText = chunk.text || ''
-        const sentenceLower = sentence.toLowerCase().trim()
-        const chunkLower = chunkText.toLowerCase().trim()
-        
-        // Exact substring match
-        if (chunkLower.includes(sentenceLower) || sentenceLower.includes(chunkLower)) {
-          const score = Math.min(sentenceLower.length, chunkLower.length) / Math.max(sentenceLower.length, chunkLower.length)
+      // First: exact substring match (line_by_line.quote is contained in sentence OR sentence contained in quote)
+      lineByLine.forEach(item => {
+        const quote = (item.quote || '').toLowerCase().trim()
+        if (quote && (sentenceLower.includes(quote) || quote.includes(sentenceLower))) {
+          const score = Math.min(sentenceLower.length, quote.length) / Math.max(sentenceLower.length, quote.length)
           if (score > bestScore) {
             bestScore = score
-            bestMatch = chunk
+            bestMatch = item
           }
         }
       })
       
+      // Fallback: simple similarity (3+ word overlap)
+      if (!bestMatch) {
+        const sentenceWords = sentenceLower.split(/\s+/).filter((w: string) => w.length > 2)
+        lineByLine.forEach(item => {
+          const quote = (item.quote || '').toLowerCase().trim()
+          const quoteWords = quote.split(/\s+/).filter((w: string) => w.length > 2)
+          const overlap = sentenceWords.filter((w: string) => quoteWords.includes(w))
+          if (overlap.length >= 3) {
+            const score = overlap.length / Math.max(sentenceWords.length, quoteWords.length)
+            if (score > bestScore) {
+              bestScore = score
+              bestMatch = item
+            }
+          }
+        })
+      }
+      
       if (bestMatch) {
         feedbackMap.set(idx, {
-          purpose_label: bestMatch.purpose_label || bestMatch.purpose || 'General',
-          score: bestMatch.score,
-          status: bestMatch.status || (bestMatch.score !== null && bestMatch.score >= 7 ? 'strong' : bestMatch.score !== null && bestMatch.score >= 4 ? 'needs_work' : 'unscored'),
-          why: bestMatch.feedback || '',
-          suggestion: bestMatch.rewrite_suggestion ? `Try: ${bestMatch.rewrite_suggestion}` : '',
-          rewrite: bestMatch.rewrite_suggestion || null,
-        })
-      } else {
-        // No match - default to unscored
-        feedbackMap.set(idx, {
-          purpose_label: 'General',
-          score: null,
-          status: 'unscored',
-          why: 'No specific coaching for this line yet.',
-          suggestion: '',
-          rewrite: null,
+          type: bestMatch.type || 'suggestion',
+          comment: bestMatch.comment || '',
+          action: bestMatch.action || '',
+          priority: bestMatch.priority || 'medium',
+          quote: bestMatch.quote || '',
         })
       }
     })
@@ -1295,22 +1299,18 @@ FEEDBACK SUMMARY
         }
       }
       
+      // Normalize analysis shape: resp.analysis ?? resp.run?.analysis_json ?? null
+      const normalizedAnalysis = responseData?.analysis ?? responseData?.run?.analysis_json ?? null
+      
       // Store feedback immediately from response
-      if (responseData?.ok && responseData?.analysis) {
-        setFeedback(responseData.analysis)
+      if (normalizedAnalysis) {
+        setFeedback(normalizedAnalysis)
         if (DEBUG) {
-          console.log('[Try] Feedback stored from response.analysis:', {
+          console.log('[Try] Feedback stored from normalized analysis:', {
             runId,
-            hasSummary: !!responseData.analysis.summary,
-            hasRubricScores: !!responseData.analysis.rubric_scores,
-          })
-        }
-      } else if (responseData?.ok && responseData?.run?.analysis_json) {
-        setFeedback(responseData.run.analysis_json)
-        if (DEBUG) {
-          console.log('[Try] Feedback stored from run.analysis_json:', {
-            runId,
-            hasSummary: !!responseData.run.analysis_json.summary,
+            hasSummary: !!normalizedAnalysis.summary,
+            hasRubricScores: !!normalizedAnalysis.rubric_scores,
+            hasLineByLine: !!normalizedAnalysis.line_by_line,
           })
         }
       } else if (responseData?.ok && responseData?.run) {
@@ -1367,9 +1367,10 @@ FEEDBACK SUMMARY
         setRun(data.run)
         setAudioUrl(data.run.audio_url)
         
-        // Update feedback from DB if present
-        if (data.run.analysis_json) {
-          setFeedback(data.run.analysis_json)
+        // Normalize analysis shape: resp.analysis ?? resp.run?.analysis_json ?? null
+        const normalizedAnalysis = data.analysis ?? data.run?.analysis_json ?? null
+        if (normalizedAnalysis) {
+          setFeedback(normalizedAnalysis)
         } else {
           // Clear feedback if run doesn't have it
           setFeedback(null)
@@ -1907,38 +1908,45 @@ FEEDBACK SUMMARY
 
                 {/* Transcript-First UI */}
                 {run.transcript && run.transcript.trim().length > 0 && (() => {
+                  // Normalize analysis shape
                   const feedbackData = feedback || run.analysis_json
-                  const serverChunks = feedbackData?.chunks || []
+                  const lineByLine = feedbackData?.line_by_line || []
                   
-                  // Create sentence feedback map
+                  // Create sentence feedback map using line_by_line
                   const sentences = splitIntoSentences(run.transcript)
-                  const sentenceFeedbackMap = createSentenceFeedbackMap(run.transcript, serverChunks)
+                  const sentenceFeedbackMap = createSentenceFeedbackMap(run.transcript, lineByLine)
                   const paragraphs = groupSentencesIntoParagraphs(sentences, sentenceFeedbackMap)
                   
                   // Sentence span component - use CSS hover instead of hooks
                   const SentenceSpan = ({ sentence, idx }: { sentence: string; idx: number }) => {
                     const feedback = sentenceFeedbackMap.get(idx)
                     const isPinned = pinnedSentenceIdx === idx
-                    const isHighlighted = highlightedCriterion && feedback?.purpose_label === highlightedCriterion
+                    const isHighlighted = highlightedCriterion && feedback?.quote && sentence.toLowerCase().includes(highlightedCriterion.toLowerCase())
                     
-                    const getStatusColor = (status: string) => {
-                      if (status === 'strong') return 'hover:border-[#22C55E]/30 hover:bg-[#D1FAE5]'
-                      if (status === 'needs_work') return 'hover:border-[#F97316]/30 hover:bg-[#FED7AA]'
+                    const getTypeColor = (type: string) => {
+                      if (type === 'strength') return 'hover:border-[#22C55E]/30 hover:bg-[#D1FAE5]'
+                      if (type === 'issue') return 'hover:border-[#EF4444]/30 hover:bg-[#FEE2E2]'
                       return 'hover:border-[#9AA4B2]/20 hover:bg-[rgba(255,255,255,0.05)]'
+                    }
+                    
+                    const getPriorityColor = (priority: string) => {
+                      if (priority === 'high') return 'text-[#EF4444]'
+                      if (priority === 'medium') return 'text-[#F97316]'
+                      return 'text-[#9AA4B2]'
                     }
                     
                     return (
                       <span
                         id={`sentence-${idx}`}
                         className={`group relative inline cursor-pointer transition-all rounded px-1 py-0.5 border border-transparent ${
-                          isHighlighted ? 'bg-[#FEF3C7] border-[#F59E0B]/40 animate-pulse' : getStatusColor(feedback?.status || 'unscored')
+                          isHighlighted ? 'bg-[#FEF3C7] border-[#F59E0B]/40 animate-pulse' : getTypeColor(feedback?.type || 'suggestion')
                         }`}
                         onClick={() => {
                           setPinnedSentenceIdx(isPinned ? null : idx)
                         }}
                       >
                         {sentence}
-                        {feedback && (
+                        {feedback ? (
                           <div className={`absolute z-50 mt-2 p-3 bg-[#121826] border border-[rgba(255,255,255,0.12)] rounded-lg shadow-xl min-w-[280px] max-w-[400px] ${
                             isPinned ? 'block' : 'hidden group-hover:block'
                           }`}
@@ -1946,44 +1954,24 @@ FEEDBACK SUMMARY
                           >
                             <div className="space-y-2">
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium px-2 py-1 rounded border bg-[rgba(255,255,255,0.03)] text-[#9AA4B2] border-[rgba(255,255,255,0.08)]">
-                                  {feedback.purpose_label}
+                                <span className={`text-xs font-medium px-2 py-1 rounded border bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)] ${
+                                  feedback.type === 'strength' ? 'text-[#22C55E]' :
+                                  feedback.type === 'issue' ? 'text-[#EF4444]' :
+                                  'text-[#F97316]'
+                                }`}>
+                                  {feedback.type === 'strength' ? 'Strength' : feedback.type === 'issue' ? 'Issue' : 'Suggestion'}
                                 </span>
-                                {feedback.score !== null && (
-                                  <span className="text-xs text-[#E6E8EB]">
-                                    {feedback.score}/10
+                                {feedback.priority && (
+                                  <span className={`text-xs font-medium ${getPriorityColor(feedback.priority)}`}>
+                                    {feedback.priority.toUpperCase()}
                                   </span>
                                 )}
                               </div>
-                              {feedback.why && (
-                                <p className="text-sm text-[#E6E8EB]">{feedback.why}</p>
+                              {feedback.comment && (
+                                <p className="text-sm text-[#E6E8EB]"><strong>Comment:</strong> {feedback.comment}</p>
                               )}
-                              {feedback.suggestion && (
-                                <p className="text-sm text-[#9AA4B2]">{feedback.suggestion}</p>
-                              )}
-                              {feedback.rewrite && (
-                                <div>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      setExpandedRewrites(prev => {
-                                        const next = new Set(prev)
-                                        if (next.has(idx)) {
-                                          next.delete(idx)
-                                        } else {
-                                          next.add(idx)
-                                        }
-                                        return next
-                                      })
-                                    }}
-                                    className="text-xs text-[#F59E0B] hover:text-[#D97706]"
-                                  >
-                                    {expandedRewrites.has(idx) ? 'Hide rewrite' : 'Show rewrite'}
-                                  </button>
-                                  {expandedRewrites.has(idx) && (
-                                    <p className="text-sm text-[#E6E8EB] italic mt-1">{feedback.rewrite}</p>
-                                  )}
-                                </div>
+                              {feedback.action && (
+                                <p className="text-sm text-[#9AA4B2]"><strong>Action:</strong> {feedback.action}</p>
                               )}
                               {isPinned && (
                                 <button
@@ -1997,6 +1985,25 @@ FEEDBACK SUMMARY
                                 </button>
                               )}
                             </div>
+                          </div>
+                        ) : (
+                          <div className={`absolute z-50 mt-2 p-3 bg-[#121826] border border-[rgba(255,255,255,0.12)] rounded-lg shadow-xl min-w-[280px] max-w-[400px] ${
+                            isPinned ? 'block' : 'hidden group-hover:block'
+                          }`}
+                          style={{ left: '50%', transform: 'translateX(-50%)', top: '100%' }}
+                          >
+                            <p className="text-sm text-[#9AA4B2]">No coaching for this line.</p>
+                            {isPinned && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setPinnedSentenceIdx(null)
+                                }}
+                                className="text-xs text-[#9AA4B2] hover:text-[#E6E8EB] mt-2"
+                              >
+                                Close
+                              </button>
+                            )}
                           </div>
                         )}
                       </span>
@@ -2026,6 +2033,62 @@ FEEDBACK SUMMARY
                           })}
                         </div>
                       </div>
+                      
+                      {/* Line-by-Line Coaching Section - Always visible for all plans */}
+                      {lineByLine && lineByLine.length > 0 && (
+                        <div className="mt-8 pt-8 border-t border-[rgba(255,255,255,0.08)]">
+                          <h4 className="text-lg font-bold text-[#E6E8EB] mb-4">Line-by-Line Coaching</h4>
+                          <div className="space-y-3">
+                            {lineByLine.map((item: any, idx: number) => {
+                              const typeColors = {
+                                strength: 'bg-[#22C55E]/20 border-[#22C55E]/50',
+                                issue: 'bg-[#EF4444]/20 border-[#EF4444]/50',
+                              }
+                              const priorityColors = {
+                                high: 'text-[#EF4444]',
+                                medium: 'text-[#F97316]',
+                                low: 'text-[#9AA4B2]',
+                              }
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`p-4 rounded-lg border ${typeColors[item.type as keyof typeof typeColors] || 'bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)]'}`}
+                                >
+                                  <div className="flex items-start justify-between mb-2">
+                                    <blockquote className="text-sm font-medium text-[#E6E8EB] italic flex-1">
+                                      "{item.quote}"
+                                    </blockquote>
+                                    <div className="flex items-center gap-2 ml-3">
+                                      <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                                        item.type === 'strength' ? 'bg-[#22C55E]/20 text-[#22C55E]' :
+                                        item.type === 'issue' ? 'bg-[#EF4444]/20 text-[#EF4444]' :
+                                        'bg-[#F97316]/20 text-[#F97316]'
+                                      }`}>
+                                        {item.type === 'strength' ? 'Strength' : item.type === 'issue' ? 'Issue' : 'Suggestion'}
+                                      </span>
+                                      {item.priority && (
+                                        <span className={`text-xs font-semibold ${priorityColors[item.priority as keyof typeof priorityColors] || 'text-[#9AA4B2]'}`}>
+                                          {item.priority.toUpperCase()}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {item.comment && (
+                                    <p className="text-sm text-[#E6E8EB] mb-1">
+                                      <strong>Comment:</strong> {item.comment}
+                                    </p>
+                                  )}
+                                  {item.action && (
+                                    <p className="text-sm text-[#E6E8EB]">
+                                      <strong>Action:</strong> {item.action}
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </Card>
                   )
                 })()}
@@ -2143,34 +2206,51 @@ FEEDBACK SUMMARY
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => {
-                                        // Find first sentence with this purpose
-                                        if (!run.transcript) return
-                                        const sentences = splitIntoSentences(run.transcript)
-                                        const sentenceFeedbackMap = createSentenceFeedbackMap(run.transcript, (feedbackData?.chunks || []))
-                                        let targetIdx = -1
-                                        for (let i = 0; i < sentences.length; i++) {
-                                          const feedback = sentenceFeedbackMap.get(i)
-                                          if (feedback?.purpose_label === criterionLabel) {
-                                            targetIdx = i
-                                            break
+                                        // Toggle evidence display for this criterion
+                                        setExpandedEvidence(prev => {
+                                          const next = new Set(prev)
+                                          if (next.has(idx)) {
+                                            next.delete(idx)
+                                          } else {
+                                            next.add(idx)
                                           }
-                                        }
-                                        
-                                        if (targetIdx >= 0) {
-                                          // Scroll to sentence
-                                          const element = document.getElementById(`sentence-${targetIdx}`)
-                                          if (element) {
-                                            element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                                            setHighlightedCriterion(criterionLabel)
-                                            setTimeout(() => setHighlightedCriterion(null), 2000)
-                                          }
-                                        }
+                                          return next
+                                        })
                                       }}
                                       className="ml-3 text-xs"
                                     >
-                                      Show evidence
+                                      {expandedEvidence.has(idx) ? 'Hide evidence' : 'Show evidence'}
                                     </Button>
                                   </div>
+                                  {expandedEvidence.has(idx) && (() => {
+                                    // Try these possible fields in order: evidence_quotes, evidenceQuotes, evidence, evidence_snippets
+                                    const evidenceQuotes = rubricScore.evidence_quotes 
+                                      ?? rubricScore.evidenceQuotes 
+                                      ?? rubricScore.evidence 
+                                      ?? rubricScore.evidence_snippets 
+                                      ?? null
+                                    
+                                    if (evidenceQuotes && Array.isArray(evidenceQuotes) && evidenceQuotes.length > 0) {
+                                      return (
+                                        <div className="mt-3 pt-3 border-t border-[rgba(255,255,255,0.08)]">
+                                          <p className="text-xs font-semibold text-[#9AA4B2] mb-2 uppercase tracking-wide">Evidence:</p>
+                                          <div className="space-y-2">
+                                            {evidenceQuotes.map((quote: string, qIdx: number) => (
+                                              <p key={qIdx} className="text-sm text-[#E6E8EB] italic pl-3 border-l-2 border-[rgba(255,255,255,0.12)]">
+                                                "{quote}"
+                                              </p>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )
+                                    } else {
+                                      return (
+                                        <div className="mt-3 pt-3 border-t border-[rgba(255,255,255,0.08)]">
+                                          <p className="text-sm text-[#9AA4B2] italic">No evidence quotes available for this criterion.</p>
+                                        </div>
+                                      )
+                                    }
+                                  })()}
                                   {rubricScore.notes && (
                                     <div className="mt-2 pt-2 border-t border-[rgba(255,255,255,0.08)]">
                                       <p className="text-sm text-[#E6E8EB]">{rubricScore.notes}</p>

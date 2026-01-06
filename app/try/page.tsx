@@ -490,6 +490,37 @@ export default function TryPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Calculate ETA for feedback generation based on audio duration
+  const calculateFeedbackETA = (durationSeconds: number | null): string => {
+    if (!durationSeconds || durationSeconds <= 0) {
+      return '~10–20s'
+    }
+    
+    // Base time: 10 seconds for processing
+    // Additional time: ~0.5 seconds per second of audio (scales with length)
+    const baseSeconds = 10
+    const perSecondSeconds = 0.5
+    const estimatedSeconds = Math.ceil(baseSeconds + (durationSeconds * perSecondSeconds))
+    
+    // Cap at reasonable maximum (2 minutes)
+    const maxSeconds = 120
+    const finalSeconds = Math.min(estimatedSeconds, maxSeconds)
+    
+    if (finalSeconds < 30) {
+      return `~${finalSeconds}s`
+    } else if (finalSeconds < 60) {
+      return `~${finalSeconds}s`
+    } else {
+      const mins = Math.floor(finalSeconds / 60)
+      const secs = finalSeconds % 60
+      if (secs === 0) {
+        return `~${mins}min`
+      } else {
+        return `~${mins}:${secs.toString().padStart(2, '0')}`
+      }
+    }
+  }
+
   // Download transcript as .txt file
   const downloadTranscript = () => {
     if (!run?.transcript) return
@@ -1972,13 +2003,19 @@ FEEDBACK SUMMARY
                           </Button>
                         </div>
                         {isPaused && (
-                          <Button
-                            variant="ghost"
-                            onClick={handleRerecord}
-                            className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
-                          >
-                            Re-record (Start over)
-                          </Button>
+                          <div className="space-y-2">
+                            <Button
+                              variant="secondary"
+                              onClick={handleRerecord}
+                              className="w-full border border-[#EF4444]/30 text-[#EF4444] hover:bg-[#EF4444]/10 hover:border-[#EF4444]/50"
+                            >
+                              <Scissors className="mr-2 h-4 w-4" />
+                              Re-record (Start over)
+                            </Button>
+                            <p className="text-xs text-[#9AA4B2] text-center">
+                              Recording is paused. Click above to start over.
+                            </p>
+                          </div>
                         )}
                         {!isPaused && (
                           <Button
@@ -2046,7 +2083,16 @@ FEEDBACK SUMMARY
                         {isGettingFeedback && !isUploading && !isTranscribing && (
                           <div className="space-y-1">
                             <LoadingSpinner size="md" text="Analyzing..." />
-                            <p className="text-xs text-[#9AA4B2]">ETA ~10–20s</p>
+                            <p className="text-xs text-[#9AA4B2]">
+                              ETA {(() => {
+                                const durationSec = durationMs 
+                                  ? durationMs / 1000 
+                                  : (run?.duration_ms 
+                                    ? run.duration_ms / 1000 
+                                    : (run?.audio_seconds || null))
+                                return calculateFeedbackETA(durationSec)
+                              })()}
+                            </p>
                           </div>
                         )}
                       </div>

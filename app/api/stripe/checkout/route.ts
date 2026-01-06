@@ -3,19 +3,40 @@ import Stripe from 'stripe'
 
 export const dynamic = 'force-dynamic'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2023-10-16',
-})
+// Initialize Stripe client with validation
+function getStripeClient() {
+  const secretKey = process.env.STRIPE_SECRET_KEY
+  if (!secretKey) {
+    throw new Error('STRIPE_SECRET_KEY environment variable is not set')
+  }
+  return new Stripe(secretKey, {
+    apiVersion: '2023-10-16',
+  })
+}
 
 // Plan to price ID mapping
-const PLAN_TO_PRICE_ID: Record<string, string> = {
-  starter: process.env.STRIPE_PRICE_STARTER!,
-  coach: process.env.STRIPE_PRICE_COACH!,
-  daypass: process.env.STRIPE_PRICE_DAYPASS!,
+function getPriceId(plan: string): string {
+  const priceId = process.env[`STRIPE_PRICE_${plan.toUpperCase()}`]
+  if (!priceId) {
+    throw new Error(`STRIPE_PRICE_${plan.toUpperCase()} environment variable is not set`)
+  }
+  return priceId
 }
 
 export async function POST(request: NextRequest) {
   try {
+    // Validate Stripe configuration
+    let stripe: Stripe
+    try {
+      stripe = getStripeClient()
+    } catch (error: any) {
+      console.error('[Stripe Checkout] Configuration error:', error.message)
+      return NextResponse.json(
+        { ok: false, error: 'Stripe is not properly configured', details: error.message },
+        { status: 500 }
+      )
+    }
+
     const body = await request.json()
     const { plan } = body
 
@@ -28,11 +49,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Get price ID from env
-    const priceId = PLAN_TO_PRICE_ID[plan]
-    if (!priceId) {
-      console.error(`[Stripe Checkout] Missing price ID for plan: ${plan}`)
+    let priceId: string
+    try {
+      priceId = getPriceId(plan)
+    } catch (error: any) {
+      console.error(`[Stripe Checkout] Missing price ID for plan: ${plan}`, error.message)
       return NextResponse.json(
-        { ok: false, error: 'Price configuration missing for this plan' },
+        { ok: false, error: 'Price configuration missing for this plan', details: error.message },
         { status: 500 }
       )
     }
@@ -65,9 +88,37 @@ export async function POST(request: NextRequest) {
       url: session.url,
     })
   } catch (error: any) {
-    console.error('[Stripe Checkout] Error:', error)
+    console.error('[Stripe Checkout] Error:', {
+      message: error.message,
+      type: error.type,
+      code: error.code,
+      statusCode: error.statusCode,
+      raw: error.raw,
+    })
+    
+    // Provide more specific error messages
+    let errorMessage = 'Failed to create checkout session'
+    let errorDetails = error.message || 'Unknown error'
+
+    // Check for Stripe error types
+    if (error.type) {
+      if (error.type === 'StripeInvalidRequestError') {
+        errorMessage = 'Invalid Stripe request'
+        errorDetails = error.message || 'Please check your Stripe configuration'
+      } else if (error.type === 'StripeAuthenticationError') {
+        errorMessage = 'Stripe authentication failed'
+        errorDetails = 'Invalid Stripe API key. Please check your STRIPE_SECRET_KEY.'
+      } else if (error.type === 'StripeAPIError') {
+        errorMessage = 'Stripe API error'
+        errorDetails = error.message || 'Stripe service error'
+      } else if (error.type === 'StripeConnectionError') {
+        errorMessage = 'Stripe connection error'
+        errorDetails = 'Unable to connect to Stripe. Please try again.'
+      }
+    }
+
     return NextResponse.json(
-      { ok: false, error: 'Failed to create checkout session', details: error.message },
+      { ok: false, error: errorMessage, details: errorDetails },
       { status: 500 }
     )
   }

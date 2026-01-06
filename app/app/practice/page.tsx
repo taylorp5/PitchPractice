@@ -1838,6 +1838,40 @@ export default function PracticePage() {
           </div>
         </Card>
 
+        {/* Re-record button - Show when run exists (even during processing) */}
+        {run && !feedback && (
+          <Card>
+            <div className="space-y-4">
+              {(isUploading || isTranscribing || isGettingFeedback) ? (
+                <p className="text-sm text-[#9AA4B2] text-center">
+                  Your recording is being processed. You can start a new recording while you wait.
+                </p>
+              ) : (
+                <p className="text-sm text-[#9AA4B2] text-center">
+                  Waiting for feedback to be generated. You can start a new recording.
+                </p>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
+                onClick={() => {
+                  setRun(null)
+                  setFeedback(null)
+                  setError(null)
+                  setIsTranscribing(false)
+                  setIsGettingFeedback(false)
+                  setIsUploading(false)
+                  setAudioUrl(null)
+                  handleRerecord()
+                }}
+              >
+                Re-record
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {/* Results Section - Simplified Summary */}
         {run && feedback && (
           <Card>

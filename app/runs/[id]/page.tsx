@@ -1035,7 +1035,24 @@ export default function RunPage() {
             ) : null}
 
             {/* Premium Insights Card - Only for Coach plan */}
-            {run.analysis_json?.premium_insights && (
+            {(() => {
+              const hasPremiumInsights = run.analysis_json?.premium_insights
+              if (hasPremiumInsights) {
+                // Debug log to help troubleshoot
+                console.log('[Run Page] Premium Insights found:', {
+                  hasFillerWords: !!run.analysis_json.premium_insights.filler_words,
+                  hasPacing: !!run.analysis_json.premium_insights.pacing,
+                  hasStructure: !!run.analysis_json.premium_insights.structure,
+                  hasCoachingPlan: !!run.analysis_json.premium_insights.coaching_plan,
+                })
+              } else {
+                console.log('[Run Page] No Premium Insights:', {
+                  hasAnalysisJson: !!run.analysis_json,
+                  planAtTime: run.analysis_json?.meta?.plan_at_time,
+                })
+              }
+              return hasPremiumInsights
+            })() && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

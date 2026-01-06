@@ -1269,8 +1269,22 @@ export default function TryPage() {
   const highlights = getTranscriptHighlights()
 
   return (
-    <div className="min-h-screen bg-[#0B0F14]">
-      {/* Header with Navbar */}
+    <div 
+      className="min-h-screen"
+      style={{
+        '--pp-bg': '#F7F7F8',
+        '--pp-surface': '#FFFFFF',
+        '--pp-surface-2': '#F3F4F6',
+        '--pp-border': 'rgba(17, 24, 39, 0.10)',
+        '--pp-text': '#111827',
+        '--pp-text-muted': '#6B7280',
+        '--pp-shadow': '0 10px 30px rgba(0,0,0,0.08)',
+        '--pp-accent': '#F59E0B',
+        backgroundColor: 'var(--pp-bg)',
+        color: 'var(--pp-text)',
+      } as React.CSSProperties}
+    >
+      {/* Header with Navbar - Keep dark for brand continuity */}
       <nav className="sticky top-0 z-50 bg-[#0B0F14]/80 backdrop-blur-md border-b border-[#22283A] shadow-lg shadow-black/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -1303,7 +1317,7 @@ export default function TryPage() {
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Prompt Selection - Horizontal Row */}
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-[#E6E8EB] mb-4">What are you practicing today?</h2>
+          <h2 className="text-lg font-semibold text-[#111827] mb-4">What are you practicing today?</h2>
           <div className="flex flex-wrap gap-3">
             {PROMPTS.map((prompt) => (
               <button
@@ -1311,14 +1325,14 @@ export default function TryPage() {
                 onClick={() => setSelectedPrompt(prompt.id)}
                 className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
                   selectedPrompt === prompt.id
-                    ? 'bg-[#F59E0B] text-[#0B0F14] shadow-md shadow-[#F59E0B]/30'
-                    : 'bg-[#121826] text-[#9AA4B2] hover:text-[#E6E8EB] border border-[#1E293B] hover:border-[#334155]'
+                    ? 'bg-[#F59E0B] text-white shadow-md shadow-[#F59E0B]/30 hover:bg-[#D97706]'
+                    : 'bg-white text-[#6B7280] hover:text-[#111827] border border-[rgba(17,24,39,0.10)] hover:border-[rgba(17,24,39,0.20)] shadow-sm'
                 }`}
               >
                 <span>{prompt.title}</span>
                 <span className="text-xs opacity-75">({prompt.duration})</span>
                 {prompt.id === 'elevator' && (
-                  <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-[#0B0F14]/30 text-[#0B0F14]">
+                  <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-white/30 text-white">
                     Recommended
                   </span>
                 )}
@@ -1333,11 +1347,11 @@ export default function TryPage() {
           {selectedPrompt && (() => {
             const selectedPromptData = PROMPTS.find(p => p.id === selectedPrompt)
             return selectedPromptData ? (
-              <div className="mt-4 p-4 bg-[#121826]/50 border border-[#1E293B]/50 rounded-lg">
+              <div className="mt-4 p-4 bg-white border border-[rgba(17,24,39,0.10)] rounded-xl shadow-sm">
                 <p className="text-xs text-[#6B7280] mb-2 font-medium">Guiding questions:</p>
                 <div className="flex flex-wrap gap-3">
                   {selectedPromptData.cues.map((cue, idx) => (
-                    <span key={idx} className="text-xs text-[#9AA4B2]">
+                    <span key={idx} className="text-xs text-[#6B7280]">
                       {cue}
                     </span>
                   ))}
@@ -1351,7 +1365,7 @@ export default function TryPage() {
         <div className="grid lg:grid-cols-[320px_1fr] gap-6 lg:gap-8">
           {/* LEFT COLUMN: Recording Controls (Narrow) */}
           <div className="space-y-4">
-            <Card className="p-5 bg-[#121826] border-[#1E293B]">
+            <Card className="p-5 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">
               <div className="text-center mb-3">
                 <p className="text-xs text-[#6B7280] mb-3">Speak naturally. Aim for 30–60 seconds.</p>
                 
@@ -1361,8 +1375,8 @@ export default function TryPage() {
                     onClick={() => setActiveTab('record')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       activeTab === 'record'
-                        ? 'bg-[#F59E0B] text-[#0B0F14]'
-                        : 'bg-[#0B0F14] text-[#9AA4B2] hover:text-[#E6E8EB] border border-[#1E293B]'
+                        ? 'bg-[#F59E0B] text-white shadow-sm'
+                        : 'bg-white text-[#6B7280] hover:text-[#111827] border border-[rgba(17,24,39,0.10)] hover:border-[rgba(17,24,39,0.20)]'
                     }`}
                   >
                     Record
@@ -1371,8 +1385,8 @@ export default function TryPage() {
                     onClick={() => setActiveTab('upload')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       activeTab === 'upload'
-                        ? 'bg-[#F59E0B] text-[#0B0F14]'
-                        : 'bg-[#0B0F14] text-[#9AA4B2] hover:text-[#E6E8EB] border border-[#1E293B]'
+                        ? 'bg-[#F59E0B] text-white shadow-sm'
+                        : 'bg-white text-[#6B7280] hover:text-[#111827] border border-[rgba(17,24,39,0.10)] hover:border-[rgba(17,24,39,0.20)]'
                     }`}
                   >
                     Upload
@@ -1393,7 +1407,7 @@ export default function TryPage() {
                             setSelectedDeviceId(e.target.value)
                             localStorage.setItem('pitchpractice_selected_device_id', e.target.value)
                           }}
-                          className="w-full px-3 py-2 bg-[#0B0F14] border border-[#1E293B] rounded-lg text-[#9AA4B2] text-sm"
+                          className="w-full px-3 py-2 bg-white border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] text-sm"
                           disabled={isRecording || isTestingMic}
                         >
                           {audioDevices.map((device) => (
@@ -1407,8 +1421,8 @@ export default function TryPage() {
 
                     {/* Test Mic Button */}
                     {!hasMicPermission && !isRecording && !run && (
-                      <div className="text-center p-3 bg-[#0B0F14] border border-[#22283A] rounded-lg">
-                        <p className="text-xs text-[#9AA4B2] mb-2">Enable microphone to see input level</p>
+                      <div className="text-center p-3 bg-[#F3F4F6] border border-[rgba(17,24,39,0.10)] rounded-lg">
+                        <p className="text-xs text-[#6B7280] mb-2">Enable microphone to see input level</p>
                         <Button
                           variant="secondary"
                           size="sm"
@@ -1424,7 +1438,7 @@ export default function TryPage() {
                     {(isRecording || isTestingMic) && (
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
-                          <div className="flex-1 h-4 bg-[#0B0F14] rounded-full overflow-hidden">
+                          <div className="flex-1 h-4 bg-[#F3F4F6] rounded-full overflow-hidden">
                             <div
                               className={`h-full transition-all duration-100 ${
                                 micLevel > 0.01 ? 'bg-[#22C55E]' : 'bg-[#EF4444]'
@@ -1432,7 +1446,7 @@ export default function TryPage() {
                               style={{ width: `${Math.min(micLevel * 100, 100)}%` }}
                             />
                           </div>
-                          <span className="text-xs text-[#9AA4B2] w-16 text-right">
+                          <span className="text-xs text-[#6B7280] w-16 text-right">
                             {(micLevel * 100).toFixed(1)}%
                           </span>
                         </div>
@@ -1461,7 +1475,7 @@ export default function TryPage() {
                             variant="ghost"
                             size="sm"
                             onClick={testMicrophone}
-                            className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
+                            className="w-full text-[#6B7280] hover:text-[#111827]"
                           >
                             🎤 Test microphone
                           </Button>
@@ -1473,7 +1487,7 @@ export default function TryPage() {
                       <div className="space-y-3">
                         {/* Timer */}
                         <div className="text-center">
-                          <div className="text-2xl font-bold text-[#E6E8EB] mb-2">
+                          <div className="text-2xl font-bold text-[#111827] mb-2">
                             {formatTime(recordingTime)}
                           </div>
                         </div>
@@ -1575,11 +1589,11 @@ export default function TryPage() {
                   <div
                     onDrop={handleDrop}
                     onDragOver={handleDragOver}
-                    className="border-2 border-dashed border-[#22283A] rounded-lg p-6 text-center hover:border-[#6B7280] transition-colors"
+                    className="border-2 border-dashed border-[rgba(17,24,39,0.15)] rounded-lg p-6 text-center hover:border-[rgba(17,24,39,0.25)] transition-colors bg-[#F3F4F6]"
                   >
                     <Upload className="h-10 w-10 text-[#6B7280] mx-auto mb-3" />
-                    <p className="text-sm text-[#E6E8EB] mb-2">Drag and drop an audio file</p>
-                    <p className="text-xs text-[#9AA4B2] mb-3">or</p>
+                    <p className="text-sm text-[#111827] mb-2">Drag and drop an audio file</p>
+                    <p className="text-xs text-[#6B7280] mb-3">or</p>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1609,8 +1623,8 @@ export default function TryPage() {
                 )}
 
                 {error && (
-                  <div className="p-3 bg-[#EF4444]/10 border border-[#EF4444]/30 rounded-lg">
-                    <p className="text-xs text-[#EF4444] mb-2">{error}</p>
+                  <div className="p-3 bg-[#FEE2E2] border border-[#FCA5A5] rounded-lg">
+                    <p className="text-xs text-[#DC2626] mb-2">{error}</p>
                     <Button
                       variant="secondary"
                       size="sm"
@@ -1631,18 +1645,18 @@ export default function TryPage() {
           {/* RIGHT COLUMN: Transcript & Feedback (Wide) */}
           <div className="space-y-8">
             {!run ? (
-              <Card className="p-16 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B] text-center">
-                <p className="text-[#9AA4B2]">Your transcript and feedback will appear here after you record.</p>
+              <Card className="p-16 bg-white border-[rgba(17,24,39,0.10)] shadow-sm text-center">
+                <p className="text-[#6B7280]">Your transcript and feedback will appear here after you record.</p>
               </Card>
             ) : (
               <>
                 {/* Metrics */}
                 {run.transcript && run.transcript.trim().length > 0 && (
-                  <Card className="p-6 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
+                  <Card className="p-6 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">
                     <div className="grid grid-cols-3 gap-4 text-center">
                       <div>
                         <p className="text-xs text-[#6B7280] mb-1">Duration</p>
-                        <p className="text-lg font-bold text-[#E6E8EB]">
+                        <p className="text-lg font-bold text-[#111827]">
                           {(() => {
                             // Use duration_ms as source of truth: local state > DB > audio_seconds
                             const durationSec = durationMs 
@@ -1656,13 +1670,13 @@ export default function TryPage() {
                       </div>
                       <div>
                         <p className="text-xs text-[#6B7280] mb-1">Words</p>
-                        <p className="text-lg font-bold text-[#E6E8EB]">
+                        <p className="text-lg font-bold text-[#111827]">
                           {run.word_count || (run.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : null) || '—'}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs text-[#6B7280] mb-1">WPM</p>
-                        <p className="text-lg font-bold text-[#E6E8EB]">
+                        <p className="text-lg font-bold text-[#111827]">
                           {(() => {
                             // Use duration_ms as source of truth for WPM calculation
                             const durationMsForWPM = durationMs 
@@ -1682,13 +1696,13 @@ export default function TryPage() {
                       const wpm = calculateWPM(run.transcript, durationMsForWPM)
                       if (wpm !== null) {
                         return (
-                          <p className="text-xs text-[#9AA4B2] text-center mt-3">
+                          <p className="text-xs text-[#6B7280] text-center mt-3">
                             {getWPMInterpretation(wpm)}
                           </p>
                         )
                       } else if (durationMsForWPM && durationMsForWPM < 5000) {
                         return (
-                          <p className="text-xs text-[#9AA4B2] text-center mt-3">
+                          <p className="text-xs text-[#6B7280] text-center mt-3">
                             Record 20–60s for accurate pacing.
                           </p>
                         )
@@ -1715,16 +1729,16 @@ export default function TryPage() {
                     const isHighlighted = highlightedCriterion && feedback?.purpose_label === highlightedCriterion
                     
                     const getStatusColor = (status: string) => {
-                      if (status === 'strong') return 'hover:border-[#22C55E]/50 hover:bg-[#22C55E]/5'
-                      if (status === 'needs_work') return 'hover:border-[#F97316]/50 hover:bg-[#F97316]/5'
-                      return 'hover:border-[#6B7280]/50 hover:bg-[#6B7280]/5'
+                      if (status === 'strong') return 'hover:border-[#22C55E]/30 hover:bg-[#D1FAE5]'
+                      if (status === 'needs_work') return 'hover:border-[#F97316]/30 hover:bg-[#FED7AA]'
+                      return 'hover:border-[#6B7280]/20 hover:bg-[#F3F4F6]'
                     }
                     
                     return (
                       <span
                         id={`sentence-${idx}`}
                         className={`group relative inline cursor-pointer transition-all rounded px-1 py-0.5 border border-transparent ${
-                          isHighlighted ? 'bg-[#F59E0B]/20 border-[#F59E0B]/50 animate-pulse' : getStatusColor(feedback?.status || 'unscored')
+                          isHighlighted ? 'bg-[#FEF3C7] border-[#F59E0B]/40 animate-pulse' : getStatusColor(feedback?.status || 'unscored')
                         }`}
                         onClick={() => {
                           setPinnedSentenceIdx(isPinned ? null : idx)
@@ -1732,27 +1746,27 @@ export default function TryPage() {
                       >
                         {sentence}
                         {feedback && (
-                          <div className={`absolute z-50 mt-2 p-3 bg-[#0B0F14] border border-[#22283A] rounded-lg shadow-xl min-w-[280px] max-w-[400px] ${
+                          <div className={`absolute z-50 mt-2 p-3 bg-white border border-[rgba(17,24,39,0.15)] rounded-lg shadow-xl min-w-[280px] max-w-[400px] ${
                             isPinned ? 'block' : 'hidden group-hover:block'
                           }`}
                           style={{ left: '50%', transform: 'translateX(-50%)', top: '100%' }}
                           >
                             <div className="space-y-2">
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium px-2 py-1 rounded border bg-[#121826] text-[#9AA4B2]">
+                                <span className="text-xs font-medium px-2 py-1 rounded border bg-[#F3F4F6] text-[#6B7280] border-[rgba(17,24,39,0.10)]">
                                   {feedback.purpose_label}
                                 </span>
                                 {feedback.score !== null && (
-                                  <span className="text-xs text-[#E6E8EB]">
+                                  <span className="text-xs text-[#111827]">
                                     {feedback.score}/10
                                   </span>
                                 )}
                               </div>
                               {feedback.why && (
-                                <p className="text-sm text-[#E6E8EB]">{feedback.why}</p>
+                                <p className="text-sm text-[#111827]">{feedback.why}</p>
                               )}
                               {feedback.suggestion && (
-                                <p className="text-sm text-[#9AA4B2]">{feedback.suggestion}</p>
+                                <p className="text-sm text-[#6B7280]">{feedback.suggestion}</p>
                               )}
                               {feedback.rewrite && (
                                 <div>
@@ -1769,12 +1783,12 @@ export default function TryPage() {
                                         return next
                                       })
                                     }}
-                                    className="text-xs text-[#F59E0B] hover:text-[#F97316]"
+                                    className="text-xs text-[#F59E0B] hover:text-[#D97706]"
                                   >
                                     {expandedRewrites.has(idx) ? 'Hide rewrite' : 'Show rewrite'}
                                   </button>
                                   {expandedRewrites.has(idx) && (
-                                    <p className="text-sm text-[#E6E8EB] italic mt-1">{feedback.rewrite}</p>
+                                    <p className="text-sm text-[#111827] italic mt-1">{feedback.rewrite}</p>
                                   )}
                                 </div>
                               )}
@@ -1784,7 +1798,7 @@ export default function TryPage() {
                                     e.stopPropagation()
                                     setPinnedSentenceIdx(null)
                                   }}
-                                  className="text-xs text-[#6B7280] hover:text-[#9AA4B2]"
+                                  className="text-xs text-[#6B7280] hover:text-[#111827]"
                                 >
                                   Close
                                 </button>
@@ -1797,14 +1811,14 @@ export default function TryPage() {
                   }
                   
                   return (
-                    <Card className="p-10 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
-                      <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Transcript</h3>
+                    <Card className="p-10 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">
+                      <h3 className="text-xl font-bold text-[#111827] mb-8">Transcript</h3>
                       <div className="max-h-[700px] overflow-y-auto">
-                        <div className="max-w-[80ch] mx-auto" style={{ lineHeight: '1.8' }}>
+                        <div className="max-w-[80ch] mx-auto" style={{ lineHeight: '1.9' }}>
                           {paragraphs.map((paragraph, pIdx) => {
                             let globalSentenceIdx = paragraphs.slice(0, pIdx).reduce((sum, p) => sum + p.length, 0)
                             return (
-                              <p key={pIdx} className="mb-4 text-[#E6E8EB] text-base">
+                              <p key={pIdx} className="mb-5 text-[#111827] text-base">
                                 {paragraph.map((sentence, sIdx) => {
                                   const globalIdx = globalSentenceIdx++
                                   return (
@@ -1832,10 +1846,10 @@ export default function TryPage() {
                     // Show empty state if transcript exists but no feedback
                     if (run.transcript) {
                       return (
-                        <Card className="p-10 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
-                          <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Your Evaluation</h3>
+                        <Card className="p-10 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">
+                          <h3 className="text-xl font-bold text-[#111827] mb-8">Your Evaluation</h3>
                           <div className="text-center py-8">
-                            <p className="text-sm text-[#9AA4B2] mb-4">Evaluation isn't generated yet.</p>
+                            <p className="text-sm text-[#6B7280] mb-4">Evaluation isn't generated yet.</p>
                             <Button
                               variant="primary"
                               size="lg"
@@ -1865,10 +1879,10 @@ export default function TryPage() {
                     <>
                       {/* Warning for short recordings */}
                       {isTooShort && (
-                        <Card className="p-4 bg-[#F97316]/10 border-[#F97316]/30">
+                        <Card className="p-4 bg-[#FEF3C7] border-[#F59E0B]/30">
                           <div className="flex items-start gap-2">
-                            <AlertCircle className="h-4 w-4 text-[#F97316] flex-shrink-0 mt-0.5" />
-                            <p className="text-sm text-[#F97316]">
+                            <AlertCircle className="h-4 w-4 text-[#F59E0B] flex-shrink-0 mt-0.5" />
+                            <p className="text-sm text-[#92400E]">
                               This recording is too short to fully evaluate this prompt. Record at least 20 seconds for accurate feedback.
                             </p>
                           </div>
@@ -1876,8 +1890,8 @@ export default function TryPage() {
                       )}
                       
                       {/* Rubric Breakdown */}
-                      <Card className="p-10 bg-gradient-to-br from-[#121826] to-[#0B0F14] border-[#1E293B]">
-                        <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Rubric Breakdown</h3>
+                      <Card className="p-10 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">
+                        <h3 className="text-xl font-bold text-[#111827] mb-8">Rubric Breakdown</h3>
                         <div className="space-y-3">
                           {feedbackData.rubric_scores && feedbackData.rubric_scores.length > 0 ? (
                             feedbackData.rubric_scores.map((rubricScore: any, idx: number) => {
@@ -1905,22 +1919,22 @@ export default function TryPage() {
                               return (
                                 <div
                                   key={idx}
-                                  className="p-5 rounded-lg border bg-[#0B0F14] border-[#1E293B]"
+                                  className="p-5 rounded-lg border bg-[#F3F4F6] border-[rgba(17,24,39,0.10)]"
                                 >
                                   <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-3 flex-1">
                                       <StatusIcon className={`h-5 w-5 ${statusColor} flex-shrink-0`} />
                                       <div className="flex-1">
                                         <div className="flex items-center justify-between mb-1">
-                                          <span className="text-sm font-medium text-[#E6E8EB]">
+                                          <span className="text-sm font-medium text-[#111827]">
                                             {criterionLabel}
                                           </span>
-                                          <span className="text-sm font-bold text-[#E6E8EB]">
+                                          <span className="text-sm font-bold text-[#111827]">
                                             {score} / {maxScore}
                                           </span>
                                         </div>
                                         {/* Progress bar */}
-                                        <div className="w-full h-2 bg-[#0B0F14] rounded-full overflow-hidden">
+                                        <div className="w-full h-2 bg-white rounded-full overflow-hidden">
                                           <div
                                             className={`h-full transition-all ${
                                               scorePercent >= 70 ? 'bg-[#22C55E]' :
@@ -1965,15 +1979,15 @@ export default function TryPage() {
                                     </Button>
                                   </div>
                                   {rubricScore.notes && (
-                                    <div className="mt-2 pt-2 border-t border-[#22283A]">
-                                      <p className="text-sm text-[#E6E8EB]">{rubricScore.notes}</p>
+                                    <div className="mt-2 pt-2 border-t border-[rgba(17,24,39,0.10)]">
+                                      <p className="text-sm text-[#111827]">{rubricScore.notes}</p>
                                     </div>
                                   )}
                                 </div>
                               )
                             })
                           ) : (
-                            <p className="text-sm text-[#9AA4B2] text-center py-4">
+                            <p className="text-sm text-[#6B7280] text-center py-4">
                               No rubric scores available
                             </p>
                           )}
@@ -2001,11 +2015,11 @@ export default function TryPage() {
                             : feedbackData.summary?.overall_notes || 'Review your pitch and try again.'
                         
                         return (
-                          <Card className="p-6 bg-gradient-to-br from-[#F59E0B]/20 to-[#F97316]/20 border-[#F59E0B]/50">
-                            <h4 className="text-sm font-semibold text-[#F59E0B] uppercase tracking-wide mb-2">
+                          <Card className="p-6 bg-[#FEF3C7] border-[#F59E0B]/40">
+                            <h4 className="text-sm font-semibold text-[#92400E] uppercase tracking-wide mb-2">
                               Next attempt, focus on this
                             </h4>
-                            <p className="text-sm text-[#E6E8EB]">{focusMessage}</p>
+                            <p className="text-sm text-[#111827]">{focusMessage}</p>
                           </Card>
                         )
                       })()}
@@ -2026,20 +2040,20 @@ export default function TryPage() {
 
             {/* Debug panel (collapsible) */}
             {DEBUG && (
-              <Card className="p-4 bg-[#0B0F14] border-[#1E293B] mt-6">
+              <Card className="p-4 bg-[#F3F4F6] border-[rgba(17,24,39,0.10)] mt-6">
                 <button
                   onClick={() => setIsDebugExpanded(!isDebugExpanded)}
                   className="w-full flex items-center justify-between text-left"
                 >
-                  <h4 className="text-sm font-bold text-[#E6E8EB]">Advanced / Debug</h4>
+                  <h4 className="text-sm font-bold text-[#6B7280]">Advanced / Debug</h4>
                   {isDebugExpanded ? (
-                    <ChevronUp className="h-4 w-4 text-[#9AA4B2]" />
+                    <ChevronUp className="h-4 w-4 text-[#6B7280]" />
                   ) : (
-                    <ChevronDown className="h-4 w-4 text-[#9AA4B2]" />
+                    <ChevronDown className="h-4 w-4 text-[#6B7280]" />
                   )}
                 </button>
                 {isDebugExpanded && (
-                  <div className="space-y-2 text-xs text-[#9AA4B2] mt-4">
+                  <div className="space-y-2 text-xs text-[#6B7280] mt-4">
                   <div className="grid grid-cols-2 gap-2">
                     <div>Active Run ID:</div>
                     <div className="font-mono">{run?.id || 'none'}</div>
@@ -2086,8 +2100,8 @@ export default function TryPage() {
                     <div>{selectedRubricId || 'none'}</div>
                   </div>
                   {lastError && (
-                    <div className="mt-2 pt-2 border-t border-[#22283A]">
-                      <div className="font-semibold text-[#E6E8EB] mb-1">Last Error:</div>
+                    <div className="mt-2 pt-2 border-t border-[rgba(17,24,39,0.10)]">
+                      <div className="font-semibold text-[#111827] mb-1">Last Error:</div>
                       <div className="text-xs space-y-1">
                         <div>Status: {lastError.status} {lastError.statusText}</div>
                         <div>Error: {lastError.error}</div>
@@ -2095,14 +2109,14 @@ export default function TryPage() {
                         {lastError.fix && <div>Fix: {lastError.fix}</div>}
                         {lastError.code && <div>Code: {lastError.code}</div>}
                       </div>
-                      <pre className="mt-2 p-2 bg-[#0B0F14] rounded text-xs overflow-auto max-h-40 font-mono text-[#E6E8EB]">
+                      <pre className="mt-2 p-2 bg-white rounded text-xs overflow-auto max-h-40 font-mono text-[#111827] border border-[rgba(17,24,39,0.10)]">
                         {JSON.stringify(lastError.fullResponse || lastError, null, 2)}
                       </pre>
                     </div>
                   )}
                   {lastFeedbackResponse && (
-                    <div className="mt-2 pt-2 border-t border-[#22283A]">
-                      <div className="font-semibold text-[#E6E8EB] mb-1">Last Feedback Response:</div>
+                    <div className="mt-2 pt-2 border-t border-[rgba(17,24,39,0.10)]">
+                      <div className="font-semibold text-[#111827] mb-1">Last Feedback Response:</div>
                       <div className="text-xs space-y-1">
                         <div>Status: {lastFeedbackResponse.status} {lastFeedbackResponse.statusText}</div>
                         <div>OK: {lastFeedbackResponse.ok ? 'yes' : 'no'}</div>
@@ -2114,14 +2128,14 @@ export default function TryPage() {
                           </>
                         )}
                       </div>
-                      <pre className="mt-2 p-2 bg-[#0B0F14] rounded text-xs overflow-auto max-h-40 font-mono text-[#E6E8EB]">
+                      <pre className="mt-2 p-2 bg-white rounded text-xs overflow-auto max-h-40 font-mono text-[#111827] border border-[rgba(17,24,39,0.10)]">
                         {JSON.stringify(lastFeedbackResponse.data || lastFeedbackResponse, null, 2)}
                       </pre>
                     </div>
                   )}
                   {currentTrackInfo && (
-                    <div className="mt-2 pt-2 border-t border-[#22283A]">
-                      <div className="font-semibold text-[#E6E8EB] mb-1">Current Track:</div>
+                    <div className="mt-2 pt-2 border-t border-[rgba(17,24,39,0.10)]">
+                      <div className="font-semibold text-[#111827] mb-1">Current Track:</div>
                       <div>Label: {currentTrackInfo.label || 'unknown'}</div>
                       <div>ReadyState: {currentTrackInfo.readyState}</div>
                       <div>Enabled: {currentTrackInfo.enabled ? 'yes' : 'no'}</div>
@@ -2129,15 +2143,15 @@ export default function TryPage() {
                     </div>
                   )}
                   {chunkInfo && (
-                    <div className="mt-2 pt-2 border-t border-[#22283A]">
-                      <div className="font-semibold text-[#E6E8EB] mb-1">Last Recording:</div>
+                    <div className="mt-2 pt-2 border-t border-[rgba(17,24,39,0.10)]">
+                      <div className="font-semibold text-[#111827] mb-1">Last Recording:</div>
                       <div>Chunks: {chunkInfo.count}</div>
                       <div>Total Size: {(chunkInfo.totalSize / 1024).toFixed(2)} KB</div>
                       <div>Chunk Sizes: {chunkInfo.sizes.map(s => `${(s / 1024).toFixed(1)}KB`).join(', ')}</div>
                     </div>
                   )}
-                  <div className="mt-2 pt-2 border-t border-[#22283A]">
-                    <div className="font-semibold text-[#E6E8EB] mb-1">Available Devices:</div>
+                  <div className="mt-2 pt-2 border-t border-[rgba(17,24,39,0.10)]">
+                    <div className="font-semibold text-[#111827] mb-1">Available Devices:</div>
                     {audioDevices.map((device, idx) => (
                       <div key={device.deviceId} className="text-xs">
                         {idx + 1}. {device.label || device.deviceId.substring(0, 20)}

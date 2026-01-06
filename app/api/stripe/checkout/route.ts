@@ -76,11 +76,26 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Stripe Checkout] Creating session for plan: ${plan}, priceId: ${priceId}, baseUrl: ${baseUrl}`)
 
+    // Check if price is recurring (subscription) or one-time
+    let priceMode: 'payment' | 'subscription' = 'payment'
+    try {
+      const price = await stripe.prices.retrieve(priceId)
+      if (price.type === 'recurring') {
+        priceMode = 'subscription'
+        console.log(`[Stripe Checkout] Price ${priceId} is recurring, using subscription mode`)
+      } else {
+        console.log(`[Stripe Checkout] Price ${priceId} is one-time, using payment mode`)
+      }
+    } catch (priceError: any) {
+      console.warn(`[Stripe Checkout] Could not retrieve price details, defaulting to payment mode:`, priceError.message)
+      // Default to payment mode if we can't check
+    }
+
     // Create checkout session
     let session
     try {
       session = await stripe.checkout.sessions.create({
-        mode: 'payment', // All plans are one-time payments for now
+        mode: priceMode,
         line_items: [
           {
             price: priceId,

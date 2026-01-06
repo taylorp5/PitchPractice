@@ -20,7 +20,7 @@ export function LoadingSpinner({ size = 'md', text, className = '' }: LoadingSpi
   return (
     <div className={`flex flex-col items-center justify-center gap-3 ${className}`}>
       <div className={`${sizeClasses[size]} inline-block animate-spin rounded-full border-[#22283A] border-t-[#F97316]`}></div>
-      {text && <p className={`text-[#9CA3AF] ${textSizeClasses[size]}`}>{text}</p>}
+      {text && <p className={`text-[#9AA4B2] ${textSizeClasses[size]}`}>{text}</p>}
     </div>
   )
 }

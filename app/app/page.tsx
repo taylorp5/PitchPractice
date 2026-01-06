@@ -464,29 +464,29 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 py-12 px-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-[#0B0F14] to-[#0F172A] py-12 px-4">
+      <div className="max-w-[1100px] mx-auto">
         {/* Hero Section */}
         <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4 bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-            PitchPractice
+          <h1 className="text-3xl font-bold text-[#E6E8EB] mb-2">
+            Practice Your Pitch
           </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Practice your pitch. Get precise feedback.
+          <p className="text-base text-[#9AA4B2] max-w-2xl mx-auto">
+            Record or upload your pitch to get AI-powered feedback
           </p>
         </div>
 
         {error && (
-          <Card className="mb-8 border-red-200 bg-red-50">
+          <Card className="mb-8 border-[#EF444430] bg-[#EF444420]">
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                <svg className="h-5 w-5 text-[#EF4444]" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-semibold text-red-900 mb-1">Error</h3>
-                <div className="text-sm text-red-800 whitespace-pre-line">{error}</div>
+                <h3 className="text-sm font-semibold text-[#EF4444] mb-1">Error</h3>
+                <div className="text-sm text-[#E6E8EB] whitespace-pre-line">{error}</div>
               </div>
             </div>
           </Card>
@@ -496,20 +496,21 @@ export default function HomePage() {
         <div className="space-y-6">
           {/* Step 1: Record/Upload */}
           <Card>
-            <div className="flex items-center mb-6">
-              <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl flex items-center justify-center font-bold text-lg shadow-md mr-4">
-                1
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Record or Upload Your Pitch</h2>
-                <p className="text-sm text-gray-600 mt-0.5">Choose your preferred method</p>
+            <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
+              <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-semibold text-[#9AA4B2] uppercase tracking-wider">Step 1</span>
+                </div>
+                <h2 className="text-xl font-bold text-[#E6E8EB]">Record or Upload Your Pitch</h2>
+                <p className="text-sm text-[#9AA4B2] mt-0.5">Choose your preferred method</p>
               </div>
             </div>
-            <div className="ml-14 space-y-4">
+            <div className="space-y-4">
               {/* Microphone Selector */}
               {audioDevices.length > 0 && (
                 <div>
-                  <label htmlFor="mic-select" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="mic-select" className="block text-sm font-medium text-[#9AA4B2] mb-2">
                     Microphone
                   </label>
                   <select
@@ -517,10 +518,10 @@ export default function HomePage() {
                     value={selectedDeviceId}
                     onChange={(e) => handleDeviceChange(e.target.value)}
                     disabled={isRecording || isUploading}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 text-sm border border-[rgba(255,255,255,0.08)] rounded-lg bg-[rgba(255,255,255,0.03)] text-[#E6E8EB] focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors"
                   >
                     {audioDevices.map((device) => (
-                      <option key={device.deviceId} value={device.deviceId}>
+                      <option key={device.deviceId} value={device.deviceId} className="bg-[#121826]">
                         {device.label || `Microphone ${device.deviceId.substring(0, 8)}`}
                       </option>
                     ))}
@@ -542,21 +543,21 @@ export default function HomePage() {
               {(isRecording || isTestingMic) && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 h-4 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="flex-1 h-4 bg-[rgba(255,255,255,0.08)] rounded-full overflow-hidden">
                       <div
                         className={`h-full transition-all duration-100 ${
-                          micLevel > 0.01 ? 'bg-green-500' : 'bg-red-500'
+                          micLevel > 0.01 ? 'bg-[#22C55E]' : 'bg-[#EF4444]'
                         }`}
                         style={{ width: `${Math.min(micLevel * 100, 100)}%` }}
                       />
                     </div>
-                    <span className="text-xs text-gray-600 w-16 text-right">
+                    <span className="text-xs text-[#9AA4B2] w-16 text-right">
                       {(micLevel * 100).toFixed(1)}%
                     </span>
                   </div>
                   
                   {/* Debug Info */}
-                  <div className="text-xs text-gray-500 space-y-0.5">
+                  <div className="text-xs text-[#6B7280] space-y-0.5">
                     {selectedDeviceId && audioDevices.find(d => d.deviceId === selectedDeviceId) && (
                       <div>Device: {audioDevices.find(d => d.deviceId === selectedDeviceId)?.label || 'Unknown'}</div>
                     )}
@@ -575,7 +576,7 @@ export default function HomePage() {
                   </div>
                   
                   {isSilent && (
-                    <p className="text-xs text-red-600 font-medium">
+                    <p className="text-xs text-[#EF4444] font-medium">
                       ⚠️ No microphone input detected
                     </p>
                   )}
@@ -609,43 +610,44 @@ export default function HomePage() {
                 className="hidden"
                 disabled={isUploading || isRecording}
               />
-              <p className="text-xs text-gray-500 italic">
-                💡 Best results: speak clearly, 2–6 minutes.
+              <p className="text-xs text-[#6B7280] italic">
+                💡 Pro tip: Speak clearly and aim for 2–6 minutes for best results.
               </p>
             </div>
           </Card>
 
           {/* Step 2: Pick Rubric */}
           <Card>
-            <div className="flex items-center mb-6">
-              <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-indigo-600 to-indigo-700 text-white rounded-xl flex items-center justify-center font-bold text-lg shadow-md mr-4">
-                2
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Pick Rubric</h2>
-                <p className="text-sm text-gray-600 mt-0.5">Select evaluation criteria</p>
+            <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
+              <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-semibold text-[#9AA4B2] uppercase tracking-wider">Step 2</span>
+                </div>
+                <h2 className="text-xl font-bold text-[#E6E8EB]">Pick Rubric</h2>
+                <p className="text-sm text-[#9AA4B2] mt-0.5">Select evaluation criteria</p>
               </div>
             </div>
-            <div className="ml-14">
+            <div>
               <select
                 id="rubric"
                 value={selectedRubric}
                 onChange={(e) => setSelectedRubric(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm transition-colors bg-white"
+                className="w-full px-4 py-3 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB]"
                 disabled={isUploading || isRecording || rubrics.length === 0}
               >
                 {rubrics.length === 0 ? (
-                  <option value="">Loading rubrics...</option>
+                  <option value="" className="bg-[#121826]">Loading rubrics...</option>
                 ) : (
                   rubrics.map((rubric) => (
-                    <option key={rubric.id} value={rubric.id}>
+                    <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
                       {rubric.name}
                     </option>
                   ))
                 )}
               </select>
               {selectedRubric && rubrics.find(r => r.id === selectedRubric) && (
-                <p className="mt-2 text-sm text-gray-600">
+                <p className="mt-3 text-sm text-[#9AA4B2]">
                   {rubrics.find(r => r.id === selectedRubric)?.description}
                 </p>
               )}
@@ -654,17 +656,18 @@ export default function HomePage() {
 
           {/* Step 3: Get Feedback (auto) */}
           <Card>
-            <div className="flex items-center mb-6">
-              <div className="flex-shrink-0 w-10 h-10 bg-gradient-to-br from-green-600 to-green-700 text-white rounded-xl flex items-center justify-center font-bold text-lg shadow-md mr-4">
-                3
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Get Feedback</h2>
-                <p className="text-sm text-gray-600 mt-0.5">AI-powered feedback</p>
+            <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
+              <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-semibold text-[#9AA4B2] uppercase tracking-wider">Step 3</span>
+                </div>
+                <h2 className="text-xl font-bold text-[#E6E8EB]">Get Feedback</h2>
+                <p className="text-sm text-[#9AA4B2] mt-0.5">AI-powered feedback</p>
               </div>
             </div>
-            <div className="ml-14">
-              <p className="text-sm text-gray-600">
+            <div>
+              <p className="text-sm text-[#9AA4B2]">
                 Your pitch will be automatically transcribed and analyzed. You'll get detailed feedback on your delivery, structure, and pacing.
               </p>
             </div>
@@ -672,7 +675,7 @@ export default function HomePage() {
 
           {/* Optional Title */}
           <Card>
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="title" className="block text-sm font-medium text-[#9AA4B2] mb-2">
               Title (optional)
             </label>
             <input
@@ -681,7 +684,7 @@ export default function HomePage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="My Pitch Practice"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+              className="w-full px-4 py-2 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB] placeholder:text-[#6B7280]"
               disabled={isUploading || isRecording}
             />
           </Card>

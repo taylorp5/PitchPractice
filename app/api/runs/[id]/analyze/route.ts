@@ -351,53 +351,90 @@ export async function POST(
       // Don't block - transcript exists, so we can analyze
     }
 
-    // Fetch rubric from unified rubrics table
-    // If run.rubric_id is missing, we'll fall back to default template below
+    // Fetch rubric: check rubric_snapshot_json first, then rubric_id
     let rubric: any = null
     let criteria: RubricCriterion[] = []
     let guidingQuestions: string[] = []
     let rubricJson: any = null
     
-    // Use requestRubricId if provided, otherwise use run.rubric_id
-    const rubricIdToUse = requestRubricId || run.rubric_id
-
-    if (rubricIdToUse) {
-      // Fetch from unified rubrics table
-      const { data: fetchedRubric } = await getSupabaseAdmin()
-        .from('rubrics')
-        .select('*')
-        .eq('id', rubricIdToUse)
-        .single()
+    // Priority 1: Use rubric_snapshot_json if present (from rubric_json upload)
+    if (run.rubric_snapshot_json) {
+      rubricJson = run.rubric_snapshot_json
       
-      if (fetchedRubric) {
-        rubric = fetchedRubric
-        rubricJson = rubric.rubric_json || null
+      // Extract criteria from snapshot
+      if (rubricJson.criteria && Array.isArray(rubricJson.criteria)) {
+        criteria = rubricJson.criteria.map((c: any) => ({
+          name: c.name || c.label || 'Unknown',
+          description: c.description || c.desc || '',
+        }))
+      }
+      
+      // Extract guiding_questions from snapshot
+      if (rubricJson.guiding_questions && Array.isArray(rubricJson.guiding_questions)) {
+        guidingQuestions = rubricJson.guiding_questions.filter((q: any) => 
+          typeof q === 'string' && q.trim().length > 0
+        )
+      }
+      
+      // Create a virtual rubric object for compatibility
+      rubric = {
+        name: rubricJson.name || rubricJson.title || 'Custom Rubric',
+        title: rubricJson.title || rubricJson.name || 'Custom Rubric',
+        description: rubricJson.description || null,
+        target_duration_seconds: rubricJson.target_duration_seconds || null,
+        max_duration_seconds: rubricJson.max_duration_seconds || null,
+      }
+      
+      console.log('[Analyze] Using rubric_snapshot_json:', {
+        runId: id,
+        name: rubric.name,
+        criteriaCount: criteria.length,
+      })
+    }
+    // Priority 2: Use rubric_id from database (existing behavior)
+    else {
+      // Use requestRubricId if provided, otherwise use run.rubric_id
+      const rubricIdToUse = requestRubricId || run.rubric_id
 
-        // Extract criteria from rubric_json if available, otherwise fall back to criteria field
-        if (rubricJson && rubricJson.criteria && Array.isArray(rubricJson.criteria)) {
-          criteria = rubricJson.criteria.map((c: any) => ({
-            name: c.name || c.label || 'Unknown',
-            description: c.description || '',
-          }))
-        } else if (rubric.criteria && Array.isArray(rubric.criteria)) {
-          // Fallback to legacy criteria field
-          criteria = rubric.criteria.map((c: any) => ({
-            name: c.name || c.label || 'Unknown',
-            description: c.description || '',
-          }))
-        }
+      if (rubricIdToUse) {
+        // Fetch from unified rubrics table
+        const { data: fetchedRubric } = await getSupabaseAdmin()
+          .from('rubrics')
+          .select('*')
+          .eq('id', rubricIdToUse)
+          .single()
+        
+        if (fetchedRubric) {
+          rubric = fetchedRubric
+          rubricJson = rubric.rubric_json || null
 
-        // Extract guiding_questions from rubric_json
-        if (rubricJson && rubricJson.guiding_questions && Array.isArray(rubricJson.guiding_questions)) {
-          guidingQuestions = rubricJson.guiding_questions.filter((q: any) => 
-            typeof q === 'string' && q.trim().length > 0
-          )
+          // Extract criteria from rubric_json if available, otherwise fall back to criteria field
+          if (rubricJson && rubricJson.criteria && Array.isArray(rubricJson.criteria)) {
+            criteria = rubricJson.criteria.map((c: any) => ({
+              name: c.name || c.label || 'Unknown',
+              description: c.description || '',
+            }))
+          } else if (rubric.criteria && Array.isArray(rubric.criteria)) {
+            // Fallback to legacy criteria field
+            criteria = rubric.criteria.map((c: any) => ({
+              name: c.name || c.label || 'Unknown',
+              description: c.description || '',
+            }))
+          }
+
+          // Extract guiding_questions from rubric_json
+          if (rubricJson && rubricJson.guiding_questions && Array.isArray(rubricJson.guiding_questions)) {
+            guidingQuestions = rubricJson.guiding_questions.filter((q: any) => 
+              typeof q === 'string' && q.trim().length > 0
+            )
+          }
         }
       }
     }
 
     // Fallback to default template rubric if not found
     if (!rubric) {
+      const rubricIdToUse = requestRubricId || run.rubric_id
       console.warn('[Analyze] Rubric not found, using default template:', { 
         runId: id, 
         rubricId: rubricIdToUse 
@@ -438,11 +475,13 @@ export async function POST(
     }
 
     if (!rubric || criteria.length === 0) {
+      const rubricIdToUse = requestRubricId || run.rubric_id
       console.error('[Analyze] No valid rubric found (including fallback):', { 
         runId: id, 
         rubricId: rubricIdToUse,
         hasRubric: !!rubric,
-        criteriaCount: criteria.length
+        criteriaCount: criteria.length,
+        hasSnapshot: !!run.rubric_snapshot_json,
       })
       return NextResponse.json(
         { 

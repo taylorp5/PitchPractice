@@ -514,13 +514,22 @@ export default function PracticePage() {
       
       // Handle rubric selection: parsed rubric (upload/paste), custom rubric (builder), or default
       if ((rubricMode === 'upload' || rubricMode === 'paste') && parsedCustomRubric) {
-        // For parsed rubrics, use a placeholder rubric_id for the run creation
-        // The actual parsed rubric will be used in the analyze endpoint via prompt_rubric
-        if (rubrics.length > 0) {
-          formData.append('rubric_id', rubrics[0].id)
-        } else {
-          formData.append('rubric_id', '')
+        // For parsed rubrics, send rubric_json instead of rubric_id
+        // Convert parsed rubric to the format expected by the API
+        const rubricJson = {
+          name: parsedCustomRubric.title || 'Custom Rubric',
+          description: parsedCustomRubric.description || parsedCustomRubric.context_summary || null,
+          criteria: parsedCustomRubric.criteria.map((c: any) => ({
+            name: c.name,
+            description: c.description || null,
+            weight: c.weight || null,
+          })),
+          target_duration_seconds: parsedCustomRubric.target_duration_seconds || null,
+          max_duration_seconds: parsedCustomRubric.max_duration_seconds || null,
+          guiding_questions: parsedCustomRubric.guiding_questions || [],
         }
+        formData.append('rubric_json', JSON.stringify(rubricJson))
+        
         // Use parsed rubric context if available, otherwise use pitchContext
         const contextToUse = parsedCustomRubric.context_summary || pitchContext
         if (contextToUse && contextToUse.trim()) {
@@ -541,8 +550,17 @@ export default function PracticePage() {
         if (contextToUse.trim()) {
           formData.append('pitch_context', contextToUse.trim())
         }
-      } else {
+      } else if (rubricMode === 'default') {
+        // Default mode: send rubric_id
         formData.append('rubric_id', selectedRubricId)
+        if (pitchContext.trim()) {
+          formData.append('pitch_context', pitchContext.trim())
+        }
+      } else {
+        // Fallback: should not happen, but send rubric_id if available
+        if (selectedRubricId) {
+          formData.append('rubric_id', selectedRubricId)
+        }
         if (pitchContext.trim()) {
           formData.append('pitch_context', pitchContext.trim())
         }

@@ -2,11 +2,25 @@
 
 import { Check } from 'lucide-react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { useEffect, useState, Suspense } from 'react'
 import { Button } from '@/components/ui/Button'
+import { getUserPlan, UserPlan } from '@/lib/plan'
 
-export default function UpgradePage() {
-  // TODO: Replace with actual user plan from auth/session
-  const currentPlan: 'free' | 'starter' | 'coach' | 'day_pass' | null = null
+function UpgradePageContent() {
+  const searchParams = useSearchParams()
+  const [currentPlan, setCurrentPlan] = useState<UserPlan>('free')
+  const [isLoading, setIsLoading] = useState(true)
+  
+  useEffect(() => {
+    getUserPlan().then(plan => {
+      setCurrentPlan(plan)
+      setIsLoading(false)
+    })
+  }, [])
+  
+  // Get plan from query param if present (for highlighting)
+  const highlightedPlan = searchParams.get('plan') as UserPlan | null
 
   return (
     <div className="min-h-screen bg-[#F7F7F8] py-12 px-4">
@@ -122,18 +136,17 @@ export default function UpgradePage() {
               </li>
             </ul>
 
-            <Button
-              variant="primary"
-              size="lg"
-              className="w-full"
-              disabled
-              title="Coming soon"
-              onClick={() => {
-                // Placeholder - wire to existing paid upgrade flow if Starter price exists
-              }}
-            >
-              Upgrade to Starter
-            </Button>
+            <Link href="/upgrade?plan=starter" className="block">
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                disabled={currentPlan === 'starter'}
+                title={currentPlan === 'starter' ? 'Current plan' : undefined}
+              >
+                {currentPlan === 'starter' ? 'Current Plan' : 'Upgrade to Starter'}
+              </Button>
+            </Link>
           </div>
 
           {/* Coach */}
@@ -182,16 +195,17 @@ export default function UpgradePage() {
               </li>
             </ul>
 
-            <Button
-              variant="primary"
-              size="lg"
-              className="w-full"
-              onClick={() => {
-                // Placeholder - no checkout wiring
-              }}
-            >
-              Upgrade to Coach
-            </Button>
+            <Link href="/upgrade?plan=coach" className="block">
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                disabled={currentPlan === 'coach'}
+                title={currentPlan === 'coach' ? 'Current plan' : undefined}
+              >
+                {currentPlan === 'coach' ? 'Current Plan' : 'Upgrade to Coach'}
+              </Button>
+            </Link>
           </div>
 
           {/* Day Pass */}
@@ -225,21 +239,37 @@ export default function UpgradePage() {
               </li>
             </ul>
 
-            <Button
-              variant="primary"
-              size="lg"
-              className="w-full"
-              onClick={() => {
-                // Placeholder - no checkout wiring
-              }}
-            >
-              Get Day Pass
-            </Button>
+            <Link href="/upgrade?plan=daypass" className="block">
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full"
+                disabled={currentPlan === 'daypass'}
+                title={currentPlan === 'daypass' ? 'Current plan' : undefined}
+              >
+                {currentPlan === 'daypass' ? 'Current Plan' : 'Get Day Pass'}
+              </Button>
+            </Link>
           </div>
         </div>
       </div>
     </div>
   )
 }
+
+export default function UpgradePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#F7F7F8] py-12 px-4">
+        <div className="max-w-7xl mx-auto text-center">
+          <p className="text-[#6B7280]">Loading...</p>
+        </div>
+      </div>
+    }>
+      <UpgradePageContent />
+    </Suspense>
+  )
+}
+
 
 

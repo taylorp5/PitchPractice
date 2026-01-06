@@ -46,9 +46,11 @@ interface Run {
   audio_url: string | null
   word_count: number | null
   words_per_minute: number | null
+  rubric_snapshot_json: any | null
   rubrics: {
     id: string
     name: string
+    title?: string
     description: string | null
     criteria: any
     target_duration_seconds: number | null
@@ -456,7 +458,7 @@ export default function RunPage() {
           {/* Main Column - Transcript + Feedback */}
           <div className="lg:col-span-2 space-y-6">
             {/* Prompt/Rubric Card - Show which prompt was used */}
-            {run.rubrics ? (
+            {(run.rubrics || run.rubric_snapshot_json) ? (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -467,19 +469,20 @@ export default function RunPage() {
                   <div className="space-y-3">
                     <div>
                       <h3 className="text-lg font-semibold text-[#E5E7EB] mb-2">
-                        {run.rubrics.name}
+                        {run.rubric_snapshot_json?.name || run.rubric_snapshot_json?.title || run.rubrics?.name || run.rubrics?.title || 'Custom Rubric'}
                       </h3>
-                      {run.rubrics.description && (
+                      {(run.rubric_snapshot_json?.description || run.rubrics?.description) && (
                         <p className="text-sm text-[#9CA3AF]">
-                          {run.rubrics.description}
+                          {run.rubric_snapshot_json?.description || run.rubrics?.description}
                         </p>
                       )}
                     </div>
-                    {run.rubrics.criteria && Array.isArray(run.rubrics.criteria) && run.rubrics.criteria.length > 0 && (
+                    {((run.rubric_snapshot_json?.criteria && Array.isArray(run.rubric_snapshot_json.criteria)) || 
+                      (run.rubrics?.criteria && Array.isArray(run.rubrics.criteria))) && (
                       <div className="pt-3 border-t border-[#22283A]">
-                        <p className="text-xs font-semibold text-[#9CA3AF] mb-2 uppercase tracking-wide">Guiding Questions:</p>
+                        <p className="text-xs font-semibold text-[#9CA3AF] mb-2 uppercase tracking-wide">Criteria:</p>
                         <ul className="space-y-2">
-                          {run.rubrics.criteria.map((criterion: any, idx: number) => (
+                          {(run.rubric_snapshot_json?.criteria || run.rubrics?.criteria || []).map((criterion: any, idx: number) => (
                             <li key={idx} className="flex items-start gap-2 text-sm text-[#E5E7EB]">
                               <span className="text-[#F59E0B] mt-0.5 flex-shrink-0">•</span>
                               <div>
@@ -624,7 +627,7 @@ export default function RunPage() {
                     <Button
                       onClick={handleGetFeedback}
                       variant="primary"
-                      disabled={isGettingFeedback || !run.rubrics}
+                      disabled={isGettingFeedback || (!run.rubrics && !run.rubric_snapshot_json)}
                       isLoading={isGettingFeedback}
                     >
                       {isGettingFeedback ? (
@@ -839,7 +842,7 @@ export default function RunPage() {
                         <span>Rewrite your pitch instantly</span>
                       </li>
                     </ul>
-                    <Link href="/upgrade">
+                    <Link href="/upgrade?plan=coach">
                       <Button variant="primary" className="w-full">
                         Upgrade to Coach
                       </Button>
@@ -926,7 +929,7 @@ export default function RunPage() {
                       variant="primary"
                       size="sm"
                       className="w-full"
-                      disabled={isGettingFeedback || !run.rubrics}
+                      disabled={isGettingFeedback || (!run.rubrics && !run.rubric_snapshot_json)}
                       isLoading={isGettingFeedback}
                     >
                       {isGettingFeedback ? (
@@ -987,8 +990,12 @@ export default function RunPage() {
                   <StatPill label="Duration" value={formatDuration(run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds)} />
                   <StatPill label="Word Count" value={run.word_count !== null && run.word_count !== undefined ? run.word_count.toLocaleString() : null} />
                   <StatPill label="WPM" value={run.words_per_minute !== null && run.words_per_minute !== undefined ? run.words_per_minute : null} />
-                  {run.rubrics?.target_duration_seconds && (
-                    <StatPill label="Target" value={formatDuration(run.rubrics.target_duration_seconds)} className="border-[#F97316]/50" />
+                  {(run.rubric_snapshot_json?.target_duration_seconds || run.rubrics?.target_duration_seconds) && (
+                    <StatPill 
+                      label="Target" 
+                      value={formatDuration(run.rubric_snapshot_json?.target_duration_seconds || run.rubrics?.target_duration_seconds || 0)} 
+                      className="border-[#F97316]/50" 
+                    />
                   )}
                 </div>
               </Card>

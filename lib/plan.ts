@@ -13,9 +13,21 @@ export type UserPlan = 'free' | 'starter' | 'coach' | 'daypass'
  * - Coach: signed-in user with entitlement = "coach"
  * - Daypass: signed-in user with entitlement = "daypass"
  * 
+ * Dev override: If NEXT_PUBLIC_PLAN_OVERRIDE is set and NODE_ENV !== 'production',
+ * return that value (free | starter | coach | daypass).
+ * 
  * If plan detection is not implemented, defaults to "free" if unknown.
  */
 export async function getUserPlan(): Promise<UserPlan> {
+  // Dev-only plan override for testing
+  if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+    const override = process.env.NEXT_PUBLIC_PLAN_OVERRIDE
+    if (override && ['free', 'starter', 'coach', 'daypass'].includes(override)) {
+      console.log('[Plan Override] Using dev override:', override)
+      return override as UserPlan
+    }
+  }
+  
   try {
     const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()

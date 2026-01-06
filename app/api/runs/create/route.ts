@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const audioFile = formData.get('audio') as File
     const rubricId = formData.get('rubric_id') as string
+    const rubricJsonStr = formData.get('rubric_json') as string | null
     const sessionId = formData.get('session_id') as string
     const title = formData.get('title') as string | null
     const durationMsStr = formData.get('duration_ms') as string | null
@@ -55,17 +56,85 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Handle missing rubric_id by getting the first available rubric
-    let finalRubricId = rubricId
+    // Handle rubric: either rubric_id OR rubric_json
+    let finalRubricId: string | null = rubricId || null
     let rubricName: string | null = null
+    let rubricSnapshotJson: any = null
     
-    if (!finalRubricId) {
+    // Validate and parse rubric_json if provided
+    if (rubricJsonStr) {
+      try {
+        const parsedRubric = JSON.parse(rubricJsonStr)
+        
+        // Validate minimal schema: criteria is non-empty array and each criterion has a name
+        if (!parsedRubric.criteria || !Array.isArray(parsedRubric.criteria) || parsedRubric.criteria.length === 0) {
+          return NextResponse.json(
+            { 
+              ok: false, 
+              error: 'Invalid rubric_json: criteria must be a non-empty array',
+              details: 'The rubric_json must contain a criteria array with at least one criterion'
+            },
+            { status: 400 }
+          )
+        }
+        
+        // Validate each criterion has a name
+        for (let i = 0; i < parsedRubric.criteria.length; i++) {
+          const criterion = parsedRubric.criteria[i]
+          if (!criterion.name || typeof criterion.name !== 'string' || criterion.name.trim().length === 0) {
+            return NextResponse.json(
+              { 
+                ok: false, 
+                error: `Invalid rubric_json: criterion at index ${i} must have a name`,
+                details: 'Each criterion in the criteria array must have a non-empty name field'
+              },
+              { status: 400 }
+            )
+          }
+        }
+        
+        // Store the validated rubric snapshot
+        rubricSnapshotJson = parsedRubric
+        rubricName = parsedRubric.name || parsedRubric.title || 'Custom Rubric'
+        
+        if (DEBUG) {
+          console.log('[Create Run] Using rubric_json snapshot:', {
+            name: rubricName,
+            criteriaCount: parsedRubric.criteria.length,
+          })
+        }
+      } catch (parseError: any) {
+        return NextResponse.json(
+          { 
+            ok: false, 
+            error: 'Invalid rubric_json: not valid JSON',
+            details: parseError.message || 'Failed to parse rubric_json as JSON'
+          },
+          { status: 400 }
+        )
+      }
+    }
+    // Handle rubric_id (existing behavior)
+    else if (finalRubricId) {
+      // Fetch rubric name for storing in title if needed
+      const { data: rubricData } = await getSupabaseAdmin()
+        .from('rubrics')
+        .select('name, title')
+        .eq('id', finalRubricId)
+        .single()
+      
+      if (rubricData) {
+        rubricName = rubricData.name || rubricData.title || null
+      }
+    }
+    // Handle missing rubric_id by getting the first available rubric
+    else {
       if (DEBUG) {
-        console.log('[Create Run] No rubric_id provided, fetching first available rubric')
+        console.log('[Create Run] No rubric_id or rubric_json provided, fetching first available rubric')
       }
       const { data: rubrics, error: rubricError } = await getSupabaseAdmin()
         .from('rubrics')
-        .select('id, name')
+        .select('id, name, title')
         .order('created_at', { ascending: false })
         .limit(1)
       
@@ -76,27 +145,16 @@ export async function POST(request: NextRequest) {
             ok: false, 
             error: 'No rubric available',
             details: rubricError?.message || 'No rubrics found in database',
-            fix: 'Please ensure at least one rubric exists in the database'
+            fix: 'Please ensure at least one rubric exists in the database or provide rubric_json'
           },
           { status: 400 }
         )
       }
       
       finalRubricId = rubrics[0].id
-      rubricName = rubrics[0].name
+      rubricName = rubrics[0].name || rubrics[0].title || null
       if (DEBUG) {
         console.log('[Create Run] Using default rubric:', finalRubricId, 'name:', rubricName)
-      }
-    } else {
-      // Fetch rubric name for storing in title if needed
-      const { data: rubricData } = await getSupabaseAdmin()
-        .from('rubrics')
-        .select('name')
-        .eq('id', finalRubricId)
-        .single()
-      
-      if (rubricData) {
-        rubricName = rubricData.name
       }
     }
     
@@ -132,21 +190,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Create pitch run record - use .select('*') to get all fields back
+    const insertData: any = {
+      id: runId,
+      session_id: sessionId,
+      title: finalTitle,
+      audio_path: audioPath,
+      status: 'uploaded',
+      audio_seconds: audioSeconds, // Set from duration_ms if provided
+      duration_ms: durationMs, // Store duration_ms as source of truth
+      user_id: userId, // Store user_id if authenticated
+      pitch_context: pitchContext || null, // Store pitch context if provided
+    }
+    
+    // Set rubric_id only if provided (not when using rubric_json)
+    if (finalRubricId) {
+      insertData.rubric_id = finalRubricId
+    }
+    
+    // Store rubric snapshot if provided
+    if (rubricSnapshotJson) {
+      insertData.rubric_snapshot_json = rubricSnapshotJson
+    }
+    
     const { data: run, error: dbError } = await getSupabaseAdmin()
       .from('pitch_runs')
-      .insert({
-        id: runId,
-        session_id: sessionId,
-        title: finalTitle,
-        audio_path: audioPath,
-        status: 'uploaded',
-        rubric_id: finalRubricId,
-        audio_seconds: audioSeconds, // Set from duration_ms if provided
-        duration_ms: durationMs, // Store duration_ms as source of truth
-        user_id: userId, // Store user_id if authenticated
-        pitch_context: pitchContext || null, // Store pitch context if provided
-      })
-      .select('id, session_id, created_at, title, audio_path, audio_seconds, duration_ms, transcript, analysis_json, status, error_message, rubric_id, word_count, words_per_minute, user_id, pitch_context')
+      .insert(insertData)
+      .select('id, session_id, created_at, title, audio_path, audio_seconds, duration_ms, transcript, analysis_json, status, error_message, rubric_id, rubric_snapshot_json, word_count, words_per_minute, user_id, pitch_context')
       .single()
 
     if (dbError) {
@@ -395,6 +464,7 @@ export async function POST(request: NextRequest) {
         status: run.status,
         error_message: run.error_message,
         rubric_id: run.rubric_id,
+        rubric_snapshot_json: run.rubric_snapshot_json || null,
         word_count: run.word_count || null,
         words_per_minute: run.words_per_minute || null,
       },

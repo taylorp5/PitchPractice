@@ -1107,7 +1107,7 @@ export default function HomePage() {
                     <span>Rewrite your pitch instantly</span>
                   </li>
                 </ul>
-                <Link href="/upgrade">
+                <Link href="/upgrade?plan=coach">
                   <Button variant="primary" className="w-full">
                     Upgrade to Coach
                   </Button>

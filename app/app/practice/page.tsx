@@ -25,7 +25,8 @@ interface Run {
 
 interface UserRubric {
   id: string
-  title: string
+  title?: string
+  name?: string
   description: string | null
   target_duration_seconds: number | null
   criteria: Array<{
@@ -33,6 +34,7 @@ interface UserRubric {
     label: string
     description?: string
   }>
+  isUserRubric?: boolean
 }
 
 export default function PracticePage() {
@@ -887,7 +889,7 @@ export default function PracticePage() {
     setIsPlaying(!isPlaying)
   }
 
-  const selectedRubric = rubrics.find(r => r.id === selectedRubricId);
+  const selectedRubric = rubrics.find(r => r.id === selectedRubricId) as any;
   const isCoachOrDaypass = userPlan === 'coach' || userPlan === 'daypass';
   const isStarterOrAbove = userPlan !== 'free';
   
@@ -1104,7 +1106,7 @@ export default function PracticePage() {
                       
                       return (
                         <>
-                          {defaultRubrics.map((rubric) => (
+                          {defaultRubrics.map((rubric: any) => (
                             <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
                               {rubric.title || rubric.name || rubric.id}
                             </option>

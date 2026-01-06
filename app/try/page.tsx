@@ -1284,41 +1284,12 @@ export default function TryPage() {
         color: 'var(--pp-text)',
       } as React.CSSProperties}
     >
-      {/* Header with Navbar - Keep dark for brand continuity */}
-      <nav className="sticky top-0 z-50 bg-[#0B0F14]/80 backdrop-blur-md border-b border-[#22283A] shadow-lg shadow-black/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <a href="/" className="flex items-center gap-2 group">
-              <div className="w-8 h-8 bg-[#F59E0B] rounded-lg flex items-center justify-center shadow-md shadow-[#F59E0B]/30 group-hover:shadow-lg group-hover:shadow-[#F59E0B]/40 transition-shadow">
-                <span className="text-[#0B0F14] font-bold text-lg">P</span>
-              </div>
-              <div>
-                <div className="font-bold text-[#E6E8EB] text-lg">PitchPractice</div>
-                <div className="text-xs text-[#6B7280] -mt-0.5">Practice your pitch. Get precise feedback.</div>
-              </div>
-            </a>
-
-            <div className="hidden md:flex items-center gap-6">
-              <a 
-                href="/upgrade" 
-                className="text-sm font-medium text-[#9AA4B2] hover:text-[#E6E8EB] transition-colors"
-              >
-                Upgrade
-              </a>
-              <Button variant="ghost" size="sm" href="/app" asChild>
-                Sign in
-              </Button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
       {/* Main Content */}
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Prompt Selection - Horizontal Row */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-[#111827] mb-4">What are you practicing today?</h2>
-          <div className="flex flex-wrap gap-3">
+        <div className="mb-6">
+          <h2 className="text-base font-semibold text-[#111827] mb-3">What are you practicing today?</h2>
+          <div className="flex flex-wrap gap-2.5">
             {PROMPTS.map((prompt) => (
               <button
                 key={prompt.id}
@@ -1645,8 +1616,9 @@ export default function TryPage() {
           {/* RIGHT COLUMN: Transcript & Feedback (Wide) */}
           <div className="space-y-8">
             {!run ? (
-              <Card className="p-16 bg-white border-[rgba(17,24,39,0.10)] shadow-sm text-center">
-                <p className="text-[#6B7280]">Your transcript and feedback will appear here after you record.</p>
+              <Card className="p-12 bg-white border-[rgba(17,24,39,0.10)] shadow-sm text-center">
+                <h3 className="text-lg font-semibold text-[#111827] mb-2">Your transcript will appear here</h3>
+                <p className="text-sm text-[#6B7280]">Record or upload a short clip to get feedback.</p>
               </Card>
             ) : (
               <>
@@ -2040,12 +2012,12 @@ export default function TryPage() {
 
             {/* Debug panel (collapsible) */}
             {DEBUG && (
-              <Card className="p-4 bg-[#F3F4F6] border-[rgba(17,24,39,0.10)] mt-6">
+              <Card className="p-3 bg-[#F3F4F6] border-[rgba(17,24,39,0.08)] mt-6">
                 <button
                   onClick={() => setIsDebugExpanded(!isDebugExpanded)}
                   className="w-full flex items-center justify-between text-left"
                 >
-                  <h4 className="text-sm font-bold text-[#6B7280]">Advanced / Debug</h4>
+                  <h4 className="text-xs font-medium text-[#6B7280]">Advanced / Debug</h4>
                   {isDebugExpanded ? (
                     <ChevronUp className="h-4 w-4 text-[#6B7280]" />
                   ) : (

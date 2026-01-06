@@ -1286,18 +1286,11 @@ export default function PracticePage() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => setRubricMode(rubricMode === 'custom' ? 'default' : 'custom')}
+                    onClick={() => router.push('/app/rubrics/new')}
                   >
-                    {rubricMode === 'custom' ? 'Hide' : 'Show'} Builder
+                    Open Builder
                   </Button>
                 </div>
-                {rubricMode === 'custom' && (
-                  <CustomRubricBuilder
-                    initialData={customRubric}
-                    onSave={handleCustomRubricSave}
-                    onUse={handleCustomRubricUse}
-                  />
-                )}
               </div>
             )}
 

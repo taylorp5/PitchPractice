@@ -111,7 +111,6 @@ const PROMPTS = [
 export default function TryPage() {
   const router = useRouter()
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'record' | 'upload'>('record')
   const [isRecording, setIsRecording] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -148,6 +147,7 @@ export default function TryPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const shouldDiscardRecordingRef = useRef<boolean>(false)
   const audioChunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -793,6 +793,15 @@ FEEDBACK SUMMARY
       mediaRecorder.onstop = async () => {
         stopMicLevelMeter()
         
+        // Check if recording should be discarded (re-record was pressed)
+        if (shouldDiscardRecordingRef.current) {
+          // Clean up and return without uploading
+          stream.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+          shouldDiscardRecordingRef.current = false
+          return
+        }
+        
         const totalSize = audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
         const actualMimeType = mediaRecorder.mimeType || mimeType
         
@@ -903,6 +912,7 @@ FEEDBACK SUMMARY
       setIsSilent(false)
       silenceStartRef.current = null
       setRecordingTime(0)
+      shouldDiscardRecordingRef.current = false
       
       // Track recording start time for accurate duration calculation
       const startTime = Date.now()
@@ -935,6 +945,11 @@ FEEDBACK SUMMARY
       mediaRecorderRef.current.pause()
       setIsPaused(true)
       setPauseStartTime(Date.now())
+      // Pause the timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+        timerIntervalRef.current = null
+      }
     }
   }
 
@@ -951,6 +966,18 @@ FEEDBACK SUMMARY
       setPausedTotalMs(prev => prev + pauseDuration)
       setPauseStartTime(null)
       setIsPaused(false)
+      // Resume the timer
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => {
+          const newTime = prev + 1
+          // Auto-stop at 2:00 for Free plan
+          if (newTime >= FREE_MAX_SECONDS) {
+            stopRecording()
+            return FREE_MAX_SECONDS
+          }
+          return newTime
+        })
+      }, 1000)
     }
   }
 
@@ -1465,6 +1492,9 @@ FEEDBACK SUMMARY
 
   // Re-record handler: stops recorder safely and resets local state
   const handleRerecord = () => {
+    // Set flag to prevent onstop callback from uploading
+    shouldDiscardRecordingRef.current = true
+    
     // Stop recorder safely if active (paused or recording)
     try {
       if (mediaRecorderRef.current && (isPaused || isRecording)) {
@@ -1474,7 +1504,7 @@ FEEDBACK SUMMARY
       // Ignore errors if recorder already stopped
     }
     
-    // Stop and clear stream tracks
+    // Stop and clear stream tracks immediately
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop())
       streamRef.current = null
@@ -1626,41 +1656,9 @@ FEEDBACK SUMMARY
                 <p className="text-xs text-[#6B7280] mb-3">
                   No signup required (optional)
                 </p>
-                
-                {/* Tabs */}
-                <div className="flex gap-2 justify-center mb-3">
-                  <button
-                    onClick={() => setActiveTab('record')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === 'record'
-                        ? 'bg-[#F59E0B] text-[#0B0F14] shadow-sm'
-                        : 'bg-[rgba(255,255,255,0.03)] text-[#9AA4B2] hover:text-[#E6E8EB] border border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.12)]'
-                    }`}
-                  >
-                    Record
-                  </button>
-                  <div className="relative group">
-                    <button
-                      onClick={() => {}}
-                      disabled={true}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                        activeTab === 'upload'
-                          ? 'bg-[#F59E0B] text-[#0B0F14] shadow-sm'
-                          : 'bg-[rgba(255,255,255,0.03)] text-[#9AA4B2] border border-[rgba(255,255,255,0.08)] opacity-50 cursor-not-allowed'
-                      }`}
-                    >
-                      Upload
-                    </button>
-                    <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs text-[#E6E8EB] bg-[#151A23] border border-[rgba(255,255,255,0.12)] rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-10">
-                        Coming soon
-                      </span>
-                  </div>
-                </div>
               </div>
 
-              <div>
-                {activeTab === 'record' ? (
-                  <div className="space-y-4">
+              <div className="space-y-4">
                     {/* Device selection - visually secondary */}
                     {audioDevices.length > 1 && (
                       <div className="text-sm">
@@ -1725,17 +1723,6 @@ FEEDBACK SUMMARY
 
                     {!isRecording && !run && (
                       <div className="space-y-3">
-                        <Button
-                          variant="primary"
-                          size="lg"
-                          onClick={startRecording}
-                          className="w-full shadow-lg shadow-[#F59E0B]/20"
-                          disabled={!selectedPrompt || isSilent || recordingTime >= FREE_MAX_SECONDS}
-                          title={recordingTime >= FREE_MAX_SECONDS ? 'Free trial limit reached (2:00)' : undefined}
-                        >
-                          <Mic className="mr-2 h-5 w-5" />
-                          Start recording
-                        </Button>
                         {!isTestingMic && hasMicPermission && (
                           <Button
                             variant="ghost"
@@ -1888,55 +1875,13 @@ FEEDBACK SUMMARY
                         )}
                       </div>
                     )}
-
                   </div>
-                ) : (
-                  <div
-                    onDrop={handleDrop}
-                    onDragOver={handleDragOver}
-                    className="border-2 border-dashed border-[rgba(255,255,255,0.12)] rounded-lg p-6 text-center hover:border-[rgba(255,255,255,0.20)] transition-colors bg-[rgba(255,255,255,0.03)]"
-                  >
-                    <Upload className="h-10 w-10 text-[#9AA4B2] mx-auto mb-3" />
-                    <p className="text-sm text-[#E6E8EB] mb-2">Drag and drop an audio file</p>
-                    <p className="text-xs text-[#9AA4B2] mb-3">or</p>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="audio/webm,audio/mp3,audio/wav,audio/m4a"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) handleFileUpload(file)
-                      }}
-                      className="hidden"
-                    />
-                    <Button
-                      variant="secondary"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Choose file
-                    </Button>
-                    <p className="text-xs text-[#9AA4B2] mt-4">
-                      Supports: WebM, MP3, WAV, M4A
-                    </p>
-                    <p className="text-xs text-[#6B7280] mt-2">
-                      Export transcript + feedback
-                    </p>
-                  </div>
-                )}
-
-                {isUploading && (
-                  <div className="text-center py-3">
-                    <LoadingSpinner size="md" text="Uploading..." />
-                  </div>
-                )}
 
                 {error && (
                   <div className="p-3 bg-[#EF444420] border border-[#EF444430] rounded-lg">
                     <p className="text-xs text-[#EF4444] mb-2">{error}</p>
                   </div>
                 )}
-
-              </div>
             </Card>
           </div>
 

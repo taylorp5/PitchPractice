@@ -1486,26 +1486,30 @@ export default function PracticePage() {
             )}
 
             {/* Test Mic Button */}
-            {!isTestingMic && hasMicPermission && (
-              <Button
-                onClick={testMicrophone}
-                disabled={isRecording || isUploading}
-                variant="ghost"
-                size="sm"
-                className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
-              >
-                🎤 Test microphone
-              </Button>
-            )}
-            {isTestingMic && (
-              <Button
-                onClick={testMicrophone}
-                variant="ghost"
-                size="sm"
-                className="w-full text-[#9AA4B2] hover:text-[#E6E8EB] border border-[#22283A]"
-              >
-                ⏹ End test
-              </Button>
+            {!isRecording && !run && (
+              <>
+                {!isTestingMic && (
+                  <Button
+                    onClick={testMicrophone}
+                    disabled={isUploading}
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
+                  >
+                    🎤 Test microphone
+                  </Button>
+                )}
+                {isTestingMic && (
+                  <Button
+                    onClick={testMicrophone}
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-[#9AA4B2] hover:text-[#E6E8EB] border border-[#22283A]"
+                  >
+                    ⏹ End test
+                  </Button>
+                )}
+              </>
             )}
 
             {/* Mic Level Meter */}

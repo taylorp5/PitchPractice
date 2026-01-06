@@ -184,28 +184,33 @@ export default function DashboardPage() {
 
         {/* Primary action cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-          <Card className="hover:border-[#334155] transition-colors cursor-pointer" onClick={() => router.push('/app/practice')}>
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <h2 className="text-xl font-semibold mb-2" style={{ color: colors.text.primary }}>
-                  Practice your pitch
-                </h2>
-                <p className="text-sm mb-4" style={{ color: colors.text.secondary }}>
-                  Record a new pitch and get AI-powered feedback
-                </p>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    router.push('/app/practice')
-                  }}
-                >
-                  Start Practice
-                </Button>
+          <div 
+            className="cursor-pointer"
+            onClick={() => router.push('/app/practice')}
+          >
+            <Card className="hover:border-[#334155] transition-colors">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h2 className="text-xl font-semibold mb-2" style={{ color: colors.text.primary }}>
+                    Practice your pitch
+                  </h2>
+                  <p className="text-sm mb-4" style={{ color: colors.text.secondary }}>
+                    Record a new pitch and get AI-powered feedback
+                  </p>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      router.push('/app/practice')
+                    }}
+                  >
+                    Start Practice
+                  </Button>
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          </div>
 
           <Card className="hover:border-[#334155] transition-colors">
             <div className="flex items-start justify-between">

@@ -157,9 +157,12 @@ export default function RubricsPage() {
         </div>
 
         {error && (
-          <Card className="p-4 mb-6" style={{ backgroundColor: colors.error.light, borderColor: colors.error.border }}>
+          <div 
+            className="p-4 mb-6 rounded-xl border"
+            style={{ backgroundColor: colors.error.light, borderColor: colors.error.border }}
+          >
             <p className="text-sm" style={{ color: colors.error.primary }}>{error}</p>
-          </Card>
+          </div>
         )}
 
         {/* Rubrics List */}
@@ -188,11 +191,12 @@ export default function RubricsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {rubrics.map((rubric) => (
-              <Card
+              <div
                 key={rubric.id}
-                className="hover:border-[#334155] transition-colors cursor-pointer"
+                className="cursor-pointer"
                 onClick={() => router.push(`/app/rubrics/${rubric.id}`)}
               >
+                <Card className="hover:border-[#334155] transition-colors">
                 <div className="flex items-start justify-between mb-3">
                   <h3 className="text-lg font-semibold flex-1" style={{ color: colors.text.primary }}>
                     {rubric.title}
@@ -224,7 +228,8 @@ export default function RubricsPage() {
                 <div className="text-xs pt-3 border-t" style={{ borderColor: colors.border.primary, color: colors.text.secondary }}>
                   Last used: {formatDate(rubric.last_used_at)}
                 </div>
-              </Card>
+                </Card>
+              </div>
             ))}
           </div>
         )}

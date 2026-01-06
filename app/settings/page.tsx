@@ -333,7 +333,7 @@ export default function SettingsPage() {
           </Card>
 
           {/* Danger Zone */}
-          <Card style={{ borderColor: colors.error.border }}>
+          <Card className="border-[#EF444430]">
             <h2 className="text-xl font-semibold mb-6" style={{ color: colors.error.primary }}>
               Danger Zone
             </h2>

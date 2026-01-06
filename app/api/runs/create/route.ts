@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server-auth'
 import { v4 as uuidv4 } from 'uuid'
 
 export const dynamic = 'force-dynamic'
@@ -12,6 +13,24 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Get authenticated user (optional - for /app/practice)
+    let userId: string | null = null
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        userId = user.id
+        if (DEBUG) {
+          console.log('[Create Run] Authenticated user:', userId)
+        }
+      }
+    } catch (authError) {
+      // Not authenticated - this is fine for /try page
+      if (DEBUG) {
+        console.log('[Create Run] No authenticated user (anonymous session)')
+      }
+    }
+
     const formData = await request.formData()
     const audioFile = formData.get('audio') as File
     const rubricId = formData.get('rubric_id') as string
@@ -20,6 +39,7 @@ export async function POST(request: NextRequest) {
     const durationMsStr = formData.get('duration_ms') as string | null
     const durationMs = durationMsStr ? parseInt(durationMsStr, 10) : null
     const audioSeconds = durationMs ? durationMs / 1000 : null
+    const pitchContext = formData.get('pitch_context') as string | null
 
     if (!audioFile) {
       return NextResponse.json(
@@ -66,7 +86,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (DEBUG) {
+      if (DEBUG) {
       console.log('[Create Run] Request data:', {
         hasAudioFile: !!audioFile,
         audioFileName: audioFile?.name,
@@ -74,6 +94,8 @@ export async function POST(request: NextRequest) {
         rubricId: finalRubricId,
         sessionId,
         title,
+        userId,
+        hasPitchContext: !!pitchContext,
       })
     }
 
@@ -106,8 +128,10 @@ export async function POST(request: NextRequest) {
         rubric_id: finalRubricId,
         audio_seconds: audioSeconds, // Set from duration_ms if provided
         duration_ms: durationMs, // Store duration_ms as source of truth
+        user_id: userId || null, // Set user_id if authenticated
+        pitch_context: pitchContext || null, // Store pitch context for feedback
       })
-      .select('id, session_id, created_at, title, audio_path, audio_seconds, duration_ms, transcript, analysis_json, status, error_message, rubric_id, word_count, words_per_minute')
+      .select('id, session_id, created_at, title, audio_path, audio_seconds, duration_ms, transcript, analysis_json, status, error_message, rubric_id, word_count, words_per_minute, user_id, pitch_context')
       .single()
 
     if (dbError) {
@@ -358,6 +382,8 @@ export async function POST(request: NextRequest) {
         rubric_id: run.rubric_id,
         word_count: run.word_count || null,
         words_per_minute: run.words_per_minute || null,
+        user_id: run.user_id || null,
+        pitch_context: run.pitch_context || null,
       },
       runId: run.id, // Also include runId for backwards compatibility
     })

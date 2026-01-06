@@ -82,7 +82,8 @@ function buildAnalysisPrompt(
   targetDurationSeconds: number | null,
   maxDurationSeconds: number | null,
   audioSeconds: number | null,
-  wpm: number | null
+  wpm: number | null,
+  pitchContext: string | null
 ): string {
   // Use prompt-specific rubric if provided, otherwise use generic criteria
   const rubricItems: PromptRubricItem[] = promptRubric || criteria.map((c, i) => ({
@@ -115,7 +116,10 @@ CRITICAL RULES (STRICTLY ENFORCED):
 4. Reference exact transcript segments for every point. No exceptions.
 5. If you cannot find a specific quote to support a point, omit that point entirely rather than making a generic claim.
 
-TRANSCRIPT:
+${pitchContext ? `PITCH CONTEXT (Use this to provide more relevant feedback):
+${pitchContext}
+
+` : ''}TRANSCRIPT:
 ${transcript}
 
 RUBRIC CRITERIA (Evaluate how well the pitch addresses each):
@@ -369,7 +373,8 @@ export async function POST(
       rubric.target_duration_seconds,
       rubric.max_duration_seconds,
       audioSeconds,
-      run.words_per_minute
+      run.words_per_minute,
+      (run as any).pitch_context || null
     )
 
     // Call OpenAI for analysis

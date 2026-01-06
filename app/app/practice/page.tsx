@@ -63,10 +63,21 @@ export default function PracticePage() {
   const [hasMicPermission, setHasMicPermission] = useState(false)
   const [feedback, setFeedback] = useState<any>(null)
   const [userPlan, setUserPlan] = useState<UserPlan>('free')
-  const [rubricMode, setRubricMode] = useState<'template' | 'custom'>('template')
+  // New rubric mode: 'default' | 'upload' | 'paste' (for Starter+)
+  // Keep 'custom' mode for Coach/daypass custom rubric builder
+  const [rubricMode, setRubricMode] = useState<'default' | 'upload' | 'paste' | 'custom'>('default')
   const [customRubric, setCustomRubric] = useState<CustomRubric | null>(null)
   const [selectedRubricSource, setSelectedRubricSource] = useState<'template' | 'custom'>('template')
   const [customRubricId, setCustomRubricId] = useState<string | null>(null)
+  
+  // New state for upload/paste rubric parsing
+  const [uploadedRubricFile, setUploadedRubricFile] = useState<File | null>(null)
+  const [pastedRubricText, setPastedRubricText] = useState<string>('')
+  const [parsedCustomRubric, setParsedCustomRubric] = useState<any | null>(null)
+  const [parsingRubric, setParsingRubric] = useState(false)
+  const [rubricParseError, setRubricParseError] = useState<string | null>(null)
+  
+  const rubricFileInputRef = useRef<HTMLInputElement>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -501,8 +512,21 @@ export default function PracticePage() {
       formData.append('audio', audioBlob, fileName)
       formData.append('session_id', sessionId)
       
-      // Handle custom rubric vs template rubric
-      if (selectedRubricSource === 'custom' && customRubric) {
+      // Handle rubric selection: parsed rubric (upload/paste), custom rubric (builder), or default
+      if ((rubricMode === 'upload' || rubricMode === 'paste') && parsedCustomRubric) {
+        // For parsed rubrics, use a placeholder rubric_id for the run creation
+        // The actual parsed rubric will be used in the analyze endpoint via prompt_rubric
+        if (rubrics.length > 0) {
+          formData.append('rubric_id', rubrics[0].id)
+        } else {
+          formData.append('rubric_id', '')
+        }
+        // Use parsed rubric context if available, otherwise use pitchContext
+        const contextToUse = parsedCustomRubric.context_summary || pitchContext
+        if (contextToUse && contextToUse.trim()) {
+          formData.append('pitch_context', contextToUse.trim())
+        }
+      } else if (selectedRubricSource === 'custom' && customRubric) {
         // Use the saved rubric_id if available, otherwise fall back to first available
         if (customRubricId) {
           formData.append('rubric_id', customRubricId)
@@ -645,7 +669,19 @@ export default function PracticePage() {
         pitch_context: null,
       }
 
-      if (selectedRubricSource === 'custom' && customRubric) {
+      // Handle rubric for analysis: parsed rubric, custom rubric, or default
+      if ((rubricMode === 'upload' || rubricMode === 'paste') && parsedCustomRubric) {
+        // Convert parsed rubric to prompt_rubric format
+        requestBody.prompt_rubric = parsedCustomRubric.criteria
+          .filter((c: any) => c.name && c.name.trim().length > 0)
+          .map((c: any, idx: number) => ({
+            id: c.id || `criterion_${idx}`,
+            label: c.name,
+            weight: c.weight || 1.0,
+            optional: false,
+          }))
+        requestBody.pitch_context = (parsedCustomRubric.context_summary || pitchContext).trim() || null
+      } else if (selectedRubricSource === 'custom' && customRubric) {
         // Use the saved rubric_id if available, otherwise fall back to prompt_rubric
         if (customRubricId) {
           requestBody.rubric_id = customRubricId
@@ -803,9 +839,14 @@ export default function PracticePage() {
 
   const selectedRubric = rubrics.find(r => r.id === selectedRubricId);
   const isCoachOrDaypass = userPlan === 'coach' || userPlan === 'daypass';
-  const hasValidRubric = rubricMode === 'template' 
+  const isStarterOrAbove = userPlan !== 'free';
+  
+  // Updated validation: Step 2 enabled if default rubric selected OR parsed rubric exists
+  const hasValidRubric = rubricMode === 'default'
     ? (selectedRubricId && selectedRubric !== undefined)
-    : (customRubric !== null && customRubric.title.trim().length > 0 && customRubric.criteria.length >= 3);
+    : rubricMode === 'custom'
+    ? (customRubric !== null && customRubric.title.trim().length > 0 && customRubric.criteria.length >= 3)
+    : (parsedCustomRubric !== null && parsedCustomRubric.criteria && parsedCustomRubric.criteria.length >= 3);
   const handleCustomRubricSave = (rubric: CustomRubric, rubricId?: string) => {
     setCustomRubric(rubric)
     if (rubricId) {
@@ -823,5 +864,626 @@ export default function PracticePage() {
     localStorage.setItem('pp_last_used_custom_rubric', JSON.stringify(rubric))
   }
 
-  return <div>ok</div>
+  // Parse rubric from upload or paste
+  const parseRubric = async () => {
+    setParsingRubric(true)
+    setRubricParseError(null)
+
+    try {
+      let response: Response
+
+      if (rubricMode === 'upload' && uploadedRubricFile) {
+        // Upload mode: send file as multipart/form-data
+        const formData = new FormData()
+        formData.append('rubric_file', uploadedRubricFile)
+        
+        response = await fetch('/api/rubrics/parse', {
+          method: 'POST',
+          body: formData,
+        })
+      } else if (rubricMode === 'paste' && pastedRubricText.trim()) {
+        // Paste mode: send text as JSON
+        response = await fetch('/api/rubrics/parse', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text: pastedRubricText }),
+        })
+      } else {
+        setRubricParseError('Please select a file or paste rubric text')
+        setParsingRubric(false)
+        return
+      }
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || data.details || 'Failed to parse rubric')
+      }
+
+      if (data.ok && data.rubric) {
+        setParsedCustomRubric(data.rubric)
+        setRubricParseError(null)
+      } else {
+        throw new Error('Invalid response from parse endpoint')
+      }
+    } catch (err: any) {
+      console.error('Parse rubric error:', err)
+      setRubricParseError(err.message || 'Failed to parse rubric')
+      setParsedCustomRubric(null)
+    } finally {
+      setParsingRubric(false)
+    }
+  }
+
+  // Handle rubric file selection
+  const handleRubricFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setUploadedRubricFile(file)
+      setRubricParseError(null)
+      setParsedCustomRubric(null)
+    }
+  }
+
+  // Reset parsed rubric when mode changes
+  useEffect(() => {
+    if (rubricMode === 'default') {
+      setParsedCustomRubric(null)
+      setUploadedRubricFile(null)
+      setPastedRubricText('')
+      setRubricParseError(null)
+    }
+  }, [rubricMode])
+
+  // Force default mode for free plan
+  useEffect(() => {
+    if (userPlan === 'free' && rubricMode !== 'default') {
+      setRubricMode('default')
+    }
+  }, [userPlan, rubricMode])
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-[#0B0F14] to-[#0F172A] py-12 px-4">
+      <div className="max-w-[1100px] mx-auto space-y-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-[#E6E8EB] mb-2">
+            Practice Your Pitch
+          </h1>
+          <p className="text-base text-[#9AA4B2] max-w-2xl mx-auto">
+            Record or upload your pitch to get AI-powered feedback
+          </p>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <Card className="border-[#EF444430] bg-[#EF444420]">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-[#EF4444] flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-[#EF4444] mb-1">Error</h3>
+                <div className="text-sm text-[#E6E8EB] whitespace-pre-line">{error}</div>
+              </div>
+              <button
+                onClick={() => setError(null)}
+                className="text-[#9AA4B2] hover:text-[#E6E8EB]"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </Card>
+        )}
+
+        {/* Step 1: Choose Evaluation Criteria */}
+        <Card>
+          <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
+            <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-semibold text-[#9AA4B2] uppercase tracking-wider">Step 1</span>
+              </div>
+              <h2 className="text-xl font-bold text-[#E6E8EB]">Choose Evaluation Criteria</h2>
+              <p className="text-sm text-[#9AA4B2] mt-0.5">Select or provide a rubric (required)</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* Mode Toggle - Only for Starter+ */}
+            {isStarterOrAbove && (
+              <div>
+                <label className="block text-sm font-medium text-[#9AA4B2] mb-2">
+                  Rubric Source
+                </label>
+                <div className="flex gap-2">
+                  <Button
+                    variant={rubricMode === 'default' ? 'primary' : 'secondary'}
+                    size="sm"
+                    onClick={() => setRubricMode('default')}
+                    className="flex-1"
+                  >
+                    Default
+                  </Button>
+                  <Button
+                    variant={rubricMode === 'upload' ? 'primary' : 'secondary'}
+                    size="sm"
+                    onClick={() => setRubricMode('upload')}
+                    className="flex-1"
+                  >
+                    Upload
+                  </Button>
+                  <Button
+                    variant={rubricMode === 'paste' ? 'primary' : 'secondary'}
+                    size="sm"
+                    onClick={() => setRubricMode('paste')}
+                    className="flex-1"
+                  >
+                    Paste
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Default Rubric Dropdown - Always visible, disabled when not in default mode */}
+            <div>
+              <label htmlFor="rubric-select" className="block text-sm font-medium text-[#9AA4B2] mb-2">
+                Select Rubric {rubricMode !== 'default' && '(disabled)'}
+              </label>
+              <select
+                id="rubric-select"
+                value={selectedRubricId}
+                onChange={(e) => setSelectedRubricId(e.target.value)}
+                disabled={rubricMode !== 'default' || isUploading || isRecording || rubrics.length === 0}
+                className="w-full px-4 py-3 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB] disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {rubrics.length === 0 ? (
+                  <option value="" className="bg-[#121826]">Loading rubrics...</option>
+                ) : (
+                  <>
+                    <option value="" className="bg-[#121826]">Select a rubric...</option>
+                    {rubrics.map((rubric) => (
+                      <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
+                        {rubric.title || rubric.id}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+              {rubricMode === 'default' && selectedRubric && (
+                <p className="mt-2 text-sm text-[#9AA4B2]">
+                  {selectedRubric.description}
+                </p>
+              )}
+            </div>
+
+            {/* Upload UI */}
+            {rubricMode === 'upload' && (
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="rubric-file" className="block text-sm font-medium text-[#9AA4B2] mb-2">
+                    Upload Rubric File
+                  </label>
+                  <input
+                    id="rubric-file"
+                    ref={rubricFileInputRef}
+                    type="file"
+                    accept=".json,.png,.jpg,.jpeg,.pdf"
+                    onChange={handleRubricFileChange}
+                    className="hidden"
+                  />
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="secondary"
+                      onClick={() => rubricFileInputRef.current?.click()}
+                      className="flex-1"
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      Choose File
+                    </Button>
+                    {uploadedRubricFile && (
+                      <span className="text-sm text-[#E6E8EB] flex-1">
+                        {uploadedRubricFile.name}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-xs text-[#9AA4B2]">
+                    Upload a class rubric image/PDF or a rubric JSON file.
+                  </p>
+                </div>
+                {uploadedRubricFile && (
+                  <Button
+                    variant="primary"
+                    onClick={parseRubric}
+                    disabled={parsingRubric}
+                    className="w-full"
+                  >
+                    {parsingRubric ? (
+                      <>
+                        <LoadingSpinner className="h-4 w-4 mr-2" />
+                        Parsing...
+                      </>
+                    ) : (
+                      'Parse Rubric'
+                    )}
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Paste UI */}
+            {rubricMode === 'paste' && (
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="rubric-text" className="block text-sm font-medium text-[#9AA4B2] mb-2">
+                    Paste Rubric Text
+                  </label>
+                  <textarea
+                    id="rubric-text"
+                    value={pastedRubricText}
+                    onChange={(e) => setPastedRubricText(e.target.value)}
+                    placeholder="Paste your rubric text here...&#10;&#10;Example:&#10;Title: Investor Pitch Rubric&#10;Criteria:&#10;1. Hook - How engaging is the opening?&#10;2. Problem - Is the problem clearly identified?&#10;3. Solution - Is the solution clearly presented?"
+                    rows={8}
+                    className="w-full px-4 py-3 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB] placeholder:text-[#6B7280] resize-none"
+                  />
+                </div>
+                <Button
+                  variant="primary"
+                  onClick={parseRubric}
+                  disabled={parsingRubric || !pastedRubricText.trim()}
+                  className="w-full"
+                >
+                  {parsingRubric ? (
+                    <>
+                      <LoadingSpinner className="h-4 w-4 mr-2" />
+                      Parsing...
+                    </>
+                  ) : (
+                    'Parse Rubric'
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* Parse Error */}
+            {rubricParseError && (
+              <div className="p-3 bg-[#EF444420] border border-[#EF444430] rounded-lg">
+                <p className="text-sm text-[#EF4444]">{rubricParseError}</p>
+              </div>
+            )}
+
+            {/* Parsed Rubric Preview */}
+            {parsedCustomRubric && (
+              <div className="p-4 bg-[#22C55E20] border border-[#22C55E30] rounded-lg space-y-3">
+                <div className="flex items-start gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="text-sm font-semibold text-[#22C55E] mb-1">
+                      Rubric Parsed Successfully
+                    </h3>
+                    <p className="text-xs text-[#9AA4B2] mb-3">
+                      This rubric will be used for this recording.
+                    </p>
+                    <div className="space-y-2">
+                      <div>
+                        <p className="text-sm font-medium text-[#E6E8EB] mb-1">
+                          {parsedCustomRubric.title}
+                        </p>
+                        {parsedCustomRubric.description && (
+                          <p className="text-xs text-[#9AA4B2]">
+                            {parsedCustomRubric.description}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-[#9AA4B2] mb-1">Criteria ({parsedCustomRubric.criteria?.length || 0}):</p>
+                        <ul className="space-y-1">
+                          {parsedCustomRubric.criteria?.slice(0, 5).map((criterion: any, idx: number) => (
+                            <li key={idx} className="text-xs text-[#E6E8EB]">
+                              • {criterion.name}
+                              {criterion.description && (
+                                <span className="text-[#9AA4B2] ml-2">- {criterion.description}</span>
+                              )}
+                            </li>
+                          ))}
+                          {parsedCustomRubric.criteria?.length > 5 && (
+                            <li className="text-xs text-[#9AA4B2]">
+                              ... and {parsedCustomRubric.criteria.length - 5} more
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Custom Rubric Builder for Coach/Daypass */}
+            {isCoachOrDaypass && (
+              <div className="mt-6 pt-6 border-t border-[rgba(255,255,255,0.08)]">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-sm font-medium text-[#E6E8EB] mb-1">Custom Rubric Builder</h3>
+                    <p className="text-xs text-[#9AA4B2]">Build your own rubric from scratch</p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setRubricMode(rubricMode === 'custom' ? 'default' : 'custom')}
+                  >
+                    {rubricMode === 'custom' ? 'Hide' : 'Show'} Builder
+                  </Button>
+                </div>
+                {rubricMode === 'custom' && (
+                  <CustomRubricBuilder
+                    initialData={customRubric}
+                    onSave={handleCustomRubricSave}
+                    onUse={handleCustomRubricUse}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Validation Message */}
+            {!hasValidRubric && (
+              <div className="p-3 bg-[#F59E0B20] border border-[#F59E0B30] rounded-lg">
+                <p className="text-sm text-[#F59E0B]">
+                  {userPlan === 'free' 
+                    ? '⚠️ Select a rubric from the dropdown.'
+                    : '⚠️ Select a rubric OR upload/paste one and parse it.'}
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Step 2: Record/Upload Audio */}
+        <Card>
+          <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
+            <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-semibold text-[#9AA4B2] uppercase tracking-wider">Step 2</span>
+              </div>
+              <h2 className="text-xl font-bold text-[#E6E8EB]">Record/Upload Audio</h2>
+              <p className="text-sm text-[#9AA4B2] mt-0.5">Record or upload your pitch</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* Microphone Selector */}
+            {audioDevices.length > 0 && (
+              <div>
+                <label htmlFor="mic-select" className="block text-sm font-medium text-[#9AA4B2] mb-2">
+                  Microphone
+                </label>
+                <select
+                  id="mic-select"
+                  value={selectedDeviceId}
+                  onChange={(e) => {
+                    setSelectedDeviceId(e.target.value)
+                    localStorage.setItem('pitchpractice_selected_device_id', e.target.value)
+                  }}
+                  disabled={isRecording || isUploading}
+                  className="w-full px-3 py-2 text-sm border border-[rgba(255,255,255,0.08)] rounded-lg bg-[rgba(255,255,255,0.03)] text-[#E6E8EB] focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors disabled:opacity-50"
+                >
+                  {audioDevices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId} className="bg-[#121826]">
+                      {device.label || `Microphone ${device.deviceId.substring(0, 8)}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Test Mic Button */}
+            <Button
+              onClick={testMicrophone}
+              disabled={isRecording || isUploading}
+              variant={isTestingMic ? 'danger' : 'secondary'}
+              className="w-full"
+            >
+              {isTestingMic ? '⏹ Stop Test' : '🎤 Test Mic'}
+            </Button>
+
+            {/* Mic Level Meter */}
+            {(isRecording || isTestingMic) && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-4 bg-[rgba(255,255,255,0.08)] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-100 ${
+                        micLevel > 0.01 ? 'bg-[#22C55E]' : 'bg-[#EF4444]'
+                      }`}
+                      style={{ width: `${Math.min(micLevel * 100, 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-[#9AA4B2] w-16 text-right">
+                    {(micLevel * 100).toFixed(1)}%
+                  </span>
+                </div>
+                {isSilent && (
+                  <p className="text-xs text-[#EF4444] font-medium">
+                    ⚠️ No microphone input detected
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Recording Timer */}
+            {isRecording && (
+              <div className="p-3 bg-[#151A23] rounded-lg border border-[#22283A]">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-[#E6E8EB]">Recording</span>
+                  <span className="text-sm font-mono text-[#F59E0B]">
+                    {formatTime(recordingTime)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Record/Upload Buttons */}
+            <div className="flex gap-3">
+              <Button
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={!hasValidRubric || isUploading || isSilent}
+                variant={isRecording ? 'danger' : 'primary'}
+                className="flex-1"
+                title={!hasValidRubric ? 'Please complete Step 1 first' : undefined}
+              >
+                {isRecording ? (
+                  <>
+                    <Square className="h-4 w-4 mr-2" />
+                    Stop Recording
+                  </>
+                ) : (
+                  <>
+                    <Mic className="h-4 w-4 mr-2" />
+                    Record
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!hasValidRubric || isUploading || isRecording}
+                variant="secondary"
+                className="flex-1"
+                title={!hasValidRubric ? 'Please complete Step 1 first' : undefined}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Upload
+              </Button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) {
+                  handleFileUpload(file)
+                }
+              }}
+              className="hidden"
+            />
+
+            {/* Pause/Resume for Recording */}
+            {isRecording && (
+              <div className="flex gap-3">
+                {isPaused ? (
+                  <Button
+                    onClick={resumeRecording}
+                    variant="secondary"
+                    className="flex-1"
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    Resume
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={pauseRecording}
+                    variant="secondary"
+                    className="flex-1"
+                  >
+                    <Pause className="h-4 w-4 mr-2" />
+                    Pause
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Status Messages */}
+            {isUploading && (
+              <div className="flex items-center gap-2 text-sm text-[#9AA4B2]">
+                <LoadingSpinner className="h-4 w-4" />
+                <span>Uploading audio...</span>
+              </div>
+            )}
+            {isTranscribing && (
+              <div className="flex items-center gap-2 text-sm text-[#9AA4B2]">
+                <LoadingSpinner className="h-4 w-4" />
+                <span>Transcribing...</span>
+              </div>
+            )}
+            {isGettingFeedback && (
+              <div className="flex items-center gap-2 text-sm text-[#9AA4B2]">
+                <LoadingSpinner className="h-4 w-4" />
+                <span>Generating feedback...</span>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Results Section */}
+        {run && feedback && (
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-[#E6E8EB]">Feedback</h2>
+              <div className="flex gap-2">
+                {audioUrl && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={togglePlayback}
+                  >
+                    {isPlaying ? (
+                      <>
+                        <Pause className="h-4 w-4 mr-2" />
+                        Pause
+                      </>
+                    ) : (
+                      <>
+                        <Play className="h-4 w-4 mr-2" />
+                        Play
+                      </>
+                    )}
+                  </Button>
+                )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => router.push(`/runs/${run.id}`)}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  View Full
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleNewTake}
+                >
+                  New Take
+                </Button>
+              </div>
+            </div>
+            {audioUrl && (
+              <audio
+                ref={audioRef}
+                src={audioUrl}
+                onEnded={() => setIsPlaying(false)}
+                className="hidden"
+              />
+            )}
+            {feedback.summary && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#9AA4B2] mb-1">Overall Score</h3>
+                  <p className="text-2xl font-bold text-[#E6E8EB]">
+                    {feedback.summary.overall_score?.toFixed(1) || 'N/A'}/10
+                  </p>
+                </div>
+                {feedback.summary.overall_notes && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#9AA4B2] mb-1">Notes</h3>
+                    <p className="text-sm text-[#E6E8EB]">{feedback.summary.overall_notes}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
+      </div>
+    </div>
+  )
 }

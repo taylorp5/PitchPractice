@@ -59,6 +59,8 @@ export default function RunPage() {
   const params = useParams()
   const router = useRouter()
   const routeRunId = params.id as string
+  // TODO: Replace with actual user plan from auth/session
+  const [userPlan] = useState<'starter' | 'coach' | 'day_pass'>('starter')
   const [run, setRun] = useState<Run | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -528,8 +530,8 @@ export default function RunPage() {
               </Card>
             </motion.div>
 
-            {/* Line-by-Line Feedback (placeholder for later) */}
-            {run.analysis_json?.line_by_line && run.analysis_json.line_by_line.length > 0 && (
+            {/* Line-by-Line Feedback - Only for Coach + Day Pass */}
+            {(userPlan === 'coach' || userPlan === 'day_pass') && run.analysis_json?.line_by_line && run.analysis_json.line_by_line.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -573,9 +575,162 @@ export default function RunPage() {
                               <strong>Action:</strong> {item.action}
                             </p>
                           )}
+                          {/* Rewrite Suggestions - Only for Coach + Day Pass */}
+                          {item.rewrite && (
+                            <div className="mt-3 p-3 bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-lg">
+                              <p className="text-xs font-semibold text-[#F59E0B] mb-1">Suggested Rewrite:</p>
+                              <p className="text-sm text-[#E5E7EB] italic">{item.rewrite}</p>
+                            </div>
+                          )}
                         </motion.div>
                       )
                     })}
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* Feedback Summary - Visible to All Users */}
+            {run.analysis_json?.summary && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.15, ease: "easeOut" }}
+              >
+                <Card>
+                  <SectionHeader title="Feedback Summary" />
+                  <div className="space-y-6">
+                    {/* What's Working */}
+                    {run.analysis_json.summary.top_strengths && run.analysis_json.summary.top_strengths.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-[#22C55E] mb-3 uppercase tracking-wide">What's Working</h4>
+                        <ul className="space-y-2">
+                          {run.analysis_json.summary.top_strengths.map((strength: string, idx: number) => (
+                            <li key={idx} className="flex items-start gap-2 text-sm text-[#E5E7EB]">
+                              <Check className="h-4 w-4 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                              <span>{strength.replace(/^["']|["']$/g, '').trim()}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Improve */}
+                    {run.analysis_json.summary.top_improvements && run.analysis_json.summary.top_improvements.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-[#F97316] mb-3 uppercase tracking-wide">Improve</h4>
+                        <ul className="space-y-2">
+                          {run.analysis_json.summary.top_improvements.map((improvement: string, idx: number) => (
+                            <li key={idx} className="flex items-start gap-2 text-sm text-[#E5E7EB]">
+                              <span className="text-[#F97316] mt-0.5">•</span>
+                              <span>{improvement.replace(/^["']|["']$/g, '').trim()}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Focus */}
+                    {run.analysis_json.summary.focus_areas && run.analysis_json.summary.focus_areas.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-[#F59E0B] mb-3 uppercase tracking-wide">Focus</h4>
+                        <ul className="space-y-2">
+                          {run.analysis_json.summary.focus_areas.map((focus: string, idx: number) => (
+                            <li key={idx} className="flex items-start gap-2 text-sm text-[#E5E7EB]">
+                              <span className="text-[#F59E0B] mt-0.5">•</span>
+                              <span>{focus.replace(/^["']|["']$/g, '').trim()}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* Prompt Question Grading - Visible to All Users */}
+            {run.analysis_json?.rubric_scores && run.analysis_json.rubric_scores.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
+              >
+                <Card>
+                  <SectionHeader title="Prompt Question Grading" />
+                  <div className="space-y-4">
+                    {run.analysis_json.rubric_scores.map((score: any, idx: number) => (
+                      <div key={idx} className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-semibold text-[#E5E7EB]">
+                            {score.criterion_label || score.criterion || `Question ${idx + 1}`}
+                          </h4>
+                          <span className="text-sm font-bold text-[#F59E0B]">
+                            {score.score || 0}/10
+                          </span>
+                        </div>
+                        {score.evidence_quotes && score.evidence_quotes.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs font-semibold text-[#9CA4B2] mb-1">Evidence:</p>
+                            <div className="space-y-1">
+                              {score.evidence_quotes.map((quote: string, qIdx: number) => (
+                                <p key={qIdx} className="text-xs text-[#9CA3AF] italic pl-2 border-l-2 border-[#22283A]">
+                                  "{quote}"
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {score.evidence && !score.evidence_quotes && (
+                          <p className="text-xs text-[#9CA3AF] mt-2 italic">
+                            Evidence: {score.evidence}
+                          </p>
+                        )}
+                        {score.notes && (
+                          <div className="mt-3 pt-3 border-t border-[#22283A]">
+                            <p className="text-xs font-semibold text-[#F59E0B] mb-1">Recommendation:</p>
+                            <p className="text-sm text-[#E5E7EB]">{score.notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* Upsell Card for Starter Users - Replace advanced features */}
+            {userPlan === 'starter' && run.analysis_json && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.25, ease: "easeOut" }}
+              >
+                <Card className="bg-[#22283A] border-[#F59E0B]/20">
+                  <div className="text-center">
+                    <h3 className="text-lg font-bold text-[#E6E8EB] mb-2">Unlock coaching-level feedback</h3>
+                    <p className="text-sm text-[#9AA4B2] mb-4">
+                      Want deeper feedback? Upgrade to Coach.
+                    </p>
+                    <ul className="text-left space-y-2 mb-6 text-sm text-[#9AA4B2]">
+                      <li className="flex items-start gap-2">
+                        <span className="text-[#F59E0B] mt-0.5">•</span>
+                        <span>Custom rubrics</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-[#F59E0B] mt-0.5">•</span>
+                        <span>Line-by-line suggestions</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-[#F59E0B] mt-0.5">•</span>
+                        <span>Rewrite your pitch instantly</span>
+                      </li>
+                    </ul>
+                    <Link href="/upgrade">
+                      <Button variant="primary" className="w-full">
+                        Upgrade to Coach
+                      </Button>
+                    </Link>
                   </div>
                 </Card>
               </motion.div>
@@ -726,7 +881,7 @@ export default function RunPage() {
               </Card>
             </motion.div>
 
-            {/* Share Card */}
+            {/* Share Card - Visible to All Users */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -757,6 +912,80 @@ export default function RunPage() {
                 </p>
               </Card>
             </motion.div>
+
+            {/* Export Card - Only for Coach + Day Pass */}
+            {(userPlan === 'coach' || userPlan === 'day_pass') && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4, delay: 0.3, ease: "easeOut" }}
+              >
+                <Card>
+                  <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Export</h3>
+                  <div className="space-y-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        // Placeholder - export script
+                      }}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      Export Script
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        // Placeholder - export summary
+                      }}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      Export Summary
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        // Placeholder - export PDF
+                      }}
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      Export PDF
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {/* Compare Attempts - Only for Coach + Day Pass */}
+            {(userPlan === 'coach' || userPlan === 'day_pass') && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4, delay: 0.4, ease: "easeOut" }}
+              >
+                <Card>
+                  <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Compare Attempts</h3>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      // Placeholder - compare attempts
+                    }}
+                  >
+                    View Comparison
+                  </Button>
+                  <p className="text-xs text-[#9CA3AF] mt-3">
+                    Compare this attempt with your previous recordings.
+                  </p>
+                </Card>
+              </motion.div>
+            )}
           </div>
         </div>
       </div>

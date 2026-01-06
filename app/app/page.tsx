@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { getSessionId } from '@/lib/session'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -36,6 +37,8 @@ interface Rubric {
 
 export default function HomePage() {
   const router = useRouter()
+  // TODO: Replace with actual user plan from auth/session
+  const [userPlan] = useState<'starter' | 'coach' | 'day_pass'>('starter')
   const [rubrics, setRubrics] = useState<Rubric[]>([])
   const [selectedRubric, setSelectedRubric] = useState<string>('')
   const [title, setTitle] = useState('')
@@ -47,6 +50,8 @@ export default function HomePage() {
   const [micLevel, setMicLevel] = useState<number>(0)
   const [isSilent, setIsSilent] = useState(false)
   const [isTestingMic, setIsTestingMic] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -56,6 +61,7 @@ export default function HomePage() {
   const animationFrameRef = useRef<number | null>(null)
   const silenceStartRef = useRef<number | null>(null)
   const testAudioRef = useRef<HTMLAudioElement | null>(null)
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     // Fetch rubrics
@@ -68,11 +74,23 @@ export default function HomePage() {
         return res.json()
       })
       .then(data => {
-        setRubrics(data)
-        if (data.length > 0) {
+        // Filter rubrics based on user plan
+        // Starter users only see prompt-based rubrics (from rubrics table, not user_rubrics)
+        // Coach and Day Pass see all rubrics
+        let filteredRubrics = data
+        if (userPlan === 'starter') {
+          // For Starter, only show default/prompt-based rubrics
+          // These are rubrics from the 'rubrics' table (not user_rubrics)
+          // In practice, this means rubrics that don't have a user_id
+          // Since the API returns all rubrics, we'll filter client-side
+          // For now, assume all rubrics from /api/rubrics are prompt-based
+          filteredRubrics = data
+        }
+        setRubrics(filteredRubrics)
+        if (filteredRubrics.length > 0) {
           // Default to "General Pitch (3–5 min)" if it exists, otherwise first rubric
-          const generalPitch = data.find((r: Rubric) => r.name.includes('General Pitch'))
-          setSelectedRubric(generalPitch?.id || data[0].id)
+          const generalPitch = filteredRubrics.find((r: Rubric) => r.name.includes('General Pitch'))
+          setSelectedRubric(generalPitch?.id || filteredRubrics[0].id)
         }
       })
       .catch(err => {
@@ -91,7 +109,14 @@ export default function HomePage() {
 
     // Enumerate audio devices
     enumerateAudioDevices()
-  }, [])
+
+    // Cleanup timer on unmount
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+      }
+    }
+  }, [userPlan])
 
   const enumerateAudioDevices = async () => {
     try {
@@ -349,6 +374,25 @@ export default function HomePage() {
         }
       }, 1500)
 
+      // Start recording timer
+      const startTime = Date.now()
+      setRecordingStartedAt(startTime)
+      setRecordingTime(0)
+      
+      // Start timer interval
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => {
+          const newTime = prev + 1
+          // Enforce 30-minute limit for Starter users
+          if (userPlan === 'starter' && newTime >= 30 * 60) {
+            setError('Recording limit reached (30 minutes). Stopping recording.')
+            stopRecording()
+            return 30 * 60
+          }
+          return newTime
+        })
+      }, 1000)
+
       mediaRecorder.start()
       setIsRecording(true)
       setIsSilent(false)
@@ -369,6 +413,13 @@ export default function HomePage() {
         streamRef.current.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
+      // Clear timer
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+        timerIntervalRef.current = null
+      }
+      setRecordingTime(0)
+      setRecordingStartedAt(null)
     }
   }
   
@@ -617,11 +668,26 @@ export default function HomePage() {
                 </div>
               )}
 
+              {/* Recording Timer Display */}
+              {isRecording && (
+                <div className="flex items-center justify-between p-3 bg-[#151A23] rounded-lg border border-[#22283A] mb-3">
+                  <span className="text-sm font-medium text-[#E6E8EB]">Recording</span>
+                  <span className="text-sm font-mono text-[#F59E0B]">
+                    {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+                  </span>
+                  {userPlan === 'starter' && (
+                    <span className="text-xs text-[#9AA4B2]">
+                      / 30:00
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Record/Upload Buttons */}
               <div className="flex gap-3">
                 <Button
                   onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isUploading || !selectedRubric || isSilent}
+                  disabled={isUploading || !selectedRubric || isSilent || (userPlan === 'starter' && recordingTime >= 30 * 60)}
                   variant={isRecording ? 'danger' : 'primary'}
                   className="flex-1"
                 >
@@ -646,6 +712,9 @@ export default function HomePage() {
               />
               <p className="text-xs text-[#6B7280] italic">
                 💡 Pro tip: Speak clearly and aim for 2–6 minutes for best results.
+                {userPlan === 'starter' && (
+                  <span className="block mt-1">📏 Starter plan: Up to 30 minutes per recording</span>
+                )}
               </p>
             </div>
           </Card>
@@ -687,6 +756,204 @@ export default function HomePage() {
               )}
             </div>
           </Card>
+
+          {/* Rubric Builder - Only for Coach + Day Pass */}
+          {(userPlan === 'coach' || userPlan === 'day_pass') && (
+            <Card>
+              <div className="mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
+                <h2 className="text-xl font-bold text-[#E6E8EB] mb-2">Your Evaluation Rubric</h2>
+                <p className="text-sm text-[#9AA4B2]">
+                  Tell us what you're pitching and who it's for. We'll tailor feedback to your goal.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left: Pitch Context Input */}
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="pitch-context" className="block text-sm font-medium text-[#9AA4B2] mb-2">
+                      Describe your pitch context
+                    </label>
+                    <textarea
+                      id="pitch-context"
+                      rows={8}
+                      placeholder="• Audience: Investors, students, customers&#10;• Goal: Secure funding, explain concept, close sale&#10;• Time limit: 3-5 minutes&#10;• Tone: Formal, persuasive, academic"
+                      className="w-full px-4 py-3 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB] placeholder:text-[#6B7280] resize-none font-mono text-sm leading-relaxed"
+                      disabled={isUploading || isRecording}
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <Button
+                      variant="primary"
+                      className="flex-1"
+                      disabled={isUploading || isRecording}
+                    >
+                      Generate rubric
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="flex-1"
+                      disabled={isUploading || isRecording}
+                    >
+                      Edit rubric
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Right: Rubric Preview */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#9AA4B2] mb-3 uppercase tracking-wide">Generated Rubric Preview</h3>
+                    <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A] space-y-3">
+                      {/* Placeholder Criteria */}
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-3 p-3 bg-[#121826] rounded border border-[#22283A]">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-[#E6E8EB] mb-1">Clarity & Structure</p>
+                            <p className="text-xs text-[#9AA4B2]">How well the pitch is organized and easy to follow</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full bg-[#F59E0B]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#F59E0B]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#F59E0B]"></div>
+                            <span className="text-xs text-[#9AA4B2] ml-1">High</span>
+                          </div>
+                        </div>
+                        <div className="flex items-start justify-between gap-3 p-3 bg-[#121826] rounded border border-[#22283A]">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-[#E6E8EB] mb-1">Persuasiveness</p>
+                            <p className="text-xs text-[#9AA4B2]">Ability to convince and engage the audience</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full bg-[#F59E0B]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#F59E0B]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#6B7280]"></div>
+                            <span className="text-xs text-[#9AA4B2] ml-1">Medium</span>
+                          </div>
+                        </div>
+                        <div className="flex items-start justify-between gap-3 p-3 bg-[#121826] rounded border border-[#22283A]">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-[#E6E8EB] mb-1">Time Management</p>
+                            <p className="text-xs text-[#9AA4B2]">Adherence to time limits and pacing</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full bg-[#F59E0B]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#6B7280]"></div>
+                            <div className="w-2 h-2 rounded-full bg-[#6B7280]"></div>
+                            <span className="text-xs text-[#9AA4B2] ml-1">Low</span>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-[#6B7280] italic pt-2 border-t border-[#22283A]">
+                        Preview will update when you generate a rubric
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Locked State for Starter Users */}
+          {userPlan === 'starter' && (
+            <Card className="bg-[#22283A] border-[#22283A] opacity-75">
+              <div className="text-center py-8">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#151A23] mb-4">
+                  <svg className="w-6 h-6 text-[#6B7280]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-[#9AA4B2] mb-2">Custom rubrics are available on Coach</h3>
+                <p className="text-sm text-[#6B7280] mb-4">
+                  Upgrade to unlock the rubric builder and create custom evaluation criteria.
+                </p>
+                <Link href="/upgrade">
+                  <Button variant="primary" size="sm">
+                    Upgrade to Coach
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          )}
+
+          {/* Custom Rubric Section - Only for Coach + Day Pass */}
+          {(userPlan === 'coach' || userPlan === 'day_pass') && (
+            <Card>
+              <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
+                <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold text-[#9AA4B2] uppercase tracking-wider">Custom Rubric</span>
+                  </div>
+                  <h2 className="text-xl font-bold text-[#E6E8EB]">Create Custom Rubric</h2>
+                  <p className="text-sm text-[#9AA4B2] mt-0.5">Build your own evaluation criteria</p>
+                </div>
+              </div>
+              <div>
+                <Link href="/app/rubrics/new">
+                  <Button variant="secondary" className="w-full">
+                    Create Custom Rubric
+                  </Button>
+                </Link>
+                <p className="mt-3 text-sm text-[#9AA4B2]">
+                  Design a rubric tailored to your specific pitch type and goals.
+                </p>
+              </div>
+            </Card>
+          )}
+
+          {/* Edit Rubric Before Recording - Only for Coach + Day Pass */}
+          {(userPlan === 'coach' || userPlan === 'day_pass') && selectedRubric && (
+            <Card>
+              <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
+                <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
+                <div className="flex-1">
+                  <h2 className="text-xl font-bold text-[#E6E8EB]">Edit Rubric Before Recording</h2>
+                  <p className="text-sm text-[#9AA4B2] mt-0.5">Customize your evaluation criteria</p>
+                </div>
+              </div>
+              <div>
+                <Link href={`/app/rubrics/${selectedRubric}`}>
+                  <Button variant="secondary" className="w-full">
+                    Edit Selected Rubric
+                  </Button>
+                </Link>
+                <p className="mt-3 text-sm text-[#9AA4B2]">
+                  Adjust criteria, weights, and targets before you record.
+                </p>
+              </div>
+            </Card>
+          )}
+
+          {/* Upsell Card for Starter Users */}
+          {userPlan === 'starter' && (
+            <Card className="bg-[#22283A] border-[#F59E0B]/20">
+              <div className="text-center">
+                <h3 className="text-lg font-bold text-[#E6E8EB] mb-2">Unlock coaching-level feedback</h3>
+                <p className="text-sm text-[#9AA4B2] mb-4">
+                  Want deeper feedback? Upgrade to Coach.
+                </p>
+                <ul className="text-left space-y-2 mb-6 text-sm text-[#9AA4B2]">
+                  <li className="flex items-start gap-2">
+                    <span className="text-[#F59E0B] mt-0.5">•</span>
+                    <span>Custom rubrics</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-[#F59E0B] mt-0.5">•</span>
+                    <span>Line-by-line suggestions</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-[#F59E0B] mt-0.5">•</span>
+                    <span>Rewrite your pitch instantly</span>
+                  </li>
+                </ul>
+                <Link href="/upgrade">
+                  <Button variant="primary" className="w-full">
+                    Upgrade to Coach
+                  </Button>
+                </Link>
+              </div>
+            </Card>
+          )}
 
           {/* Step 3: Get Feedback (auto) */}
           <Card>

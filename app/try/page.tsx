@@ -186,6 +186,17 @@ export default function TryPage() {
 
     // Enumerate audio devices
     enumerateAudioDevices()
+
+    // Listen for device changes
+    const handleDeviceChange = () => {
+      enumerateAudioDevices()
+    }
+    
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange)
+    
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange)
+    }
   }, [])
 
   // Check authentication status
@@ -350,11 +361,54 @@ export default function TryPage() {
       setIsTestingMic(true)
       setError(null)
       
-      const constraints: MediaStreamConstraints = selectedDeviceId
-        ? { audio: { deviceId: { exact: selectedDeviceId } } }
-        : { audio: true }
+      // Request stream with selected device, with fallback
+      let stream: MediaStream | null = null
       
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      if (selectedDeviceId) {
+        try {
+          // Try with exact device first
+          const constraints: MediaStreamConstraints = { audio: { deviceId: { exact: selectedDeviceId } } }
+          stream = await navigator.mediaDevices.getUserMedia(constraints)
+          if (DEBUG) {
+            console.log('[Try] Test mic: Successfully opened stream with exact device:', selectedDeviceId)
+          }
+        } catch (exactError: any) {
+          if (DEBUG) {
+            console.warn('[Try] Test mic: Failed to open stream with exact device, trying preferred:', exactError)
+          }
+          // Fallback: try with preferred (non-exact) device
+          try {
+            const constraints: MediaStreamConstraints = { audio: { deviceId: selectedDeviceId } }
+            stream = await navigator.mediaDevices.getUserMedia(constraints)
+            if (DEBUG) {
+              console.log('[Try] Test mic: Successfully opened stream with preferred device:', selectedDeviceId)
+            }
+          } catch (preferredError: any) {
+            if (DEBUG) {
+              console.warn('[Try] Test mic: Failed to open stream with preferred device, trying default:', preferredError)
+            }
+            // Final fallback: use default device
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+            // Update selected device to first available if we have devices
+            if (audioDevices.length > 0) {
+              const newDeviceId = audioDevices[0].deviceId
+              setSelectedDeviceId(newDeviceId)
+              localStorage.setItem('pitchpractice_selected_device_id', newDeviceId)
+            }
+            if (DEBUG) {
+              console.log('[Try] Test mic: Successfully opened stream with default device')
+            }
+          }
+        }
+      } else {
+        // No device selected, use default
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      }
+      
+      if (!stream) {
+        throw new Error('Failed to get media stream')
+      }
+      
       streamRef.current = stream
       setHasMicPermission(true)
       
@@ -386,11 +440,43 @@ export default function TryPage() {
       
       // Setup mic level meter (await to ensure audioContext is resumed)
       await setupMicLevelMeter(stream)
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Try] Error testing microphone:', err)
-      setError('Failed to access microphone. Check permissions.')
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to access microphone. '
+      if (err.name === 'NotReadableError' || err.name === 'NotAllowedError') {
+        errorMessage += 'The microphone may be in use by another application or permission was denied. '
+        errorMessage += 'Please close other applications using the microphone and try again.'
+      } else if (err.name === 'NotFoundError') {
+        errorMessage += 'No microphone found. Please connect a microphone and try again.'
+      } else if (err.name === 'OverconstrainedError') {
+        errorMessage += 'The selected microphone is not available. Please select a different microphone.'
+        // Re-enumerate devices to get updated list
+        enumerateAudioDevices()
+      } else {
+        errorMessage += 'Check permissions and try again.'
+      }
+      
+      setError(errorMessage)
       setIsTestingMic(false)
       setHasMicPermission(false)
+      
+      // If we have devices but the selected one failed, try to select a different one
+      if (audioDevices.length > 0 && selectedDeviceId) {
+        const currentIndex = audioDevices.findIndex(d => d.deviceId === selectedDeviceId)
+        if (currentIndex >= 0 && currentIndex < audioDevices.length - 1) {
+          // Try next device
+          const nextDeviceId = audioDevices[currentIndex + 1].deviceId
+          setSelectedDeviceId(nextDeviceId)
+          localStorage.setItem('pitchpractice_selected_device_id', nextDeviceId)
+        } else if (audioDevices.length > 0) {
+          // Try first device
+          const firstDeviceId = audioDevices[0].deviceId
+          setSelectedDeviceId(firstDeviceId)
+          localStorage.setItem('pitchpractice_selected_device_id', firstDeviceId)
+        }
+      }
     }
   }
 
@@ -729,12 +815,59 @@ FEEDBACK SUMMARY
         setIsTestingMic(false)
       }
 
-      // Request stream with selected device
-      const constraints: MediaStreamConstraints = selectedDeviceId
-        ? { audio: { deviceId: { exact: selectedDeviceId } } }
-        : { audio: true }
+      // Request stream with selected device, with fallback
+      let stream: MediaStream | null = null
+      let usedDeviceId: string | null = null
       
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      if (selectedDeviceId) {
+        try {
+          // Try with exact device first
+          const constraints: MediaStreamConstraints = { audio: { deviceId: { exact: selectedDeviceId } } }
+          stream = await navigator.mediaDevices.getUserMedia(constraints)
+          usedDeviceId = selectedDeviceId
+          if (DEBUG) {
+            console.log('[Try] Successfully opened stream with exact device:', selectedDeviceId)
+          }
+        } catch (exactError: any) {
+          if (DEBUG) {
+            console.warn('[Try] Failed to open stream with exact device, trying preferred:', exactError)
+          }
+          // Fallback: try with preferred (non-exact) device
+          try {
+            const constraints: MediaStreamConstraints = { audio: { deviceId: selectedDeviceId } }
+            stream = await navigator.mediaDevices.getUserMedia(constraints)
+            usedDeviceId = selectedDeviceId
+            if (DEBUG) {
+              console.log('[Try] Successfully opened stream with preferred device:', selectedDeviceId)
+            }
+          } catch (preferredError: any) {
+            if (DEBUG) {
+              console.warn('[Try] Failed to open stream with preferred device, trying default:', preferredError)
+            }
+            // Final fallback: use default device
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+            usedDeviceId = null
+            // Update selected device to first available if we have devices
+            if (audioDevices.length > 0) {
+              const newDeviceId = audioDevices[0].deviceId
+              setSelectedDeviceId(newDeviceId)
+              localStorage.setItem('pitchpractice_selected_device_id', newDeviceId)
+            }
+            if (DEBUG) {
+              console.log('[Try] Successfully opened stream with default device')
+            }
+          }
+        }
+      } else {
+        // No device selected, use default
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        usedDeviceId = null
+      }
+      
+      if (!stream) {
+        throw new Error('Failed to get media stream')
+      }
+      
       streamRef.current = stream
       setHasMicPermission(true)
       
@@ -932,10 +1065,42 @@ FEEDBACK SUMMARY
           return newTime
         })
       }, 1000)
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Try] Error starting recording:', err)
-      setError('Failed to start recording. Please check microphone permissions.')
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to start recording. '
+      if (err.name === 'NotReadableError' || err.name === 'NotAllowedError') {
+        errorMessage += 'The microphone may be in use by another application or permission was denied. '
+        errorMessage += 'Please close other applications using the microphone and try again.'
+      } else if (err.name === 'NotFoundError') {
+        errorMessage += 'No microphone found. Please connect a microphone and try again.'
+      } else if (err.name === 'OverconstrainedError') {
+        errorMessage += 'The selected microphone is not available. Please select a different microphone.'
+        // Re-enumerate devices to get updated list
+        enumerateAudioDevices()
+      } else {
+        errorMessage += 'Please check microphone permissions and try again.'
+      }
+      
+      setError(errorMessage)
       stopMicLevelMeter()
+      
+      // If we have devices but the selected one failed, try to select a different one
+      if (audioDevices.length > 0 && selectedDeviceId) {
+        const currentIndex = audioDevices.findIndex(d => d.deviceId === selectedDeviceId)
+        if (currentIndex >= 0 && currentIndex < audioDevices.length - 1) {
+          // Try next device
+          const nextDeviceId = audioDevices[currentIndex + 1].deviceId
+          setSelectedDeviceId(nextDeviceId)
+          localStorage.setItem('pitchpractice_selected_device_id', nextDeviceId)
+        } else if (audioDevices.length > 0) {
+          // Try first device
+          const firstDeviceId = audioDevices[0].deviceId
+          setSelectedDeviceId(firstDeviceId)
+          localStorage.setItem('pitchpractice_selected_device_id', firstDeviceId)
+        }
+      }
     }
   }
 
@@ -1659,8 +1824,8 @@ FEEDBACK SUMMARY
               </div>
 
               <div className="space-y-4">
-                    {/* Device selection - visually secondary */}
-                    {audioDevices.length > 1 && (
+                    {/* Device selection - always show if devices are available */}
+                    {audioDevices.length > 0 && (
                       <div className="text-sm">
                         <label className="block text-[#9AA4B2] mb-1 text-xs">Microphone</label>
                         <select

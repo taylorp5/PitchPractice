@@ -15,7 +15,7 @@ export function Badge({
 }: BadgeProps) {
   const variantClasses = {
     default: 'bg-[#22283A] text-[#9CA3AF]',
-    primary: 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30',
+    primary: 'bg-[#F97316]/20 text-[#F97316] border border-[#F97316]/30',
     success: 'bg-green-500/20 text-green-400 border border-green-500/30',
     warning: 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
     danger: 'bg-red-500/20 text-red-400 border border-red-500/30',

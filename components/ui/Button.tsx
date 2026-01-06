@@ -21,7 +21,7 @@ export function Button({
   href,
   ...props
 }: ButtonProps) {
-  const baseClasses = 'font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0B0F14] disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2'
+  const baseClasses = 'font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0B0F14] disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center'
   
   const variantClasses = {
     primary: 'bg-[#F59E0B] hover:bg-[#D97706] text-[#0B0F14] focus:ring-[#F59E0B]',

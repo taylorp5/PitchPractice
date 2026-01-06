@@ -1,22 +1,42 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Button } from './ui/Button'
 import { useState, useEffect } from 'react'
 import { colors } from '@/lib/theme'
+import { createClient } from '@/lib/supabase/client-auth'
 
 export function Navbar() {
   const pathname = usePathname()
+  const router = useRouter()
   const [isSignedIn, setIsSignedIn] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // TODO: Replace with actual auth check when auth is implemented
-  // For now, always show "Sign in" since there's no real auth system yet
-  // When Supabase auth is implemented, check: const { data: { session } } = await supabase.auth.getSession()
   useEffect(() => {
-    // Placeholder: When auth is implemented, check Supabase session
-    setIsSignedIn(false)
+    const checkAuth = async () => {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      setIsSignedIn(!!session)
+      setIsLoading(false)
+    }
+
+    checkAuth()
+
+    const supabase = createClient()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsSignedIn(!!session)
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
+
+  const handleSignOut = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/')
+    router.refresh()
+  }
 
   return (
     <nav 
@@ -55,7 +75,7 @@ export function Navbar() {
             </span>
           </Link>
 
-          {/* Right side: Upgrade + Sign in */}
+          {/* Right side: Upgrade + Sign in/Sign out */}
           <div className="flex items-center gap-6 md:gap-8">
             <Link 
               href="/upgrade" 
@@ -69,16 +89,42 @@ export function Navbar() {
             >
               Upgrade
             </Link>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              href={isSignedIn ? "/app" : "/app"}
-              asChild
-              aria-label={isSignedIn ? "Go to dashboard" : "Sign in"}
-              className="border border-[#1E293B] hover:border-[#334155] hover:bg-[#0F172A]/50 transition-all"
-            >
-              {isSignedIn ? "Dashboard" : "Sign in"}
-            </Button>
+            {!isLoading && (
+              isSignedIn ? (
+                <>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    href="/app"
+                    asChild
+                    aria-label="Go to dashboard"
+                    className="border border-[#1E293B] hover:border-[#334155] hover:bg-[#0F172A]/50 transition-all"
+                  >
+                    Dashboard
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={handleSignOut}
+                    aria-label="Sign out"
+                    className="border border-[#1E293B] hover:border-[#334155] hover:bg-[#0F172A]/50 transition-all"
+                  >
+                    Sign out
+                  </Button>
+                </>
+              ) : (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  href="/signin"
+                  asChild
+                  aria-label="Sign in"
+                  className="border border-[#1E293B] hover:border-[#334155] hover:bg-[#0F172A]/50 transition-all"
+                >
+                  Sign in
+                </Button>
+              )
+            )}
           </div>
         </div>
       </div>

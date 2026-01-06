@@ -29,14 +29,19 @@ export async function GET(request: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin()
     const now = new Date().toISOString()
 
-    // Query entitlements
+    // Query entitlements - check both user_id and session_id
+    // If user is authenticated, prioritize user_id, but also check session_id as fallback
     let query = supabaseAdmin
       .from('user_entitlements')
-      .select('plan, expires_at')
+      .select('plan, expires_at, user_id, session_id')
       .or(`expires_at.is.null,expires_at.gt.${now}`) // Only non-expired or non-expiring
       .order('created_at', { ascending: false })
 
-    if (userId) {
+    // Build query to check both user_id and session_id
+    if (userId && sessionId) {
+      // Check for entitlements linked to user OR session
+      query = query.or(`user_id.eq.${userId},session_id.eq.${sessionId}`)
+    } else if (userId) {
       query = query.eq('user_id', userId)
     } else if (sessionId) {
       query = query.eq('session_id', sessionId)
@@ -46,6 +51,13 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: entitlements, error } = await query
+
+    if (error) {
+      console.error('[Plan API] Database error:', error)
+      return NextResponse.json({ plan: 'free' })
+    }
+
+    console.log(`[Plan API] Found ${entitlements?.length || 0} entitlements for userId: ${userId}, sessionId: ${sessionId}`)
 
     if (error) {
       console.error('[Plan API] Database error:', error)

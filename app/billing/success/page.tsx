@@ -45,9 +45,17 @@ function BillingSuccessContent() {
         console.log(`[Billing Success] Successfully synced plan: ${data.plan}`)
         setStatus('success')
 
+        // Clear any cached plan data and force refresh
+        // This ensures the practice page will fetch the new plan
+        if (typeof window !== 'undefined') {
+          // Clear any localStorage plan overrides
+          localStorage.removeItem('pp_dev_plan_override')
+        }
+
         // Redirect to practice page after a short delay
+        // Use window.location to force a full page reload and clear cache
         setTimeout(() => {
-          router.push('/app/practice')
+          window.location.href = '/app/practice'
         }, 2000)
       } catch (error: any) {
         console.error('[Billing Success] Error:', error)

@@ -93,16 +93,33 @@ export default function PracticePage() {
 
   const [isLoadingPlan, setIsLoadingPlan] = useState(true)
 
-  // Fetch user plan on mount (separate effect)
+  // Fetch user plan on mount and when page becomes visible (for refresh after purchase)
   useEffect(() => {
-    getUserPlan().then(plan => {
-      setUserPlan(plan)
-      setIsLoadingPlan(false)
-    }).catch(err => {
-      console.error('Failed to fetch user plan:', err)
-      setUserPlan('free')
-      setIsLoadingPlan(false)
-    })
+    const fetchPlan = () => {
+      getUserPlan().then(plan => {
+        console.log('[Practice Page] User plan:', plan)
+        setUserPlan(plan)
+        setIsLoadingPlan(false)
+      }).catch(err => {
+        console.error('Failed to fetch user plan:', err)
+        setUserPlan('free')
+        setIsLoadingPlan(false)
+      })
+    }
+
+    fetchPlan()
+
+    // Refresh plan when page becomes visible (e.g., after returning from checkout)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPlan()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [])
 
   // Fetch rubrics on mount (independent of plan)

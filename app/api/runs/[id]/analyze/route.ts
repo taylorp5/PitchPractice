@@ -95,7 +95,9 @@ function buildAnalysisPrompt(
   audioSeconds: number | null,
   wpm: number | null,
   pitchContext: string | null = null,
-  guidingQuestions: string[] = []
+  guidingQuestions: string[] = [],
+  userPlan: 'free' | 'starter' | 'coach' | 'daypass' = 'free',
+  rubricName: string | null = null
 ): string {
   // Use prompt-specific rubric if provided, otherwise use generic criteria
   const rubricItems: PromptRubricItem[] = promptRubric || criteria.map((c, i) => ({
@@ -119,6 +121,16 @@ function buildAnalysisPrompt(
     weight: item.weight,
   }))
 
+  // Check if this is Free plan + Elevator Pitch rubric with "Call to action" criterion
+  const isFreeElevatorPitch = userPlan === 'free' && (
+    rubricName?.toLowerCase().includes('elevator') ||
+    rubricItems.some(item => 
+      item.label?.toLowerCase().includes('call to action') || 
+      item.label?.toLowerCase().includes('cta') ||
+      item.id === 'cta'
+    )
+  )
+
   const pitchContextSection = pitchContext 
     ? `\nPITCH CONTEXT (Additional information about what the user is pitching):
 ${pitchContext}
@@ -136,7 +148,29 @@ For each question, determine:
 - If not answered or partially answered, what improvement is needed? (improvement: specific suggestion with quote citation)`
     : ''
 
+  const callToActionSpecialInstructions = isFreeElevatorPitch
+    ? `\n\nSPECIAL INSTRUCTIONS FOR "CALL TO ACTION" CRITERION (Free Elevator Pitch Only):
+This criterion should be evaluated as "Close or Next Step" (not just explicit ask).
+
+Scoring Guidelines:
+- Full credit (8-10): Explicit ask (e.g., "I'm looking for...", "The next step is...")
+- Partial credit (5-7): Strong closing summary or implied next step (e.g., "This gives people a repeatable way to improve how they communicate.")
+- Low score (0-4): Abrupt ending, trailing off, or no clear close
+
+IMPORTANT RULES:
+- If the pitch ends with a clear summary or value statement, do NOT score below 5.
+- Only score below 5 if the ending lacks BOTH:
+  * a summary takeaway
+  * an implied or explicit next step
+- When giving partial credit (5-7), include the closing sentence as an evidence quote.
+- Feedback text: If there's a summary but no explicit ask, say: "The pitch ends with a summary, but could be strengthened by adding a clear next step or ask."
+- Only say "lacks a call to action" when there is no close at all (score 0-4).
+
+Example evidence quote for partial credit: "PitchPractice gives people a repeatable way to improve how they communicate."`
+    : ''
+
   return `You are an expert pitch coach providing detailed, actionable feedback on a pitch presentation.
+${callToActionSpecialInstructions}
 
 CRITICAL RULES (STRICTLY ENFORCED):
 1. ALL feedback MUST cite specific quotes from the transcript. If you cannot cite a quote, do not make the claim.
@@ -524,6 +558,26 @@ export async function POST(
     // Use duration_ms as source of truth, fallback to audio_seconds
     const audioSeconds = run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds
 
+    // Get user plan before building prompt
+    let userPlan: 'free' | 'starter' | 'coach' | 'daypass' = 'free'
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        // Check user metadata for plan
+        const plan = user.user_metadata?.plan || user.user_metadata?.entitlement
+        if (plan === 'starter' || plan === 'coach' || plan === 'daypass') {
+          userPlan = plan
+        } else {
+          // Default authenticated users to 'starter'
+          userPlan = 'starter'
+        }
+      }
+    } catch (err) {
+      // If we can't determine plan, default to 'free'
+      console.warn('[Analyze] Could not determine user plan, defaulting to free:', err)
+    }
+
     // Build the analysis prompt
     // Use prompt-specific rubric if provided, otherwise use generic criteria
     // Handle both rubrics table (has 'name' field) and unified table (has 'title' field)
@@ -542,7 +596,9 @@ export async function POST(
       audioSeconds,
       run.words_per_minute,
       finalPitchContext,
-      guidingQuestions
+      guidingQuestions,
+      userPlan,
+      rubricName
     )
 
     // Call OpenAI for analysis
@@ -581,26 +637,6 @@ export async function POST(
       if (guidingQuestions.length > 0 && !analysisJson.question_grading) {
         console.warn('[Analyze] Guiding questions provided but question_grading missing from response')
         // Don't fail - make it optional
-      }
-
-      // Add plan metadata to analysis_json
-      let userPlan: 'free' | 'starter' | 'coach' | 'daypass' = 'free'
-      try {
-        const supabase = await createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          // Check user metadata for plan
-          const plan = user.user_metadata?.plan || user.user_metadata?.entitlement
-          if (plan === 'starter' || plan === 'coach' || plan === 'daypass') {
-            userPlan = plan
-          } else {
-            // Default authenticated users to 'starter'
-            userPlan = 'starter'
-          }
-        }
-      } catch (err) {
-        // If we can't determine plan, default to 'free'
-        console.warn('[Analyze] Could not determine user plan, defaulting to free:', err)
       }
 
       // Add metadata to analysis_json

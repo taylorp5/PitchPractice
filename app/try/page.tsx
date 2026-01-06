@@ -12,6 +12,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 const DEBUG = true
 
+// Try Free page: only show preview results, not deep analysis
+const SHOW_DEEP_ANALYSIS_ON_TRY = false
+
 // Free plan limits
 const FREE_MAX_SECONDS = 120 // 2 minutes
 const FREE_WARNING_SECONDS = 105 // 1:45 - show warning
@@ -1460,6 +1463,54 @@ FEEDBACK SUMMARY
     }
   }
 
+  // Re-record handler: stops recorder safely and resets local state
+  const handleRerecord = () => {
+    // Stop recorder safely if active (paused or recording)
+    try {
+      if (mediaRecorderRef.current && (isPaused || isRecording)) {
+        mediaRecorderRef.current.stop()
+      }
+    } catch (e) {
+      // Ignore errors if recorder already stopped
+    }
+    
+    // Stop and clear stream tracks
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+    
+    // Clear audio chunks
+    audioChunksRef.current = []
+    
+    // Clear local UI state
+    setRun(null)
+    setFeedback(null)
+    setAudioUrl(null)
+    setRecordingTime(0)
+    setDurationMs(null)
+    setPausedTotalMs(0)
+    setPauseStartTime(null)
+    
+    // Reset recording flags
+    setIsRecording(false)
+    setIsPaused(false)
+    setIsUploading(false)
+    setIsTranscribing(false)
+    setIsGettingFeedback(false)
+    setError(null)
+    setMicLevel(0)
+    
+    // Stop mic level meter
+    stopMicLevelMeter()
+    
+    // Clear timer
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current)
+      timerIntervalRef.current = null
+    }
+  }
+
   // Play/pause audio
   const togglePlayback = () => {
     if (!audioRef.current || !audioUrl) return
@@ -1754,71 +1805,90 @@ FEEDBACK SUMMARY
                             className="flex-1"
                           >
                             <Square className="mr-2 h-4 w-4" />
-                            Stop
+                            Stop Recording
                           </Button>
                         </div>
-                      </div>
-                    )}
-
-                    {run && audioUrl && (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <audio
-                            ref={audioRef}
-                            src={audioUrl}
-                            onEnded={() => setIsPlaying(false)}
-                            className="hidden"
-                          />
+                        {isPaused && (
                           <Button
-                            variant="secondary"
-                            onClick={togglePlayback}
-                            className="flex-1"
+                            variant="ghost"
+                            onClick={handleRerecord}
+                            className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
                           >
-                            {isPlaying ? (
-                              <>
-                                <Pause className="mr-2 h-4 w-4" />
-                                Pause
-                              </>
-                            ) : (
-                              <>
-                                <Play className="mr-2 h-4 w-4" />
-                                Play
-                              </>
-                            )}
+                            Re-record (Start over)
                           </Button>
-                        </div>
+                        )}
+                        {!isPaused && (
+                          <Button
+                            variant="ghost"
+                            onClick={() => {
+                              stopRecording()
+                              handleNewTake()
+                            }}
+                            className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
+                          >
+                            Discard & Re-record
+                          </Button>
+                        )}
                       </div>
                     )}
 
-                    {isTranscribing && (
+                    {run && !isRecording && (
+                      <div className="space-y-3">
+                        {audioUrl && (
+                          <div>
+                            <audio
+                              ref={audioRef}
+                              src={audioUrl}
+                              onEnded={() => setIsPlaying(false)}
+                              controls
+                              className="w-full"
+                            />
+                          </div>
+                        )}
+                        <Button
+                          variant="primary"
+                          size="lg"
+                          onClick={async () => {
+                            handleNewTake()
+                            // Small delay to ensure state is reset before starting
+                            await new Promise(resolve => setTimeout(resolve, 100))
+                            if (selectedPrompt && !isSilent) {
+                              await startRecording()
+                            }
+                          }}
+                          className="w-full"
+                          disabled={!selectedPrompt || isSilent || isUploading || isTranscribing || isGettingFeedback}
+                        >
+                          <Mic className="mr-2 h-5 w-5" />
+                          Record Again
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Progress status */}
+                    {(isUploading || isTranscribing || isGettingFeedback) && (
                       <div className="text-center py-3">
-                        <LoadingSpinner size="md" text="Transcribing..." />
+                        {isUploading && (
+                          <div className="space-y-1">
+                            <LoadingSpinner size="md" text="Uploading audio..." />
+                            <p className="text-xs text-[#9AA4B2]">ETA ~5–10s</p>
+                          </div>
+                        )}
+                        {isTranscribing && !isUploading && (
+                          <div className="space-y-1">
+                            <LoadingSpinner size="md" text="Transcribing..." />
+                            <p className="text-xs text-[#9AA4B2]">ETA ~10–30s</p>
+                          </div>
+                        )}
+                        {isGettingFeedback && !isUploading && !isTranscribing && (
+                          <div className="space-y-1">
+                            <LoadingSpinner size="md" text="Analyzing..." />
+                            <p className="text-xs text-[#9AA4B2]">ETA ~10–20s</p>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {isGettingFeedback && (
-                      <div className="text-center py-3">
-                        <LoadingSpinner size="md" text="Evaluating..." />
-                      </div>
-                    )}
-
-                    {/* Get feedback button (shown when transcript exists but no feedback yet) */}
-                    {run && run.transcript && !feedback && !run.analysis_json && !isTranscribing && !isGettingFeedback && (
-                      <Button
-                        variant="primary"
-                        size="lg"
-                        onClick={() => {
-                          if (run.id) {
-                            setIsGettingFeedback(true)
-                            getFeedback(run.id)
-                          }
-                        }}
-                        className="w-full"
-                        disabled={!selectedRubricId}
-                      >
-                        Get My Evaluation
-                      </Button>
-                    )}
                   </div>
                 ) : (
                   <div
@@ -1863,16 +1933,6 @@ FEEDBACK SUMMARY
                 {error && (
                   <div className="p-3 bg-[#EF444420] border border-[#EF444430] rounded-lg">
                     <p className="text-xs text-[#EF4444] mb-2">{error}</p>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setError(null)
-                        handleNewTake()
-                      }}
-                    >
-                      Re-record to Improve Score
-                    </Button>
                   </div>
                 )}
 
@@ -1889,6 +1949,29 @@ FEEDBACK SUMMARY
               </Card>
             ) : (
               <>
+                {/* Transcript Block */}
+                {run.transcript && run.transcript.trim().length > 0 && (
+                  <Card className="p-6">
+                    <h3 className="text-lg font-semibold text-[#E6E8EB] mb-4">Transcript</h3>
+                    {(audioUrl || run.audio_url) && (
+                      <div className="mb-4">
+                        <audio
+                          ref={audioRef}
+                          src={audioUrl || run.audio_url || ''}
+                          onEnded={() => setIsPlaying(false)}
+                          controls
+                          className="w-full"
+                        />
+                      </div>
+                    )}
+                    <div className="prose prose-invert max-w-none">
+                      <p className="text-sm text-[#E6E8EB] whitespace-pre-wrap leading-relaxed">
+                        {run.transcript}
+                      </p>
+                    </div>
+                  </Card>
+                )}
+
                 {/* Metrics */}
                 {run.transcript && run.transcript.trim().length > 0 && (
                   <Card className="p-6">
@@ -1948,44 +2031,111 @@ FEEDBACK SUMMARY
                       }
                       return null
                     })()}
+                    {selectedPrompt && (() => {
+                      const promptData = PROMPTS.find(p => p.id === selectedPrompt)
+                      return promptData?.duration ? (
+                        <p className="text-xs text-[#9AA4B2] text-center mt-3">
+                          Target: {promptData.duration}
+                        </p>
+                      ) : null
+                    })()}
                   </Card>
                 )}
 
-                {/* Deep analysis intentionally hidden on Try Free page. */}
-
-                {/* Empty state if no feedback yet */}
+                {/* Preview Feedback (HIGH-LEVEL ONLY) */}
                 {(() => {
-                  const currentRun = run
+                  const currentRun = run ?? null
                   if (!currentRun) return null
                   
-                  const feedbackData = feedback || currentRun.analysis_json
+                  const transcript = currentRun.transcript?.trim() ?? ""
+                  const feedbackData = feedback ?? currentRun.analysis_json ?? null
                   
-                  if (!feedbackData && currentRun.transcript) {
+                  if (!feedbackData && transcript.length > 0) {
                     return (
-                      <Card className="p-10">
-                        <h3 className="text-xl font-bold text-[#E6E8EB] mb-8">Your Evaluation</h3>
-                        <div className="text-center py-8">
-                          <p className="text-sm text-[#9AA4B2] mb-4">Evaluation isn't generated yet.</p>
-                          <Button
-                            variant="primary"
-                            size="lg"
-                            onClick={() => {
-                              if (currentRun.id) {
-                                setIsGettingFeedback(true)
-                                getFeedback(currentRun.id)
-                              }
-                            }}
-                            disabled={!selectedRubricId || isGettingFeedback}
-                          >
-                            {isGettingFeedback ? 'Evaluating...' : 'Get My Evaluation'}
-                          </Button>
+                      <Card className="p-6">
+                        <h3 className="text-lg font-semibold text-[#E6E8EB] mb-4">Preview Feedback</h3>
+                        <div className="text-center py-6">
+                          <p className="text-sm text-[#9AA4B2]">Generating feedback…</p>
                         </div>
                       </Card>
                     )
                   }
                   
-                  return null
+                  if (!feedbackData) return null
+                  
+                  return (
+                    <Card className="p-6">
+                      <h3 className="text-lg font-semibold text-[#E6E8EB] mb-4">Preview Feedback</h3>
+                      
+                      {/* Overall Score */}
+                      {feedbackData.summary?.overall_score !== undefined && (
+                        <div className="mb-6 text-center">
+                          <p className="text-xs text-[#9AA4B2] mb-2">Overall Score</p>
+                          <div className="text-4xl font-bold text-[#F59E0B]">
+                            {Math.round(feedbackData.summary.overall_score)}/10
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Rubric Score Cards */}
+                      {feedbackData.rubric_scores && feedbackData.rubric_scores.length > 0 && (
+                        <div className="mb-6">
+                          <p className="text-xs text-[#9AA4B2] mb-3 font-medium uppercase tracking-wide">Criterion Scores</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {feedbackData.rubric_scores.map((score: any, idx: number) => {
+                              const criterionLabel = score.criterion_label || score.criterion || `Criterion ${idx + 1}`
+                              const scoreValue = score.score || 0
+                              return (
+                                <div
+                                  key={idx}
+                                  className="p-3 bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] rounded-lg"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm text-[#E6E8EB]">{criterionLabel}</span>
+                                    <span className="text-lg font-bold text-[#F59E0B]">{Math.round(scoreValue)}/10</span>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Strengths (max 2) */}
+                      {feedbackData.summary?.top_strengths && feedbackData.summary.top_strengths.length > 0 && (
+                        <div className="mb-6">
+                          <p className="text-xs text-[#9AA4B2] mb-3 font-medium uppercase tracking-wide">Strengths</p>
+                          <ul className="space-y-2">
+                            {feedbackData.summary.top_strengths.slice(0, 2).map((strength: string, idx: number) => (
+                              <li key={idx} className="flex items-start gap-2 text-sm text-[#E6E8EB]">
+                                <span className="text-[#22C55E] mt-0.5">•</span>
+                                <span>{strength.replace(/^["']|["']$/g, '').trim()}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {/* Improvements (max 2) */}
+                      {feedbackData.summary?.top_improvements && feedbackData.summary.top_improvements.length > 0 && (
+                        <div className="mb-6">
+                          <p className="text-xs text-[#9AA4B2] mb-3 font-medium uppercase tracking-wide">Improvements</p>
+                          <ul className="space-y-2">
+                            {feedbackData.summary.top_improvements.slice(0, 2).map((improvement: string, idx: number) => (
+                              <li key={idx} className="flex items-start gap-2 text-sm text-[#E6E8EB]">
+                                <span className="text-[#F59E0B] mt-0.5">•</span>
+                                <span>{improvement.replace(/^["']|["']$/g, '').trim()}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </Card>
+                  )
                 })()}
+
+                {/* Deep analysis intentionally hidden on Try Free page. */}
+
 
                 {/* CTA Button */}
                 {(() => {
@@ -2021,21 +2171,12 @@ FEEDBACK SUMMARY
                         </p>
                       ) : (
                         <p className="text-xs text-[#9AA4B2] text-center mt-3">
-                          Sign in to unlock line-by-line coaching, filler word detection, pacing insights, and transcript download.
+                          Sign in to unlock line-by-line coaching, filler words & pause insights, examples, and transcript download.
                         </p>
                       )}
                     </Card>
                   )
                 })()}
-                
-                {/* New take button */}
-                <Button
-                  variant="ghost"
-                  onClick={handleNewTake}
-                  className="w-full"
-                >
-                  Re-record to Improve Score
-                </Button>
               </>
             )}
 

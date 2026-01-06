@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -74,16 +74,39 @@ export default function RunPage() {
   const [lastTranscribeResponse, setLastTranscribeResponse] = useState<any>(null)
   const [lastTranscript, setLastTranscript] = useState<string | null>(null)
   const [lastAction, setLastAction] = useState<string | null>(null)
+  
+  // Use ref to track current run for polling logic (avoids stale closures)
+  const runRef = useRef<Run | null>(null)
+  useEffect(() => {
+    runRef.current = run
+  }, [run])
 
-  const fetchRun = async () => {
+  // Status priority map: higher number = more complete state
+  const statusPriority: Record<string, number> = {
+    uploaded: 1,
+    transcribing: 2,
+    transcribed: 3,
+    analyzing: 3.5,
+    analyzed: 4,
+    error: 5,
+  }
+
+  const getStatusPriority = (status: string | null | undefined): number => {
+    if (!status) return 0
+    return statusPriority[status] || 0
+  }
+
+  const fetchRun = useCallback(async (isPolling: boolean = false): Promise<boolean> => {
     // Guard: Never fetch if runId is falsy or the string "undefined"
     if (!routeRunId || routeRunId === 'undefined') {
       setError('Invalid run ID')
       setLoading(false)
-      return
+      return false
     }
 
     const url = `/api/runs/${routeRunId}`
+    const fetchTimestamp = new Date().toISOString()
+    
     try {
       const res = await fetch(url, {
         cache: 'no-store',
@@ -94,37 +117,96 @@ export default function RunPage() {
       }
       const responseData = await res.json()
       
-      let runData: Run | null = null
-      if (responseData.ok && responseData.run) {
-        runData = responseData.run
+      // Normalize response shape: handle both { run, analysis } and { run } formats
+      const normalizedRun = responseData.ok && responseData.run ? responseData.run : responseData
+      const normalizedAnalysis = responseData.analysis ?? responseData.run?.analysis_json ?? normalizedRun?.analysis_json ?? null
+      const normalizedTranscript = responseData.transcript ?? responseData.run?.transcript ?? normalizedRun?.transcript ?? null
+      
+      // Merge analysis into run if it's at top level
+      const runData: Run | null = normalizedRun ? {
+        ...normalizedRun,
+        analysis_json: normalizedAnalysis ?? normalizedRun.analysis_json ?? null,
+        transcript: normalizedTranscript ?? normalizedRun.transcript ?? null,
+      } : null
+
+      if (!runData) {
+        throw new Error('No run data in response')
+      }
+
+      // Get current run from ref to avoid stale closure
+      const currentRun = runRef.current
+
+      // Debug logging (dev-only)
+      if (process.env.NODE_ENV === 'development') {
+        const hasTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
+        const hasAnalysis = !!runData.analysis_json
+        console.log('[RunPage] Fetch result:', {
+          timestamp: fetchTimestamp,
+          status: runData.status,
+          statusPriority: getStatusPriority(runData.status),
+          hasTranscript,
+          hasAnalysis,
+          isPolling,
+          currentRunStatus: currentRun?.status,
+          currentRunPriority: getStatusPriority(currentRun?.status),
+        })
+      }
+
+      // Priority-based state update: only update if new data is more complete
+      const currentPriority = getStatusPriority(currentRun?.status)
+      const newPriority = getStatusPriority(runData.status)
+      const hasNewTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
+      const hasNewAnalysis = !!runData.analysis_json
+      const currentHasTranscript = !!(currentRun?.transcript && currentRun.transcript.trim().length > 0)
+      const currentHasAnalysis = !!currentRun?.analysis_json
+
+      const shouldUpdate = 
+        newPriority > currentPriority || // New status is more complete
+        (newPriority === currentPriority && (
+          (hasNewTranscript && !currentHasTranscript) || // New transcript available
+          (hasNewAnalysis && !currentHasAnalysis) // New analysis available
+        )) ||
+        !currentRun // No current run data
+
+      if (shouldUpdate) {
         setRun(runData)
         
         // Use plan from analysis metadata if available, otherwise keep current plan
-        if (runData && runData.analysis_json?.meta?.plan_at_time) {
+        if (runData.analysis_json?.meta?.plan_at_time) {
           const planAtTime = runData.analysis_json.meta.plan_at_time
           setUserPlan(planAtTime === 'daypass' ? 'day_pass' : planAtTime)
         }
-      } else if (!responseData.ok) {
-        throw new Error(responseData.error || 'Failed to fetch run')
-      } else {
-        runData = responseData
-        setRun(runData)
-        
-        // Use plan from analysis metadata if available
-        if (runData && runData.analysis_json?.meta?.plan_at_time) {
-          const planAtTime = runData.analysis_json.meta.plan_at_time
-          setUserPlan(planAtTime === 'daypass' ? 'day_pass' : planAtTime)
-        }
+
+        setError(null)
+      } else if (process.env.NODE_ENV === 'development') {
+        console.log('[RunPage] Skipping stale update:', {
+          currentPriority,
+          newPriority,
+          currentHasTranscript,
+          hasNewTranscript,
+          currentHasAnalysis,
+          hasNewAnalysis,
+        })
       }
 
-      setError(null)
+      // Return true if we should continue polling
+      const shouldContinuePolling = 
+        (runData.status === 'uploaded' || 
+         runData.status === 'transcribing' || 
+         runData.status === 'transcribed') &&
+        !(runData.status === 'analyzed' || (hasNewTranscript && hasNewAnalysis))
+
+      return shouldContinuePolling
     } catch (err: any) {
       console.error('Error fetching run:', err)
       setError(err.message || 'Failed to load pitch run')
+      return false
     } finally {
-      setLoading(false)
+      if (!isPolling) {
+        setLoading(false)
+      }
     }
-  }
+  }, [routeRunId])
 
   const fetchAudioUrl = async () => {
     if (!routeRunId || !run?.audio_path) return
@@ -152,8 +234,36 @@ export default function RunPage() {
       // Normalize daypass to day_pass for compatibility
       setUserPlan(plan === 'daypass' ? 'day_pass' : plan)
     })
-    fetchRun()
+    fetchRun(false)
   }, [routeRunId])
+
+  // Polling: poll every 1500ms while status is in ["uploaded","transcribing","transcribed"]
+  useEffect(() => {
+    if (!run) return
+
+    const status = run.status
+    const shouldPoll = status === 'uploaded' || status === 'transcribing' || status === 'transcribed'
+    
+    // Stop polling when status is "analyzed" OR when transcript && (analysis_json || analysis) exist
+    const hasCompleteData = run.status === 'analyzed' || 
+      (run.transcript && run.transcript.trim().length > 0 && 
+       (run.analysis_json || false))
+
+    if (!shouldPoll || hasCompleteData) {
+      return
+    }
+
+    const intervalId = setInterval(async () => {
+      const shouldContinue = await fetchRun(true)
+      if (!shouldContinue) {
+        clearInterval(intervalId)
+      }
+    }, 1500)
+
+    return () => {
+      clearInterval(intervalId)
+    }
+  }, [run?.status, run?.transcript, run?.analysis_json, routeRunId, fetchRun])
 
   useEffect(() => {
     if (run?.audio_path) {
@@ -198,12 +308,28 @@ export default function RunPage() {
         return
       }
 
-      if (responseData.ok && responseData.run) {
-        setRun(responseData.run)
-        if (responseData.transcript) {
-          setLastTranscript(responseData.transcript)
+      // Normalize response shape
+      const normalizedRun = responseData.ok && responseData.run ? responseData.run : responseData
+      const normalizedTranscript = responseData.transcript ?? responseData.run?.transcript ?? normalizedRun?.transcript ?? null
+      
+      if (normalizedRun) {
+        const runData: Run = {
+          ...normalizedRun,
+          transcript: normalizedTranscript ?? normalizedRun.transcript ?? null,
         }
-        setLastAction('Transcription completed successfully')
+        
+        // Use priority-based update
+        const currentRun = runRef.current
+        const currentPriority = getStatusPriority(currentRun?.status)
+        const newPriority = getStatusPriority(runData.status)
+        
+        if (newPriority >= currentPriority) {
+          setRun(runData)
+          if (normalizedTranscript) {
+            setLastTranscript(normalizedTranscript)
+          }
+          setLastAction('Transcription completed successfully')
+        }
       } else {
         setError(responseData.message || 'Transcription failed')
         setLastAction(`Transcription failed: ${responseData.message || 'Unknown error'}`)
@@ -285,9 +411,26 @@ export default function RunPage() {
       }
 
       const responseData = await res.json()
-      if (responseData.ok && responseData.run) {
-        setRun(responseData.run)
-        setLastAction('Feedback generated successfully')
+      
+      // Normalize response shape: handle both { run, analysis } and { run } formats
+      const normalizedRun = responseData.ok && responseData.run ? responseData.run : responseData
+      const normalizedAnalysis = responseData.analysis ?? responseData.run?.analysis_json ?? normalizedRun?.analysis_json ?? null
+      
+      if (normalizedRun) {
+        const runData: Run = {
+          ...normalizedRun,
+          analysis_json: normalizedAnalysis ?? normalizedRun.analysis_json ?? null,
+        }
+        
+        // Use priority-based update
+        const currentRun = runRef.current
+        const currentPriority = getStatusPriority(currentRun?.status)
+        const newPriority = getStatusPriority(runData.status)
+        
+        if (newPriority >= currentPriority) {
+          setRun(runData)
+          setLastAction('Feedback generated successfully')
+        }
       } else {
         setError(responseData.message || 'Feedback generation failed')
         setLastAction(`Feedback generation failed: ${responseData.message || 'Unknown error'}`)

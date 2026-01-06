@@ -6,6 +6,7 @@ import { getSessionId } from '@/lib/session'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { Badge } from '@/components/ui/Badge'
 import { Mic, Upload, Play, Pause, Square, AlertCircle, X, CheckCircle2, Edit2, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import { getUserPlan, UserPlan } from '@/lib/plan'
@@ -1001,9 +1002,19 @@ export default function PracticePage() {
       <div className="max-w-[1100px] mx-auto space-y-6">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-[#E6E8EB] mb-2">
-            Practice Your Pitch
-          </h1>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <h1 className="text-3xl font-bold text-[#E6E8EB]">
+              Practice Your Pitch
+            </h1>
+            {!isLoadingPlan && userPlan !== 'free' && (
+              <Badge 
+                variant={userPlan === 'coach' || userPlan === 'daypass' ? 'primary' : 'info'}
+                size="sm"
+              >
+                {userPlan === 'daypass' ? 'Day Pass' : userPlan.charAt(0).toUpperCase() + userPlan.slice(1)}
+              </Badge>
+            )}
+          </div>
           <p className="text-base text-[#9AA4B2] max-w-2xl mx-auto">
             Record or upload your pitch to get AI-powered feedback
           </p>

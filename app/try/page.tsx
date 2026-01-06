@@ -2208,11 +2208,11 @@ FEEDBACK SUMMARY
                             : feedbackData.summary?.overall_notes || 'Review your pitch and try again.'
                         
                         return (
-                          <Card className="p-6 bg-[#FEF3C7] border-[#F59E0B]/40">
-                            <h4 className="text-sm font-semibold text-[#92400E] uppercase tracking-wide mb-2">
+                          <Card className="p-6 bg-[#FEF3C7] border-2 border-[#F59E0B]/50">
+                            <h4 className="text-sm font-semibold text-[#92400E] uppercase tracking-wide mb-3">
                               Next attempt, focus on this
                             </h4>
-                            <p className="text-sm text-[#E6E8EB]">{focusMessage}</p>
+                            <p className="text-sm text-[#78350F] leading-relaxed">{focusMessage}</p>
                           </Card>
                         )
                       })()}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server-auth'
 import OpenAI from 'openai'
 
 export const dynamic = 'force-dynamic'
@@ -19,6 +20,10 @@ interface RubricCriterion {
 }
 
 interface AnalysisOutput {
+  meta?: {
+    plan_at_time?: 'free' | 'starter' | 'coach' | 'daypass'
+    generated_at?: string
+  }
   summary: {
     overall_score: number
     overall_notes: string
@@ -39,6 +44,12 @@ interface AnalysisOutput {
     notes: string
     evidence_quotes: string[]
     missing: boolean
+  }>
+  question_grading?: Array<{
+    question: string
+    answered: boolean
+    evidence_quotes: string[]
+    improvement: string | null
   }>
   chunks: Array<{
     text: string
@@ -83,7 +94,8 @@ function buildAnalysisPrompt(
   maxDurationSeconds: number | null,
   audioSeconds: number | null,
   wpm: number | null,
-  pitchContext: string | null
+  pitchContext: string | null = null,
+  guidingQuestions: string[] = []
 ): string {
   // Use prompt-specific rubric if provided, otherwise use generic criteria
   const rubricItems: PromptRubricItem[] = promptRubric || criteria.map((c, i) => ({
@@ -107,6 +119,23 @@ function buildAnalysisPrompt(
     weight: item.weight,
   }))
 
+  const pitchContextSection = pitchContext 
+    ? `\nPITCH CONTEXT (Additional information about what the user is pitching):
+${pitchContext}
+
+Use this context to better understand the pitch goals and provide more relevant feedback.`
+    : ''
+
+  const guidingQuestionsSection = guidingQuestions.length > 0
+    ? `\nGUIDING QUESTIONS (Evaluate whether the pitch addresses these questions):
+${guidingQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+
+For each question, determine:
+- Was it answered? (answered: true/false)
+- What evidence supports your answer? (evidence_quotes: array of verbatim quotes from transcript)
+- If not answered or partially answered, what improvement is needed? (improvement: specific suggestion with quote citation)`
+    : ''
+
   return `You are an expert pitch coach providing detailed, actionable feedback on a pitch presentation.
 
 CRITICAL RULES (STRICTLY ENFORCED):
@@ -116,11 +145,8 @@ CRITICAL RULES (STRICTLY ENFORCED):
 4. Reference exact transcript segments for every point. No exceptions.
 5. If you cannot find a specific quote to support a point, omit that point entirely rather than making a generic claim.
 
-${pitchContext ? `PITCH CONTEXT (Use this to provide more relevant feedback):
-${pitchContext}
-
-` : ''}TRANSCRIPT:
-${transcript}
+TRANSCRIPT:
+${transcript}${pitchContextSection}${guidingQuestionsSection}
 
 RUBRIC CRITERIA (Evaluate how well the pitch addresses each):
 ${criteriaList}
@@ -161,7 +187,16 @@ Return a JSON object with this exact structure:
       "missing": <boolean, true if this criterion is not addressed at all>
     },
     ... (one for each criterion in rubric)
-  ],
+  ],${guidingQuestions.length > 0 ? `
+  "question_grading": [
+    {
+      "question": "<guiding question text>",
+      "answered": <boolean, true if the question is addressed in the pitch>,
+      "evidence_quotes": ["<verbatim quote 1>", "<verbatim quote 2>"],
+      "improvement": "<specific suggestion if not answered, or null if fully answered>"
+    },
+    ... (one for each guiding question)
+  ],` : ''}
   "chunks": [
     {
       "text": "<verbatim excerpt from transcript, 1-3 sentences forming one idea unit>",
@@ -235,15 +270,20 @@ export async function POST(
     // the client to specify a different rubric_id if needed
     let requestRubricId: string | null = null
     let promptRubric: PromptRubricItem[] | null = null
+    let pitchContext: string | null = null
     try {
       const body = await request.json().catch(() => ({}))
       requestRubricId = body.rubric_id || null
       promptRubric = body.prompt_rubric || null
+      pitchContext = body.pitch_context || null
       if (requestRubricId) {
         console.log('[Analyze] Request specified rubric_id:', requestRubricId)
       }
       if (promptRubric) {
         console.log('[Analyze] Using prompt-specific rubric:', promptRubric)
+      }
+      if (pitchContext) {
+        console.log('[Analyze] Pitch context provided:', pitchContext.substring(0, 100))
       }
     } catch (e) {
       // Request body is optional, continue with run's rubric_id
@@ -255,12 +295,15 @@ export async function POST(
       .update({ status: 'analyzing' })
       .eq('id', id)
 
-    // Fetch the run with rubric (include duration_ms)
+    // Fetch the run (include duration_ms and pitch_context)
     const { data: run, error: fetchError } = await getSupabaseAdmin()
       .from('pitch_runs')
-      .select('*, rubrics(*)')
+      .select('*')
       .eq('id', id)
       .single()
+    
+    // Use pitch_context from request body if provided, otherwise from run
+    const finalPitchContext = pitchContext || run?.pitch_context || null
 
     if (fetchError || !run) {
       console.error('[Analyze] Run not found:', { id, error: fetchError })
@@ -308,73 +351,136 @@ export async function POST(
       // Don't block - transcript exists, so we can analyze
     }
 
-    if (!run.rubric_id) {
-      console.error('[Analyze] Missing rubric_id:', { runId: id, rubricId: run.rubric_id })
-      return NextResponse.json(
-        { 
-          ok: false,
-          error: 'Rubric is required for analysis',
-          details: `Run is missing rubric_id. Current rubric_id: ${run.rubric_id || 'null'}`,
-          runId: id,
-          runStatus: run.status,
-          transcriptLength,
-          fieldsChecked: ['rubric_id'],
-        },
-        { status: 400 }
-      )
+    // Fetch rubric from unified rubrics table
+    // If run.rubric_id is missing, we'll fall back to default template below
+    let rubric: any = null
+    let criteria: RubricCriterion[] = []
+    let guidingQuestions: string[] = []
+    let rubricJson: any = null
+    
+    // Use requestRubricId if provided, otherwise use run.rubric_id
+    const rubricIdToUse = requestRubricId || run.rubric_id
+
+    if (rubricIdToUse) {
+      // Fetch from unified rubrics table
+      const { data: fetchedRubric } = await getSupabaseAdmin()
+        .from('rubrics')
+        .select('*')
+        .eq('id', rubricIdToUse)
+        .single()
+      
+      if (fetchedRubric) {
+        rubric = fetchedRubric
+        rubricJson = rubric.rubric_json || null
+
+        // Extract criteria from rubric_json if available, otherwise fall back to criteria field
+        if (rubricJson && rubricJson.criteria && Array.isArray(rubricJson.criteria)) {
+          criteria = rubricJson.criteria.map((c: any) => ({
+            name: c.name || c.label || 'Unknown',
+            description: c.description || '',
+          }))
+        } else if (rubric.criteria && Array.isArray(rubric.criteria)) {
+          // Fallback to legacy criteria field
+          criteria = rubric.criteria.map((c: any) => ({
+            name: c.name || c.label || 'Unknown',
+            description: c.description || '',
+          }))
+        }
+
+        // Extract guiding_questions from rubric_json
+        if (rubricJson && rubricJson.guiding_questions && Array.isArray(rubricJson.guiding_questions)) {
+          guidingQuestions = rubricJson.guiding_questions.filter((q: any) => 
+            typeof q === 'string' && q.trim().length > 0
+          )
+        }
+      }
     }
 
-    if (!run.rubrics) {
-      console.error('[Analyze] Rubric not found:', { runId: id, rubricId: run.rubric_id })
+    // Fallback to default template rubric if not found
+    if (!rubric) {
+      console.warn('[Analyze] Rubric not found, using default template:', { 
+        runId: id, 
+        rubricId: rubricIdToUse 
+      })
+      
+      // Fetch first template rubric as fallback
+      const { data: defaultRubrics } = await getSupabaseAdmin()
+        .from('rubrics')
+        .select('*')
+        .eq('is_template', true)
+        .order('created_at', { ascending: true })
+        .limit(1)
+      
+      if (defaultRubrics && defaultRubrics.length > 0) {
+        rubric = defaultRubrics[0]
+        rubricJson = rubric.rubric_json || null
+
+        // Extract criteria from rubric_json if available
+        if (rubricJson && rubricJson.criteria && Array.isArray(rubricJson.criteria)) {
+          criteria = rubricJson.criteria.map((c: any) => ({
+            name: c.name || c.label || 'Unknown',
+            description: c.description || '',
+          }))
+        } else if (rubric.criteria && Array.isArray(rubric.criteria)) {
+          criteria = rubric.criteria.map((c: any) => ({
+            name: c.name || c.label || 'Unknown',
+            description: c.description || '',
+          }))
+        }
+
+        // Extract guiding_questions
+        if (rubricJson && rubricJson.guiding_questions && Array.isArray(rubricJson.guiding_questions)) {
+          guidingQuestions = rubricJson.guiding_questions.filter((q: any) => 
+            typeof q === 'string' && q.trim().length > 0
+          )
+        }
+      }
+    }
+
+    if (!rubric || criteria.length === 0) {
+      console.error('[Analyze] No valid rubric found (including fallback):', { 
+        runId: id, 
+        rubricId: rubricIdToUse,
+        hasRubric: !!rubric,
+        criteriaCount: criteria.length
+      })
       return NextResponse.json(
         { 
           ok: false,
           error: 'Rubric not found',
-          details: `Rubric with ID ${run.rubric_id} does not exist or could not be loaded`,
+          details: `No valid rubric found. Rubric ID: ${rubricIdToUse || 'null'}`,
           runId: id,
-          rubricId: run.rubric_id,
+          rubricId: rubricIdToUse,
           runStatus: run.status,
           transcriptLength,
-          fieldsChecked: ['rubrics'],
         },
         { status: 400 }
       )
     }
 
-    const rubric = run.rubrics as any
-    const criteria: RubricCriterion[] = rubric.criteria || []
-
-    if (criteria.length === 0) {
-      console.error('[Analyze] Rubric has no criteria:', { runId: id, rubricId: run.rubric_id })
-      return NextResponse.json(
-        { 
-          ok: false,
-          error: 'Rubric has no criteria defined',
-          details: `Rubric "${rubric.name || run.rubric_id}" has no criteria. Cannot perform analysis without criteria.`,
-          runId: id,
-          rubricId: run.rubric_id,
-          runStatus: run.status,
-          transcriptLength,
-          fieldsChecked: ['rubrics.criteria', 'rubrics.criteria.length'],
-        },
-        { status: 400 }
-      )
-    }
 
     // Use duration_ms as source of truth, fallback to audio_seconds
     const audioSeconds = run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds
 
     // Build the analysis prompt
     // Use prompt-specific rubric if provided, otherwise use generic criteria
+    // Handle both rubrics table (has 'name' field) and unified table (has 'title' field)
+    const rubricName = rubric.name || rubric.title || 'Unknown Rubric'
+    
+    // Extract target_duration_seconds from rubric_json if available
+    const targetDurationSeconds = rubricJson?.target_duration_seconds ?? rubric.target_duration_seconds ?? null
+    const maxDurationSeconds = rubricJson?.max_duration_seconds ?? rubric.max_duration_seconds ?? null
+    
     const prompt = buildAnalysisPrompt(
       run.transcript,
       criteria,
       promptRubric,
-      rubric.target_duration_seconds,
-      rubric.max_duration_seconds,
+      targetDurationSeconds,
+      maxDurationSeconds,
       audioSeconds,
       run.words_per_minute,
-      (run as any).pitch_context || null
+      finalPitchContext,
+      guidingQuestions
     )
 
     // Call OpenAI for analysis
@@ -407,6 +513,38 @@ export async function POST(
       // Validate the structure
       if (!analysisJson.summary || !analysisJson.rubric_scores || !analysisJson.line_by_line) {
         throw new Error('Invalid analysis structure returned from OpenAI')
+      }
+
+      // Validate question_grading if guiding questions were provided
+      if (guidingQuestions.length > 0 && !analysisJson.question_grading) {
+        console.warn('[Analyze] Guiding questions provided but question_grading missing from response')
+        // Don't fail - make it optional
+      }
+
+      // Add plan metadata to analysis_json
+      let userPlan: 'free' | 'starter' | 'coach' | 'daypass' = 'free'
+      try {
+        const supabase = await createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          // Check user metadata for plan
+          const plan = user.user_metadata?.plan || user.user_metadata?.entitlement
+          if (plan === 'starter' || plan === 'coach' || plan === 'daypass') {
+            userPlan = plan
+          } else {
+            // Default authenticated users to 'starter'
+            userPlan = 'starter'
+          }
+        }
+      } catch (err) {
+        // If we can't determine plan, default to 'free'
+        console.warn('[Analyze] Could not determine user plan, defaulting to free:', err)
+      }
+
+      // Add metadata to analysis_json
+      analysisJson.meta = {
+        plan_at_time: userPlan,
+        generated_at: new Date().toISOString(),
       }
     } catch (error: any) {
       console.error('OpenAI analysis error:', error)

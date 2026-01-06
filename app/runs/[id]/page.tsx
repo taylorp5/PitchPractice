@@ -11,6 +11,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { StatPill } from '@/components/ui/StatPill'
 import { Copy, Check, ArrowLeft, RefreshCw, RotateCcw, ChevronDown, ChevronUp, Mic, FileText } from 'lucide-react'
+import { getUserPlan } from '@/lib/plan'
 
 // Helper function to log fetch errors with full details
 async function logFetchError(url: string, response: Response, error?: any) {
@@ -59,8 +60,7 @@ export default function RunPage() {
   const params = useParams()
   const router = useRouter()
   const routeRunId = params.id as string
-  // TODO: Replace with actual user plan from auth/session
-  const [userPlan] = useState<'starter' | 'coach' | 'day_pass'>('starter')
+  const [userPlan, setUserPlan] = useState<'free' | 'starter' | 'coach' | 'daypass' | 'day_pass'>('free')
   const [run, setRun] = useState<Run | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -96,11 +96,23 @@ export default function RunPage() {
       if (responseData.ok && responseData.run) {
         runData = responseData.run
         setRun(runData)
+        
+        // Use plan from analysis metadata if available, otherwise keep current plan
+        if (runData.analysis_json?.meta?.plan_at_time) {
+          const planAtTime = runData.analysis_json.meta.plan_at_time
+          setUserPlan(planAtTime === 'daypass' ? 'day_pass' : planAtTime)
+        }
       } else if (!responseData.ok) {
         throw new Error(responseData.error || 'Failed to fetch run')
       } else {
         runData = responseData
         setRun(runData)
+        
+        // Use plan from analysis metadata if available
+        if (runData.analysis_json?.meta?.plan_at_time) {
+          const planAtTime = runData.analysis_json.meta.plan_at_time
+          setUserPlan(planAtTime === 'daypass' ? 'day_pass' : planAtTime)
+        }
       }
 
       setError(null)
@@ -133,6 +145,11 @@ export default function RunPage() {
   }
 
   useEffect(() => {
+    // Get user plan on mount
+    getUserPlan().then(plan => {
+      // Normalize daypass to day_pass for compatibility
+      setUserPlan(plan === 'daypass' ? 'day_pass' : plan)
+    })
     fetchRun()
   }, [routeRunId])
 
@@ -438,6 +455,64 @@ export default function RunPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Column - Transcript + Feedback */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Prompt/Rubric Card - Show which prompt was used */}
+            {run.rubrics ? (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              >
+                <Card>
+                  <SectionHeader title="Evaluation Prompt" />
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-[#E5E7EB] mb-2">
+                        {run.rubrics.name}
+                      </h3>
+                      {run.rubrics.description && (
+                        <p className="text-sm text-[#9CA3AF]">
+                          {run.rubrics.description}
+                        </p>
+                      )}
+                    </div>
+                    {run.rubrics.criteria && Array.isArray(run.rubrics.criteria) && run.rubrics.criteria.length > 0 && (
+                      <div className="pt-3 border-t border-[#22283A]">
+                        <p className="text-xs font-semibold text-[#9CA3AF] mb-2 uppercase tracking-wide">Guiding Questions:</p>
+                        <ul className="space-y-2">
+                          {run.rubrics.criteria.map((criterion: any, idx: number) => (
+                            <li key={idx} className="flex items-start gap-2 text-sm text-[#E5E7EB]">
+                              <span className="text-[#F59E0B] mt-0.5 flex-shrink-0">•</span>
+                              <div>
+                                <span className="font-medium">{criterion.name || criterion.label || `Question ${idx + 1}`}</span>
+                                {criterion.description && (
+                                  <span className="text-[#9CA3AF] ml-2">— {criterion.description}</span>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+              >
+                <Card className="bg-yellow-500/10 border-yellow-500/30">
+                  <SectionHeader title="Evaluation Prompt" />
+                  <div className="p-4">
+                    <p className="text-sm text-[#F59E0B]">
+                      ⚠️ This run was created without a prompt selection.
+                    </p>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
             {/* Transcript Card */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -510,9 +585,9 @@ export default function RunPage() {
                         <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#22283A] mb-4">
                           <FileText className="h-8 w-8 text-[#9CA3AF]" />
                         </div>
-                        <p className="text-[#E5E7EB] font-medium mb-2">No transcript yet</p>
+                        <p className="text-[#E5E7EB] font-medium mb-2">Transcript pending</p>
                         <p className="text-sm text-[#9CA3AF] mb-6">
-                          Click "Re-transcribe" in the sidebar to generate a transcript from your audio.
+                          Click "Generate Transcript" below to generate a transcript from your audio.
                         </p>
                         <Button
                           onClick={handleTranscribe}
@@ -529,6 +604,44 @@ export default function RunPage() {
                 </AnimatePresence>
               </Card>
             </motion.div>
+
+            {/* Missing Analysis Placeholder */}
+            {run.transcript && !run.analysis_json && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
+              >
+                <Card>
+                  <div className="p-12 text-center">
+                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#22283A] mb-4">
+                      <FileText className="h-8 w-8 text-[#9CA3AF]" />
+                    </div>
+                    <p className="text-[#E5E7EB] font-medium mb-2">Feedback not generated yet</p>
+                    <p className="text-sm text-[#9CA3AF] mb-6">
+                      Your transcript is ready. Generate AI-powered feedback to see analysis of your pitch.
+                    </p>
+                    <Button
+                      onClick={handleGetFeedback}
+                      variant="primary"
+                      disabled={isGettingFeedback || !run.rubrics}
+                      isLoading={isGettingFeedback}
+                    >
+                      {isGettingFeedback ? (
+                        <>
+                          <LoadingSpinner size="sm" />
+                          Generating feedback...
+                        </>
+                      ) : (
+                        <>
+                          Generate feedback
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </Card>
+              </motion.div>
+            )}
 
             {/* Line-by-Line Feedback - Only for Coach + Day Pass */}
             {(userPlan === 'coach' || userPlan === 'day_pass') && run.analysis_json?.line_by_line && run.analysis_json.line_by_line.length > 0 && (

@@ -1,6 +1,7 @@
 'use client'
 
 import { Card } from '@/components/ui/Card'
+import { AlertCircle, CheckCircle2 } from 'lucide-react'
 
 interface RubricDraft {
   title: string
@@ -14,16 +15,24 @@ interface RubricDraft {
 
 interface RubricDraftPreviewProps {
   draft: RubricDraft | null
+  parseError?: string | null
 }
 
-export default function RubricDraftPreview({ draft }: RubricDraftPreviewProps) {
+export default function RubricDraftPreview({ draft, parseError }: RubricDraftPreviewProps) {
   if (!draft) {
     return (
-      <Card className="h-full bg-white border-[rgba(17,24,39,0.10)]">
-        <div className="flex items-center justify-center h-full text-[#6B7280]">
-          <div className="text-center">
-            <p className="text-sm">No draft yet</p>
-            <p className="text-xs mt-2">Start chatting to generate a rubric draft</p>
+      <Card className="h-full bg-white border-[rgba(17,24,39,0.10)] flex flex-col">
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-[#111827] mb-2">Rubric Draft</h2>
+          <div className="h-1 w-12 bg-[#F59E0B] rounded mb-6"></div>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-[#6B7280]">
+          <div className="text-center px-6">
+            <p className="text-sm font-medium mb-2">No draft yet</p>
+            <p className="text-xs">Start chatting with the AI to generate a rubric draft</p>
+            <p className="text-xs mt-2 text-[#9CA3AF]">
+              The draft will appear here as you chat
+            </p>
           </div>
         </div>
       </Card>
@@ -41,12 +50,30 @@ export default function RubricDraftPreview({ draft }: RubricDraftPreviewProps) {
   }
 
   return (
-    <Card className="h-full bg-white border-[rgba(17,24,39,0.10)] overflow-y-auto">
-      <div className="space-y-6">
+    <Card className="h-full bg-white border-[rgba(17,24,39,0.10)] overflow-y-auto flex flex-col">
+      <div className="p-6 space-y-6 flex-1">
         <div>
-          <h2 className="text-lg font-semibold text-[#111827] mb-2">Rubric Draft</h2>
+          <div className="flex items-center gap-2 mb-2">
+            <h2 className="text-lg font-semibold text-[#111827]">Rubric Draft</h2>
+            {!parseError && (
+              <div title="Valid draft">
+                <CheckCircle2 className="h-4 w-4 text-[#22C55E]" />
+              </div>
+            )}
+          </div>
           <div className="h-1 w-12 bg-[#F59E0B] rounded"></div>
         </div>
+
+        {parseError && (
+          <div className="bg-[#FEF3C7] border border-[#FCD34D] rounded-lg p-3 flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-[#D97706] flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-xs font-medium text-[#92400E] mb-1">Parsing Warning</p>
+              <p className="text-xs text-[#92400E]">{parseError}</p>
+              <p className="text-xs text-[#92400E] mt-1">Showing last valid draft below.</p>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           <div>

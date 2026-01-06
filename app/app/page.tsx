@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getSessionId } from '@/lib/session'
+import { getUserPlan, type UserPlan } from '@/lib/plan'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -35,16 +36,31 @@ interface Rubric {
   max_duration_seconds: number | null
 }
 
+interface RecentRun {
+  id: string
+  title: string | null
+  created_at: string
+  status: string
+  audio_seconds: number | null
+  duration_ms: number | null
+  word_count: number | null
+  rubric_id: string | null
+  rubrics: {
+    name: string
+  } | null
+}
+
 export default function HomePage() {
   const router = useRouter()
-  // TODO: Replace with actual user plan from auth/session
-  const [userPlan] = useState<'starter' | 'coach' | 'day_pass'>('starter')
+  const [userPlan, setUserPlan] = useState<UserPlan>('free')
   const [rubrics, setRubrics] = useState<Rubric[]>([])
   const [selectedRubric, setSelectedRubric] = useState<string>('')
   const [title, setTitle] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [recentRuns, setRecentRuns] = useState<RecentRun[]>([])
+  const [isLoadingRuns, setIsLoadingRuns] = useState(false)
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
   const [micLevel, setMicLevel] = useState<number>(0)
@@ -64,6 +80,16 @@ export default function HomePage() {
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
+    // Get user plan
+    getUserPlan().then(plan => {
+      setUserPlan(plan)
+      
+      // Fetch recent runs for Starter+ users
+      if (plan !== 'free') {
+        fetchRecentRuns()
+      }
+    })
+
     // Fetch rubrics
     const url = '/api/rubrics'
     fetch(url)
@@ -87,11 +113,8 @@ export default function HomePage() {
           filteredRubrics = data
         }
         setRubrics(filteredRubrics)
-        if (filteredRubrics.length > 0) {
-          // Default to "General Pitch (3–5 min)" if it exists, otherwise first rubric
-          const generalPitch = filteredRubrics.find((r: Rubric) => r.name.includes('General Pitch'))
-          setSelectedRubric(generalPitch?.id || filteredRubrics[0].id)
-        }
+        // Don't auto-select a rubric - user must choose in Step 1
+        // This ensures Step 2 is disabled until Step 1 is complete
       })
       .catch(err => {
         console.error('[Fetch Error] Failed to fetch rubrics:', {
@@ -117,6 +140,78 @@ export default function HomePage() {
       }
     }
   }, [userPlan])
+
+  const fetchRecentRuns = async () => {
+    setIsLoadingRuns(true)
+    try {
+      const response = await fetch('/api/runs', {
+        cache: 'no-store',
+      })
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Not authenticated, that's fine
+          setRecentRuns([])
+          return
+        }
+        throw new Error('Failed to fetch runs')
+      }
+      
+      const data = await response.json()
+      setRecentRuns(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.error('Failed to fetch recent runs:', err)
+      setRecentRuns([])
+    } finally {
+      setIsLoadingRuns(false)
+    }
+  }
+
+  const formatTime = (seconds: number | null): string => {
+    if (!seconds) return '—'
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+    
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays < 7) return `${diffDays}d ago`
+    
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'analyzed':
+        return 'text-[#22C55E]'
+      case 'transcribed':
+        return 'text-[#F59E0B]'
+      case 'uploaded':
+        return 'text-[#6B7280]'
+      case 'error':
+        return 'text-[#EF4444]'
+      default:
+        return 'text-[#6B7280]'
+    }
+  }
+
+  const handleRunClick = (runId: string) => {
+    if (!runId || runId === 'undefined') {
+      setError('Invalid run ID')
+      return
+    }
+    router.push(`/runs/${runId}`)
+  }
 
   const enumerateAudioDevices = async () => {
     try {
@@ -385,7 +480,6 @@ export default function HomePage() {
           const newTime = prev + 1
           // Enforce 30-minute limit for Starter users
           if (userPlan === 'starter' && newTime >= 30 * 60) {
-            setError('Recording limit reached (30 minutes). Stopping recording.')
             stopRecording()
             return 30 * 60
           }
@@ -548,11 +642,17 @@ export default function HomePage() {
     }
   }
 
+  // Get plan display name
+  const planDisplayName = userPlan === 'starter' ? 'Starter' : userPlan === 'coach' ? 'Coach' : userPlan === 'daypass' ? 'Day Pass' : 'Free'
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0B0F14] to-[#0F172A] py-12 px-4">
       <div className="max-w-[1100px] mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-6">
         {/* Hero Section */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-[#E6E8EB] mb-2">
             Practice Your Pitch
           </h1>
@@ -577,9 +677,32 @@ export default function HomePage() {
           </Card>
         )}
 
+        {/* Optional Title Input and Plan Badge */}
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <label htmlFor="title" className="block text-sm font-medium text-[#9AA4B2] mb-2">
+              Title (optional)
+            </label>
+            <input
+              id="title"
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="My Pitch Practice"
+              className="w-full px-4 py-2 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB] placeholder:text-[#6B7280]"
+              disabled={isUploading || isRecording}
+            />
+          </div>
+          <div className="pt-7">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-[#F59E0B]/10 text-[#F59E0B] border border-[#F59E0B]/20">
+              {planDisplayName}
+            </span>
+          </div>
+        </div>
+
         {/* 3-Step UI */}
         <div className="space-y-6">
-          {/* Step 1: Record/Upload */}
+          {/* Step 1: Choose Evaluation Criteria */}
           <Card>
             <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
               <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
@@ -587,8 +710,54 @@ export default function HomePage() {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-semibold text-[#9AA4B2] uppercase tracking-wider">Step 1</span>
                 </div>
-                <h2 className="text-xl font-bold text-[#E6E8EB]">Record or Upload Your Pitch</h2>
-                <p className="text-sm text-[#9AA4B2] mt-0.5">Choose your preferred method</p>
+                <h2 className="text-xl font-bold text-[#E6E8EB]">Choose Evaluation Criteria</h2>
+                <p className="text-sm text-[#9AA4B2] mt-0.5">Select evaluation criteria (required)</p>
+              </div>
+            </div>
+            <div>
+              <select
+                id="rubric"
+                value={selectedRubric}
+                onChange={(e) => setSelectedRubric(e.target.value)}
+                className="w-full px-4 py-3 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB]"
+                disabled={isUploading || isRecording || rubrics.length === 0}
+              >
+                {rubrics.length === 0 ? (
+                  <option value="" className="bg-[#121826]">Loading rubrics...</option>
+                ) : (
+                  <>
+                    <option value="" className="bg-[#121826]">Select a rubric...</option>
+                    {rubrics.map((rubric) => (
+                      <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
+                        {rubric.name}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+              {selectedRubric && rubrics.find(r => r.id === selectedRubric) && (
+                <p className="mt-3 text-sm text-[#9AA4B2]">
+                  {rubrics.find(r => r.id === selectedRubric)?.description}
+                </p>
+              )}
+              {!selectedRubric && rubrics.length > 0 && (
+                <p className="mt-2 text-xs text-[#9AA4B2] italic">
+                  ⚠️ You must select a rubric before recording
+                </p>
+              )}
+            </div>
+          </Card>
+
+          {/* Step 2: Record */}
+          <Card>
+            <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
+              <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-semibold text-[#9AA4B2] uppercase tracking-wider">Step 2</span>
+                </div>
+                <h2 className="text-xl font-bold text-[#E6E8EB]">Record</h2>
+                <p className="text-sm text-[#9AA4B2] mt-0.5">Record or upload your pitch</p>
               </div>
             </div>
             <div className="space-y-4">
@@ -670,15 +839,31 @@ export default function HomePage() {
 
               {/* Recording Timer Display */}
               {isRecording && (
-                <div className="flex items-center justify-between p-3 bg-[#151A23] rounded-lg border border-[#22283A] mb-3">
-                  <span className="text-sm font-medium text-[#E6E8EB]">Recording</span>
-                  <span className="text-sm font-mono text-[#F59E0B]">
-                    {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
-                  </span>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-3 bg-[#151A23] rounded-lg border border-[#22283A]">
+                    <span className="text-sm font-medium text-[#E6E8EB]">Recording</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-mono text-[#F59E0B]">
+                        {Math.floor(recordingTime / 60)}:{(recordingTime % 60).toString().padStart(2, '0')}
+                      </span>
+                      {userPlan === 'starter' && (
+                        <span className="text-xs text-[#9AA4B2]">
+                          / 30:00
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   {userPlan === 'starter' && (
-                    <span className="text-xs text-[#9AA4B2]">
-                      / 30:00
-                    </span>
+                    <div className="text-center">
+                      <p className="text-xs text-[#9AA4B2]">
+                        Up to 30 minutes per recording
+                      </p>
+                      {recordingTime >= 29 * 60 + 30 && recordingTime < 30 * 60 && (
+                        <p className="text-xs text-[#F59E0B] font-medium mt-1">
+                          Recording ends at 30:00 on Starter
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -690,6 +875,7 @@ export default function HomePage() {
                   disabled={isUploading || !selectedRubric || isSilent || (userPlan === 'starter' && recordingTime >= 30 * 60)}
                   variant={isRecording ? 'danger' : 'primary'}
                   className="flex-1"
+                  title={!selectedRubric ? 'Please select a rubric in Step 1 first' : undefined}
                 >
                   {isRecording ? '⏹ Stop Recording' : '🎤 Record'}
                 </Button>
@@ -698,6 +884,7 @@ export default function HomePage() {
                   disabled={isUploading || isRecording || !selectedRubric}
                   variant="secondary"
                   className="flex-1"
+                  title={!selectedRubric ? 'Please select a rubric in Step 1 first' : undefined}
                 >
                   📁 Upload
                 </Button>
@@ -713,52 +900,19 @@ export default function HomePage() {
               <p className="text-xs text-[#6B7280] italic">
                 💡 Pro tip: Speak clearly and aim for 2–6 minutes for best results.
                 {userPlan === 'starter' && (
-                  <span className="block mt-1">📏 Starter plan: Up to 30 minutes per recording</span>
+                  <>
+                    <span className="block mt-1">📏 Starter plan: up to 30 minutes per recording</span>
+                    {recentRuns.length > 0 && (
+                      <span className="block mt-1">Includes history (saved runs)</span>
+                    )}
+                  </>
                 )}
               </p>
             </div>
           </Card>
 
-          {/* Step 2: Pick Rubric */}
-          <Card>
-            <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
-              <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-semibold text-[#9AA4B2] uppercase tracking-wider">Step 2</span>
-                </div>
-                <h2 className="text-xl font-bold text-[#E6E8EB]">Pick Rubric</h2>
-                <p className="text-sm text-[#9AA4B2] mt-0.5">Select evaluation criteria</p>
-              </div>
-            </div>
-            <div>
-              <select
-                id="rubric"
-                value={selectedRubric}
-                onChange={(e) => setSelectedRubric(e.target.value)}
-                className="w-full px-4 py-3 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB]"
-                disabled={isUploading || isRecording || rubrics.length === 0}
-              >
-                {rubrics.length === 0 ? (
-                  <option value="" className="bg-[#121826]">Loading rubrics...</option>
-                ) : (
-                  rubrics.map((rubric) => (
-                    <option key={rubric.id} value={rubric.id} className="bg-[#121826]">
-                      {rubric.name}
-                    </option>
-                  ))
-                )}
-              </select>
-              {selectedRubric && rubrics.find(r => r.id === selectedRubric) && (
-                <p className="mt-3 text-sm text-[#9AA4B2]">
-                  {rubrics.find(r => r.id === selectedRubric)?.description}
-                </p>
-              )}
-            </div>
-          </Card>
-
           {/* Rubric Builder - Only for Coach + Day Pass */}
-          {(userPlan === 'coach' || userPlan === 'day_pass') && (
+          {(userPlan === 'coach' || userPlan === 'daypass') && (
             <Card>
               <div className="mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
                 <h2 className="text-xl font-bold text-[#E6E8EB] mb-2">Your Evaluation Rubric</h2>
@@ -876,7 +1030,7 @@ export default function HomePage() {
           )}
 
           {/* Custom Rubric Section - Only for Coach + Day Pass */}
-          {(userPlan === 'coach' || userPlan === 'day_pass') && (
+          {(userPlan === 'coach' || userPlan === 'daypass') && (
             <Card>
               <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
                 <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
@@ -902,7 +1056,7 @@ export default function HomePage() {
           )}
 
           {/* Edit Rubric Before Recording - Only for Coach + Day Pass */}
-          {(userPlan === 'coach' || userPlan === 'day_pass') && selectedRubric && (
+          {(userPlan === 'coach' || userPlan === 'daypass') && selectedRubric && (
             <Card>
               <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
                 <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
@@ -955,7 +1109,7 @@ export default function HomePage() {
             </Card>
           )}
 
-          {/* Step 3: Get Feedback (auto) */}
+          {/* Step 3: Feedback */}
           <Card>
             <div className="flex items-center mb-6 pb-4 border-b border-[rgba(255,255,255,0.08)]">
               <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
@@ -963,37 +1117,89 @@ export default function HomePage() {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-semibold text-[#9AA4B2] uppercase tracking-wider">Step 3</span>
                 </div>
-                <h2 className="text-xl font-bold text-[#E6E8EB]">Get Feedback</h2>
-                <p className="text-sm text-[#9AA4B2] mt-0.5">AI-powered feedback</p>
+                <h2 className="text-xl font-bold text-[#E6E8EB]">Feedback</h2>
+                <p className="text-sm text-[#9AA4B2] mt-0.5">Transcript + AI-powered feedback</p>
               </div>
             </div>
             <div>
               <p className="text-sm text-[#9AA4B2]">
-                Your pitch will be automatically transcribed and analyzed. You'll get detailed feedback on your delivery, structure, and pacing.
+                Your pitch will be automatically transcribed and analyzed. You'll get detailed feedback on your delivery, structure, and pacing. Results will appear on the feedback page after recording.
               </p>
             </div>
-          </Card>
-
-          {/* Optional Title */}
-          <Card>
-            <label htmlFor="title" className="block text-sm font-medium text-[#9AA4B2] mb-2">
-              Title (optional)
-            </label>
-            <input
-              id="title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="My Pitch Practice"
-              className="w-full px-4 py-2 border border-[rgba(255,255,255,0.08)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 transition-colors bg-[rgba(255,255,255,0.03)] text-[#E6E8EB] placeholder:text-[#6B7280]"
-              disabled={isUploading || isRecording}
-            />
           </Card>
 
           {isUploading && (
             <Card className="text-center">
               <LoadingSpinner size="lg" text="Uploading and processing..." />
             </Card>
+          )}
+          </div>
+
+          {/* Recent Runs Sidebar - Only for Starter+ */}
+          {userPlan !== 'free' && (
+            <div className="lg:col-span-1">
+              <Card>
+                <div className="mb-4 pb-4 border-b border-[rgba(255,255,255,0.08)]">
+                  <h2 className="text-lg font-bold text-[#E6E8EB]">Recent Runs</h2>
+                  <p className="text-xs text-[#9AA4B2] mt-1">Your saved pitch practices</p>
+                </div>
+                
+                {isLoadingRuns ? (
+                  <div className="py-8 text-center">
+                    <LoadingSpinner size="sm" text="Loading..." />
+                  </div>
+                ) : recentRuns.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <p className="text-sm text-[#9AA4B2]">No runs yet</p>
+                    <p className="text-xs text-[#6B7280] mt-1">Record or upload a pitch to get started</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                    {recentRuns.map((run) => {
+                      const duration = run.duration_ms 
+                        ? run.duration_ms / 1000 
+                        : run.audio_seconds
+                      return (
+                        <button
+                          key={run.id}
+                          onClick={() => handleRunClick(run.id)}
+                          className="w-full text-left p-3 rounded-lg border border-[rgba(255,255,255,0.08)] hover:border-[#F59E0B]/30 hover:bg-[rgba(245,158,11,0.05)] transition-colors group"
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <h3 className="text-sm font-medium text-[#E6E8EB] group-hover:text-[#F59E0B] transition-colors truncate flex-1">
+                              {run.title || 'Untitled Pitch'}
+                            </h3>
+                            <span className={`text-xs font-medium ${getStatusColor(run.status)} flex-shrink-0`}>
+                              {run.status}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-[#9AA4B2]">
+                            <span>{formatDate(run.created_at)}</span>
+                            {duration && (
+                              <>
+                                <span>•</span>
+                                <span>{formatTime(duration)}</span>
+                              </>
+                            )}
+                            {run.word_count && (
+                              <>
+                                <span>•</span>
+                                <span>{run.word_count} words</span>
+                              </>
+                            )}
+                          </div>
+                          {run.rubrics && (
+                            <div className="mt-1 text-xs text-[#6B7280] truncate">
+                              {run.rubrics.name}
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </Card>
+            </div>
           )}
         </div>
       </div>

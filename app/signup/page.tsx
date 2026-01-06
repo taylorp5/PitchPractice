@@ -44,8 +44,19 @@ export default function SignUpPage() {
         return
       }
 
-      router.push('/app')
-      router.refresh()
+      // Wait for session to be established and cookies to be set
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // Verify session is established
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setError('Session not established. Please try again.')
+        setIsLoading(false)
+        return
+      }
+
+      // Use window.location for a full page reload to ensure middleware sees the session
+      window.location.href = '/app'
     } catch (err) {
       setError('An unexpected error occurred')
       setIsLoading(false)
@@ -68,7 +79,7 @@ export default function SignUpPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-[#111827] mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-[#111827] mb-2">
               Email
             </label>
             <input
@@ -77,13 +88,14 @@ export default function SignUpPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+              autoComplete="email"
+              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 placeholder:text-[#6B7280]"
               placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-[#111827] mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-[#111827] mb-2">
               Password
             </label>
             <input
@@ -92,14 +104,15 @@ export default function SignUpPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+              autoComplete="new-password"
+              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 placeholder:text-[#6B7280]"
               placeholder="••••••••"
             />
             <p className="mt-1 text-xs text-[#6B7280]">Must be at least 6 characters</p>
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-[#111827] mb-1">
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-[#111827] mb-2">
               Confirm Password
             </label>
             <input
@@ -108,7 +121,8 @@ export default function SignUpPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+              autoComplete="new-password"
+              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 placeholder:text-[#6B7280]"
               placeholder="••••••••"
             />
           </div>

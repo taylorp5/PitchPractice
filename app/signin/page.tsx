@@ -20,6 +20,16 @@ export default function SignInPage() {
     setIsLoading(true)
 
     try {
+      // Verify env vars are available (client-side check)
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      
+      if (!supabaseUrl || !supabaseKey) {
+        throw new Error(
+          'Supabase configuration is missing. Please restart your dev server after setting up .env.local'
+        )
+      }
+
       const supabase = createClient()
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
@@ -32,10 +42,35 @@ export default function SignInPage() {
         return
       }
 
-      router.push('/app')
-      router.refresh()
+      // Wait for session to be established and cookies to be set
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      // Verify session is established
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setError('Session not established. Please try again.')
+        setIsLoading(false)
+        return
+      }
+
+      // Use window.location for a full page reload to ensure middleware sees the session
+      window.location.href = '/app'
     } catch (err) {
-      setError('An unexpected error occurred')
+      console.error('Sign in error:', err)
+      let errorMessage = 'An unexpected error occurred'
+      
+      if (err instanceof Error) {
+        errorMessage = err.message
+        // Check if it's an environment variable error
+        if (err.message.includes('Missing Supabase environment variables') || 
+            err.message.includes('Supabase configuration is missing')) {
+          errorMessage = 'Configuration error: Supabase credentials not loaded. Please restart your dev server (stop with Ctrl+C, then run: npm run dev)'
+        } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+          errorMessage = 'Unable to connect to Supabase. Please check: 1) Your internet connection, 2) Supabase URL in .env.local is correct, 3) Dev server was restarted after updating .env.local'
+        }
+      }
+      
+      setError(errorMessage)
       setIsLoading(false)
     }
   }
@@ -56,7 +91,7 @@ export default function SignInPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-[#111827] mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-[#111827] mb-2">
               Email
             </label>
             <input
@@ -65,13 +100,14 @@ export default function SignInPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+              autoComplete="email"
+              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 placeholder:text-[#6B7280]"
               placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-[#111827] mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-[#111827] mb-2">
               Password
             </label>
             <input
@@ -80,7 +116,8 @@ export default function SignInPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+              autoComplete="current-password"
+              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B]/50 focus:border-[#F59E0B]/30 placeholder:text-[#6B7280]"
               placeholder="••••••••"
             />
           </div>

@@ -28,6 +28,7 @@ export default function NewRubricPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aiDraft, setAiDraft] = useState<RubricDraft | null>(null)
+  const [parseError, setParseError] = useState<string | null>(null)
 
   const handleSubmit = async (formData: any) => {
     setIsSaving(true)
@@ -136,10 +137,11 @@ export default function NewRubricPage() {
               <AIBuilderChat
                 onDraftUpdate={setAiDraft}
                 onAcceptDraft={handleAcceptAIDraft}
+                onParseError={setParseError}
               />
             </div>
             <div className="flex flex-col min-h-0">
-              <RubricDraftPreview draft={aiDraft} />
+              <RubricDraftPreview draft={aiDraft} parseError={parseError} />
             </div>
           </div>
         )}

@@ -13,7 +13,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Get authenticated user (optional - for /app/practice)
+    const formData = await request.formData()
+    const audioFile = formData.get('audio') as File
+    const rubricId = formData.get('rubric_id') as string
+    const sessionId = formData.get('session_id') as string
+    const title = formData.get('title') as string | null
+    const durationMsStr = formData.get('duration_ms') as string | null
+    const durationMs = durationMsStr ? parseInt(durationMsStr, 10) : null
+    const audioSeconds = durationMs ? durationMs / 1000 : null
+    const pitchContext = formData.get('pitch_context') as string | null
+
+    // Check if user is authenticated (optional - for practice page)
     let userId: string | null = null
     try {
       const supabase = await createClient()
@@ -24,22 +34,12 @@ export async function POST(request: NextRequest) {
           console.log('[Create Run] Authenticated user:', userId)
         }
       }
-    } catch (authError) {
-      // Not authenticated - this is fine for /try page
+    } catch (err) {
+      // Not authenticated - that's fine for /try page
       if (DEBUG) {
-        console.log('[Create Run] No authenticated user (anonymous session)')
+        console.log('[Create Run] No authenticated user (trial run)')
       }
     }
-
-    const formData = await request.formData()
-    const audioFile = formData.get('audio') as File
-    const rubricId = formData.get('rubric_id') as string
-    const sessionId = formData.get('session_id') as string
-    const title = formData.get('title') as string | null
-    const durationMsStr = formData.get('duration_ms') as string | null
-    const durationMs = durationMsStr ? parseInt(durationMsStr, 10) : null
-    const audioSeconds = durationMs ? durationMs / 1000 : null
-    const pitchContext = formData.get('pitch_context') as string | null
 
     if (!audioFile) {
       return NextResponse.json(
@@ -57,13 +57,15 @@ export async function POST(request: NextRequest) {
 
     // Handle missing rubric_id by getting the first available rubric
     let finalRubricId = rubricId
+    let rubricName: string | null = null
+    
     if (!finalRubricId) {
       if (DEBUG) {
         console.log('[Create Run] No rubric_id provided, fetching first available rubric')
       }
       const { data: rubrics, error: rubricError } = await getSupabaseAdmin()
         .from('rubrics')
-        .select('id')
+        .select('id, name')
         .order('created_at', { ascending: false })
         .limit(1)
       
@@ -81,12 +83,27 @@ export async function POST(request: NextRequest) {
       }
       
       finalRubricId = rubrics[0].id
+      rubricName = rubrics[0].name
       if (DEBUG) {
-        console.log('[Create Run] Using default rubric:', finalRubricId)
+        console.log('[Create Run] Using default rubric:', finalRubricId, 'name:', rubricName)
+      }
+    } else {
+      // Fetch rubric name for storing in title if needed
+      const { data: rubricData } = await getSupabaseAdmin()
+        .from('rubrics')
+        .select('name')
+        .eq('id', finalRubricId)
+        .single()
+      
+      if (rubricData) {
+        rubricName = rubricData.name
       }
     }
+    
+    // If title is empty and we have a rubric name, use rubric name as title
+    const finalTitle = title?.trim() || rubricName || null
 
-      if (DEBUG) {
+    if (DEBUG) {
       console.log('[Create Run] Request data:', {
         hasAudioFile: !!audioFile,
         audioFileName: audioFile?.name,
@@ -94,8 +111,6 @@ export async function POST(request: NextRequest) {
         rubricId: finalRubricId,
         sessionId,
         title,
-        userId,
-        hasPitchContext: !!pitchContext,
       })
     }
 
@@ -122,14 +137,14 @@ export async function POST(request: NextRequest) {
       .insert({
         id: runId,
         session_id: sessionId,
-        title: title || null,
+        title: finalTitle,
         audio_path: audioPath,
         status: 'uploaded',
         rubric_id: finalRubricId,
         audio_seconds: audioSeconds, // Set from duration_ms if provided
         duration_ms: durationMs, // Store duration_ms as source of truth
-        user_id: userId || null, // Set user_id if authenticated
-        pitch_context: pitchContext || null, // Store pitch context for feedback
+        user_id: userId, // Store user_id if authenticated
+        pitch_context: pitchContext || null, // Store pitch context if provided
       })
       .select('id, session_id, created_at, title, audio_path, audio_seconds, duration_ms, transcript, analysis_json, status, error_message, rubric_id, word_count, words_per_minute, user_id, pitch_context')
       .single()
@@ -382,8 +397,6 @@ export async function POST(request: NextRequest) {
         rubric_id: run.rubric_id,
         word_count: run.word_count || null,
         words_per_minute: run.words_per_minute || null,
-        user_id: run.user_id || null,
-        pitch_context: run.pitch_context || null,
       },
       runId: run.id, // Also include runId for backwards compatibility
     })

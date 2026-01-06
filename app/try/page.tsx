@@ -6,10 +6,14 @@ import { getSessionId } from '@/lib/session'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { CheckCircle2, Clock, Scissors, Mic, Upload, Play, Pause, Square, ChevronDown, ChevronUp, AlertCircle, X } from 'lucide-react'
+import { CheckCircle2, Clock, Scissors, Mic, Upload, Play, Pause, Square, ChevronDown, ChevronUp, AlertCircle, X, Download } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 const DEBUG = true
+
+// Free plan limits
+const FREE_MAX_SECONDS = 120 // 2 minutes
+const FREE_WARNING_SECONDS = 105 // 1:45 - show warning
 
 // Helper function to log fetch errors
 async function logFetchError(url: string, response: Response, error?: any) {
@@ -368,6 +372,175 @@ export default function TryPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Download transcript as .txt file
+  const downloadTranscript = () => {
+    if (!run?.transcript) return
+
+    const selectedPromptData = PROMPTS.find(p => p.id === selectedPrompt)
+    const promptTitle = selectedPromptData?.title || 'Practice run'
+    const rubricName = rubrics.find(r => r.id === selectedRubricId)?.name || 'General Pitch'
+    
+    const durationSec = durationMs 
+      ? durationMs / 1000 
+      : (run.duration_ms 
+        ? run.duration_ms / 1000 
+        : (run.audio_seconds || null))
+    const durationStr = durationSec ? formatTime(durationSec) : '—'
+    
+    const wordCount = run.word_count || (run.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : null) || '—'
+    
+    const durationMsForWPM = durationMs 
+      || (run.duration_ms !== null ? run.duration_ms : null)
+      || (run.audio_seconds ? Math.round(run.audio_seconds * 1000) : null)
+    const wpm = calculateWPM(run.transcript, durationMsForWPM)
+    const wpmStr = wpm !== null ? wpm.toString() : '—'
+
+    const title = selectedPromptData?.title || 'Practice run'
+    
+    const content = `${title}
+${'='.repeat(title.length)}
+
+Rubric: ${rubricName}
+Duration: ${durationStr}
+Word Count: ${wordCount}
+Words Per Minute: ${wpmStr}
+
+${'='.repeat(50)}
+
+TRANSCRIPT
+
+${run.transcript}
+`
+
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${title.replace(/\s+/g, '_')}_transcript.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // Download feedback as .txt file
+  const downloadFeedback = () => {
+    const feedbackData = feedback || run?.analysis_json
+    if (!feedbackData || !run?.transcript) return
+
+    const selectedPromptData = PROMPTS.find(p => p.id === selectedPrompt)
+    const promptTitle = selectedPromptData?.title || 'Practice run'
+    const rubricName = rubrics.find(r => r.id === selectedRubricId)?.name || 'General Pitch'
+    
+    const durationSec = durationMs 
+      ? durationMs / 1000 
+      : (run.duration_ms 
+        ? run.duration_ms / 1000 
+        : (run.audio_seconds || null))
+    const durationStr = durationSec ? formatTime(durationSec) : '—'
+    
+    const wordCount = run.word_count || (run.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : null) || '—'
+    
+    const durationMsForWPM = durationMs 
+      || (run.duration_ms !== null ? run.duration_ms : null)
+      || (run.audio_seconds ? Math.round(run.audio_seconds * 1000) : null)
+    const wpm = calculateWPM(run.transcript, durationMsForWPM)
+    const wpmStr = wpm !== null ? wpm.toString() : '—'
+
+    let content = `${promptTitle} - Feedback Report
+${'='.repeat(50)}
+
+Rubric: ${rubricName}
+Duration: ${durationStr}
+Word Count: ${wordCount}
+Words Per Minute: ${wpmStr}
+
+${'='.repeat(50)}
+
+FEEDBACK SUMMARY
+
+`
+
+    // What's Working
+    if (feedbackData.summary?.top_strengths && feedbackData.summary.top_strengths.length > 0) {
+      content += `What's Working:\n`
+      feedbackData.summary.top_strengths.forEach((strength: string) => {
+        content += `  • ${strength.replace(/^["']|["']$/g, '').trim()}\n`
+      })
+      content += `\n`
+    }
+
+    // What to Improve
+    if (feedbackData.summary?.top_improvements && feedbackData.summary.top_improvements.length > 0) {
+      content += `What to Improve:\n`
+      feedbackData.summary.top_improvements.forEach((improvement: string) => {
+        content += `  • ${improvement.replace(/^["']|["']$/g, '').trim()}\n`
+      })
+      content += `\n`
+    }
+
+    // Suggested Focus
+    if (feedbackData.summary?.focus_areas && feedbackData.summary.focus_areas.length > 0) {
+      content += `Suggested Focus:\n`
+      feedbackData.summary.focus_areas.forEach((focus: string) => {
+        content += `  • ${focus.replace(/^["']|["']$/g, '').trim()}\n`
+      })
+      content += `\n`
+    }
+
+    // Rubric Breakdown
+    if (feedbackData.rubric_scores && feedbackData.rubric_scores.length > 0) {
+      content += `${'='.repeat(50)}\n\nRUBRIC BREAKDOWN\n\n`
+      feedbackData.rubric_scores.forEach((score: any, idx: number) => {
+        const criterionLabel = score.criterion_label || score.criterion || `Question ${idx + 1}`
+        const scoreValue = score.score || 0
+        content += `${criterionLabel}: ${scoreValue}/10\n`
+        if (score.notes) {
+          content += `  ${score.notes}\n`
+        }
+        if (score.evidence_quotes && score.evidence_quotes.length > 0) {
+          content += `  Evidence:\n`
+          score.evidence_quotes.forEach((quote: string) => {
+            content += `    "${quote}"\n`
+          })
+        } else if (score.evidence) {
+          content += `  Evidence: ${score.evidence}\n`
+        }
+        content += `\n`
+      })
+    }
+
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${promptTitle.replace(/\s+/g, '_')}_feedback.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // Download analysis JSON
+  const downloadAnalysisJSON = () => {
+    const feedbackData = feedback || run?.analysis_json
+    if (!feedbackData) return
+
+    const selectedPromptData = PROMPTS.find(p => p.id === selectedPrompt)
+    const promptTitle = selectedPromptData?.title || 'Practice run'
+    
+    const content = JSON.stringify(feedbackData, null, 2)
+    const blob = new Blob([content], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${promptTitle.replace(/\s+/g, '_')}_analysis.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   // Calculate WPM from transcript and duration_ms
   const calculateWPM = (transcript: string | null, durationMs: number | null): number | null => {
     if (!transcript || !durationMs || durationMs < 5000) {
@@ -702,9 +875,17 @@ export default function TryPage() {
       setPausedTotalMs(0)
       setPauseStartTime(null)
 
-      // Start timer
+      // Start timer with Free plan limit enforcement
       timerIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1)
+        setRecordingTime(prev => {
+          const newTime = prev + 1
+          // Auto-stop at 2:00 for Free plan
+          if (newTime >= FREE_MAX_SECONDS) {
+            stopRecording()
+            return FREE_MAX_SECONDS
+          }
+          return newTime
+        })
       }, 1000)
     } catch (err) {
       console.error('[Try] Error starting recording:', err)
@@ -725,6 +906,11 @@ export default function TryPage() {
   // Resume recording
   const resumeRecording = () => {
     if (mediaRecorderRef.current && isPaused && pauseStartTime) {
+      // Prevent resuming if already at Free plan limit
+      if (recordingTime >= FREE_MAX_SECONDS) {
+        stopRecording()
+        return
+      }
       mediaRecorderRef.current.resume()
       const pauseDuration = Date.now() - pauseStartTime
       setPausedTotalMs(prev => prev + pauseDuration)
@@ -1303,18 +1489,45 @@ export default function TryPage() {
             ))}
           </div>
           
-          {/* Guiding Questions - Shown when prompt is selected */}
+          {/* Evaluation Explanation - Shown when prompt is selected */}
           {selectedPrompt && (() => {
             const selectedPromptData = PROMPTS.find(p => p.id === selectedPrompt)
             return selectedPromptData ? (
-              <div className="mt-4 p-4 bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] rounded-xl">
-                <p className="text-xs text-[#9AA4B2] mb-2 font-medium">Guiding questions:</p>
-                <div className="flex flex-wrap gap-3">
-                  {selectedPromptData.cues.map((cue, idx) => (
-                    <span key={idx} className="text-xs text-[#9AA4B2]">
-                      {cue}
-                    </span>
-                  ))}
+              <div className="mt-4 space-y-4">
+                {/* Guiding Questions */}
+                <div className="p-4 bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] rounded-xl">
+                  <p className="text-xs text-[#9AA4B2] mb-3 font-medium uppercase tracking-wide">Guiding questions</p>
+                  <ul className="space-y-2">
+                    {selectedPromptData.cues.map((cue, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-[#E6E8EB]">
+                        <span className="text-[#F59E0B] mt-0.5">•</span>
+                        <span>{cue}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                
+                {/* Evaluation Criteria */}
+                <div className="p-4 bg-[rgba(255,255,255,0.03)] border border-[rgba(255,255,255,0.08)] rounded-xl">
+                  <p className="text-xs text-[#9AA4B2] mb-3 font-medium uppercase tracking-wide">You'll be evaluated on</p>
+                  <ul className="space-y-2">
+                    <li className="flex items-start gap-2 text-sm text-[#E6E8EB]">
+                      <CheckCircle2 className="h-4 w-4 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                      <span>Answering the prompt questions</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-sm text-[#E6E8EB]">
+                      <CheckCircle2 className="h-4 w-4 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                      <span>Clarity</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-sm text-[#E6E8EB]">
+                      <CheckCircle2 className="h-4 w-4 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                      <span>Structure</span>
+                    </li>
+                    <li className="flex items-start gap-2 text-sm text-[#E6E8EB]">
+                      <CheckCircle2 className="h-4 w-4 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                      <span>Pacing (basic)</span>
+                    </li>
+                  </ul>
                 </div>
               </div>
             ) : null
@@ -1327,7 +1540,12 @@ export default function TryPage() {
           <div className="space-y-4">
             <Card className="p-5">
               <div className="text-center mb-3">
-                <p className="text-xs text-[#9AA4B2] mb-3">Speak naturally. Aim for 30–60 seconds.</p>
+                <p className="text-xs text-[#9AA4B2] mb-3">
+                  ⏱ Free trial: up to 2 minutes per recording
+                </p>
+                <p className="text-xs text-[#6B7280] mb-3">
+                  No signup required (optional)
+                </p>
                 
                 {/* Tabs */}
                 <div className="flex gap-2 justify-center mb-3">
@@ -1425,7 +1643,8 @@ export default function TryPage() {
                           size="lg"
                           onClick={startRecording}
                           className="w-full shadow-lg shadow-[#F59E0B]/20"
-                          disabled={!selectedPrompt || isSilent}
+                          disabled={!selectedPrompt || isSilent || recordingTime >= FREE_MAX_SECONDS}
+                          title={recordingTime >= FREE_MAX_SECONDS ? 'Free trial limit reached (2:00)' : undefined}
                         >
                           <Mic className="mr-2 h-5 w-5" />
                           Start recording
@@ -1448,8 +1667,18 @@ export default function TryPage() {
                         {/* Timer */}
                         <div className="text-center">
                           <div className="text-2xl font-bold text-[#E6E8EB] mb-2">
-                            {formatTime(recordingTime)}
+                            {formatTime(recordingTime)} / {formatTime(FREE_MAX_SECONDS)}
                           </div>
+                          {recordingTime >= FREE_WARNING_SECONDS && recordingTime < FREE_MAX_SECONDS && (
+                            <p className="text-xs text-[#F59E0B] font-medium">
+                              Free trial ends at 2:00
+                            </p>
+                          )}
+                          {recordingTime >= FREE_MAX_SECONDS && (
+                            <p className="text-xs text-[#EF4444] font-medium">
+                              Recording stopped at 2:00 limit
+                            </p>
+                          )}
                         </div>
 
                         {/* Controls */}
@@ -1572,6 +1801,9 @@ export default function TryPage() {
                     </Button>
                     <p className="text-xs text-[#9AA4B2] mt-4">
                       Supports: WebM, MP3, WAV, M4A
+                    </p>
+                    <p className="text-xs text-[#6B7280] mt-2">
+                      Export transcript + feedback
                     </p>
                   </div>
                 )}
@@ -1984,6 +2216,46 @@ export default function TryPage() {
                           </Card>
                         )
                       })()}
+                      
+                      {/* Download Buttons - Show after feedback is available */}
+                      {run?.transcript && (feedback || run.analysis_json) && (
+                        <Card className="p-6">
+                          <h4 className="text-sm font-semibold text-[#E6E8EB] mb-4 uppercase tracking-wide">
+                            Export
+                          </h4>
+                          <div className="space-y-3">
+                            <Button
+                              variant="secondary"
+                              size="lg"
+                              onClick={downloadTranscript}
+                              className="w-full"
+                            >
+                              <Download className="mr-2 h-4 w-4" />
+                              Download transcript (.txt)
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="lg"
+                              onClick={downloadFeedback}
+                              className="w-full"
+                            >
+                              <Download className="mr-2 h-4 w-4" />
+                              Download feedback (.txt)
+                            </Button>
+                            {(feedback || run.analysis_json) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={downloadAnalysisJSON}
+                                className="w-full text-[#9AA4B2] hover:text-[#E6E8EB]"
+                              >
+                                <Download className="mr-2 h-3 w-3" />
+                                Download analysis JSON
+                              </Button>
+                            )}
+                          </div>
+                        </Card>
+                      )}
                     </>
                   )
                 })()}

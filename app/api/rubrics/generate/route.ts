@@ -28,34 +28,69 @@ interface RubricDraft {
   }>
 }
 
-// Extract JSON from text that might contain markdown code blocks
+// Extract JSON from text that might contain markdown code blocks or extra text
 function extractJSON(text: string): any {
-  // Try direct JSON parse first
-  try {
-    return JSON.parse(text)
-  } catch {
-    // Try to extract JSON from markdown code blocks
-    const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/)
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[1])
-      } catch {
-        // Fall through to next attempt
-      }
-    }
-    
-    // Try to find JSON object in the text
-    const jsonObjectMatch = text.match(/\{[\s\S]*\}/)
-    if (jsonObjectMatch) {
-      try {
-        return JSON.parse(jsonObjectMatch[0])
-      } catch {
-        // Fall through
-      }
-    }
-    
-    throw new Error('Could not extract valid JSON from response')
+  if (!text || typeof text !== 'string') {
+    throw new Error('Invalid input: text must be a non-empty string')
   }
+
+  // Try direct JSON parse first (most common case with json_object response_format)
+  try {
+    const parsed = JSON.parse(text.trim())
+    return parsed
+  } catch (e) {
+    // Continue to extraction methods
+  }
+
+  // Try to extract JSON from markdown code blocks (```json ... ```)
+  const jsonBlockMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
+  if (jsonBlockMatch) {
+    try {
+      return JSON.parse(jsonBlockMatch[1])
+    } catch (e) {
+      // Continue to next method
+    }
+  }
+
+  // Try to find the first complete JSON object in the text
+  // This handles cases where there's text before/after the JSON
+  let braceCount = 0
+  let startIndex = -1
+  let endIndex = -1
+
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '{') {
+      if (startIndex === -1) startIndex = i
+      braceCount++
+    } else if (text[i] === '}') {
+      braceCount--
+      if (braceCount === 0 && startIndex !== -1) {
+        endIndex = i
+        break
+      }
+    }
+  }
+
+  if (startIndex !== -1 && endIndex !== -1) {
+    try {
+      const jsonCandidate = text.substring(startIndex, endIndex + 1)
+      return JSON.parse(jsonCandidate)
+    } catch (e) {
+      // Continue to regex fallback
+    }
+  }
+
+  // Fallback: try regex to find any JSON-like object
+  const jsonObjectMatch = text.match(/\{[\s\S]*\}/)
+  if (jsonObjectMatch) {
+    try {
+      return JSON.parse(jsonObjectMatch[0])
+    } catch (e) {
+      // Last attempt failed
+    }
+  }
+
+  throw new Error('Could not extract valid JSON from response. The AI may have returned non-JSON content.')
 }
 
 // Validate rubric draft structure
@@ -107,7 +142,8 @@ export async function POST(request: NextRequest) {
 
 Your task is to generate a structured rubric based on the user's conversation. The rubric should help evaluate pitch presentations.
 
-You MUST respond with ONLY a valid JSON object matching this exact schema:
+CRITICAL: You MUST respond with ONLY a valid JSON object. No additional text, explanations, or markdown formatting. Just the raw JSON object matching this exact schema:
+
 {
   "title": "string (required, concise rubric name)",
   "description": "string or null (optional description of the rubric)",
@@ -124,9 +160,10 @@ Requirements:
 - At least 3 criteria are required
 - Criteria should be specific and actionable
 - Descriptions should be clear and evaluable
-- If the user mentions a time duration, convert it to seconds (e.g., "2 minutes" = 120)
-- If the user asks for edits, incorporate them into the existing draft
-- Make criteria relevant to the pitch context the user describes`
+- If the user mentions a time duration, convert it to seconds (e.g., "2 minutes" = 120, "1.5 minutes" = 90)
+- If the user asks for edits, incorporate them into the existing draft while preserving valid structure
+- Make criteria relevant to the pitch context the user describes
+- Return ONLY valid JSON, no markdown code blocks, no explanations`
 
     // Build conversation context
     const conversationMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -172,11 +209,40 @@ Requirements:
       }
 
       // Extract and parse JSON
-      const parsed = extractJSON(responseText)
+      let parsed: any
+      try {
+        parsed = extractJSON(responseText)
+      } catch (parseError: any) {
+        console.error('JSON extraction error:', {
+          error: parseError,
+          responsePreview: responseText.substring(0, 500),
+        })
+        return NextResponse.json(
+          { 
+            error: 'Failed to parse rubric draft',
+            details: parseError.message || 'Could not extract valid JSON from AI response',
+            parseError: true
+          },
+          { status: 500 }
+        )
+      }
       
       // Validate structure
       if (!validateRubricDraft(parsed)) {
-        throw new Error('Invalid rubric draft structure returned from OpenAI')
+        console.error('Invalid rubric draft structure:', {
+          parsed,
+          hasTitle: !!parsed?.title,
+          hasCriteria: !!parsed?.criteria,
+          criteriaLength: parsed?.criteria?.length,
+        })
+        return NextResponse.json(
+          { 
+            error: 'Invalid rubric draft structure',
+            details: 'The AI returned a rubric draft that does not match the required format. Missing required fields or invalid structure.',
+            parseError: false
+          },
+          { status: 500 }
+        )
       }
 
       draftRubric = parsed
@@ -185,7 +251,8 @@ Requirements:
       return NextResponse.json(
         { 
           error: 'Failed to generate rubric draft',
-          details: error.message || 'Unknown error'
+          details: error.message || 'Unknown error',
+          parseError: false
         },
         { status: 500 }
       )

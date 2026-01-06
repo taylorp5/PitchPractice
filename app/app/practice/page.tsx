@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { Mic, Upload, Play, Pause, Square, AlertCircle, X, CheckCircle2, Edit2, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
+import { getUserPlan, UserPlan } from '@/lib/plan'
+import CustomRubricBuilder, { CustomRubric } from '@/components/CustomRubricBuilder'
 
 interface Run {
   id: string
@@ -60,6 +62,11 @@ export default function PracticePage() {
   const [isSilent, setIsSilent] = useState(false)
   const [hasMicPermission, setHasMicPermission] = useState(false)
   const [feedback, setFeedback] = useState<any>(null)
+  const [userPlan, setUserPlan] = useState<UserPlan>('free')
+  const [rubricMode, setRubricMode] = useState<'template' | 'custom'>('template')
+  const [customRubric, setCustomRubric] = useState<CustomRubric | null>(null)
+  const [selectedRubricSource, setSelectedRubricSource] = useState<'template' | 'custom'>('template')
+  const [customRubricId, setCustomRubricId] = useState<string | null>(null)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -73,9 +80,15 @@ export default function PracticePage() {
   const silenceStartRef = useRef<number | null>(null)
   const testAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Fetch user rubrics on mount
+  // Fetch user plan and rubrics on mount
   useEffect(() => {
-    fetch('/api/rubrics/user')
+    // Get user plan
+    getUserPlan().then(plan => {
+      setUserPlan(plan)
+    })
+
+    // Fetch template rubrics
+    fetch('/api/rubrics?scope=templates')
       .then(res => res.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -85,7 +98,7 @@ export default function PracticePage() {
           }
         }
       })
-      .catch(err => console.error('Failed to fetch rubrics:', err))
+      .catch(err => console.error('Failed to fetch template rubrics:', err))
 
     // Load saved device ID
     const savedDeviceId = localStorage.getItem('pitchpractice_selected_device_id')
@@ -97,6 +110,17 @@ export default function PracticePage() {
     const savedContext = localStorage.getItem('pitchpractice_pitch_context')
     if (savedContext) {
       setPitchContext(savedContext)
+    }
+
+    // Load last used custom rubric if available
+    const lastUsed = localStorage.getItem('pp_last_used_custom_rubric')
+    if (lastUsed) {
+      try {
+        const parsed = JSON.parse(lastUsed)
+        setCustomRubric(parsed)
+      } catch (e) {
+        console.error('Failed to load last used custom rubric:', e)
+      }
     }
 
     enumerateAudioDevices()
@@ -265,7 +289,7 @@ export default function PracticePage() {
       return
     }
 
-    if (!selectedRubricId) {
+    if (!hasValidRubric) {
       setError('Please select a rubric first')
       return
     }
@@ -464,7 +488,7 @@ export default function PracticePage() {
 
     try {
       const sessionId = getSessionId()
-      if (!selectedRubricId) {
+      if (!hasValidRubric) {
         setError('Please select a rubric')
         setIsUploading(false)
         return
@@ -476,12 +500,32 @@ export default function PracticePage() {
       const formData = new FormData()
       formData.append('audio', audioBlob, fileName)
       formData.append('session_id', sessionId)
-      formData.append('rubric_id', selectedRubricId)
+      
+      // Handle custom rubric vs template rubric
+      if (selectedRubricSource === 'custom' && customRubric) {
+        // Use the saved rubric_id if available, otherwise fall back to first available
+        if (customRubricId) {
+          formData.append('rubric_id', customRubricId)
+        } else if (rubrics.length > 0) {
+          formData.append('rubric_id', rubrics[0].id)
+        } else {
+          // If no rubrics exist, API will use default
+          formData.append('rubric_id', '')
+        }
+        // Use custom rubric context if available
+        const contextToUse = customRubric.context || pitchContext
+        if (contextToUse.trim()) {
+          formData.append('pitch_context', contextToUse.trim())
+        }
+      } else {
+        formData.append('rubric_id', selectedRubricId)
+        if (pitchContext.trim()) {
+          formData.append('pitch_context', pitchContext.trim())
+        }
+      }
+      
       if (uploadDurationMs !== null && uploadDurationMs > 0) {
         formData.append('duration_ms', uploadDurationMs.toString())
-      }
-      if (pitchContext.trim()) {
-        formData.append('pitch_context', pitchContext.trim())
       }
 
       const response = await fetch('/api/runs/create', {
@@ -590,22 +634,45 @@ export default function PracticePage() {
       return
     }
 
-    if (!selectedRubricId) {
+    if (!hasValidRubric) {
       setError('Cannot get feedback: no rubric selected')
       setIsGettingFeedback(false)
       return
     }
 
     try {
+      const requestBody: any = {
+        pitch_context: null,
+      }
+
+      if (selectedRubricSource === 'custom' && customRubric) {
+        // Use the saved rubric_id if available, otherwise fall back to prompt_rubric
+        if (customRubricId) {
+          requestBody.rubric_id = customRubricId
+        } else {
+          // Fallback: Convert custom rubric to prompt_rubric format
+          // The analyze API accepts prompt_rubric which overrides the database rubric
+          requestBody.prompt_rubric = customRubric.criteria
+            .filter(c => c.name.trim().length > 0)
+            .map((c, idx) => ({
+              id: c.id || `criterion_${idx}`,
+              label: c.name,
+              weight: 1.0,
+              optional: false,
+            }))
+        }
+        requestBody.pitch_context = (customRubric.context || pitchContext).trim() || null
+      } else {
+        requestBody.rubric_id = selectedRubricId
+        requestBody.pitch_context = pitchContext.trim() || null
+      }
+
       const response = await fetch(`/api/runs/${runId}/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          rubric_id: selectedRubricId,
-          pitch_context: pitchContext.trim() || null,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       const responseText = await response.text()
@@ -735,86 +802,210 @@ export default function PracticePage() {
   }
 
   const selectedRubric = rubrics.find(r => r.id === selectedRubricId)
+  const isCoachOrDaypass = userPlan === 'coach' || userPlan === 'daypass'
+  const hasValidRubric = rubricMode === 'template' 
+    ? selectedRubricId && selectedRubric
+    : customRubric && customRubric.title.trim().length > 0 && customRubric.criteria.length >= 3
+
+  const handleCustomRubricSave = (rubric: CustomRubric, rubricId?: string) => {
+    setCustomRubric(rubric)
+    if (rubricId) {
+      setCustomRubricId(rubricId)
+    }
+    localStorage.setItem('pp_custom_rubric_draft_v1', JSON.stringify(rubric))
+  }
+
+  const handleCustomRubricUse = (rubric: CustomRubric, rubricId?: string) => {
+    setCustomRubric(rubric)
+    setSelectedRubricSource('custom')
+    if (rubricId) {
+      setCustomRubricId(rubricId)
+    }
+    localStorage.setItem('pp_last_used_custom_rubric', JSON.stringify(rubric))
+  }
 
   return (
     <div className="min-h-screen bg-[#F7F7F8] p-8">
       <div className="max-w-7xl mx-auto">
         <h1 className="text-3xl font-bold text-[#111827] mb-8">Practice Your Pitch</h1>
 
-        {/* Rubric Selector */}
+        {/* Step 1: Select Rubric */}
         <Card className="p-6 bg-white border-[rgba(17,24,39,0.10)] shadow-sm mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-[#111827]">Select Rubric</h2>
-            <Link
-              href="/app/rubrics"
-              className="text-sm text-[#F59E0B] hover:text-[#D97706] flex items-center gap-1"
-            >
-              <Edit2 className="h-4 w-4" />
-              Edit rubrics
-            </Link>
+          <div className="flex items-center mb-6 pb-4 border-b border-[rgba(17,24,39,0.10)]">
+            <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Step 1</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-[#111827]">Select Rubric</h2>
+                <Link
+                  href="/app/rubrics"
+                  className="text-sm text-[#F59E0B] hover:text-[#D97706] flex items-center gap-1"
+                >
+                  <Edit2 className="h-4 w-4" />
+                  Edit rubrics
+                </Link>
+              </div>
+              <p className="text-sm text-[#6B7280] mt-0.5">Choose the evaluation criteria for your pitch</p>
+            </div>
           </div>
-          {rubrics.length === 0 ? (
-            <div className="text-center py-4">
-              <p className="text-sm text-[#6B7280] mb-3">No rubrics yet. Create one to get started.</p>
-              <Button variant="primary" size="sm" href="/app/rubrics/new" asChild>
-                Create Rubric
-              </Button>
+
+          {/* Segmented Control for Coach/Daypass */}
+          {isCoachOrDaypass && (
+            <div className="mb-6">
+              <div className="flex gap-2 p-1 bg-[#F3F4F6] rounded-lg border border-[rgba(17,24,39,0.10)]">
+                <button
+                  onClick={() => setRubricMode('template')}
+                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    rubricMode === 'template'
+                      ? 'bg-white text-[#111827] shadow-sm'
+                      : 'text-[#6B7280] hover:text-[#111827]'
+                  }`}
+                  disabled={isRecording || isUploading || isTranscribing || isGettingFeedback}
+                >
+                  Use a template
+                </button>
+                <button
+                  onClick={() => setRubricMode('custom')}
+                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                    rubricMode === 'custom'
+                      ? 'bg-white text-[#111827] shadow-sm'
+                      : 'text-[#6B7280] hover:text-[#111827]'
+                  }`}
+                  disabled={isRecording || isUploading || isTranscribing || isGettingFeedback}
+                >
+                  Create custom rubric
+                </button>
+              </div>
             </div>
-          ) : (
-            <select
-              value={selectedRubricId}
-              onChange={(e) => setSelectedRubricId(e.target.value)}
-              className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
-              disabled={isRecording || isUploading || isTranscribing || isGettingFeedback}
-            >
-              {rubrics.map((rubric) => (
-                <option key={rubric.id} value={rubric.id}>
-                  {rubric.title}
-                </option>
-              ))}
-            </select>
           )}
-          {selectedRubric && (
-            <div className="mt-4 p-3 bg-[#F3F4F6] rounded-lg">
-              <p className="text-xs text-[#6B7280] mb-1">Selected rubric:</p>
-              <p className="text-sm font-medium text-[#111827]">{selectedRubric.title}</p>
-              {selectedRubric.description && (
-                <p className="text-xs text-[#6B7280] mt-1">{selectedRubric.description}</p>
+
+          {rubricMode === 'template' ? (
+            <>
+              {rubrics.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-[#6B7280] mb-3">No rubrics yet. Create one to get started.</p>
+                  <Link href="/app/rubrics/new">
+                    <Button variant="primary" size="sm">
+                      Create Rubric
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <select
+                  value={selectedRubricId}
+                  onChange={(e) => {
+                    setSelectedRubricId(e.target.value)
+                    setSelectedRubricSource('template')
+                  }}
+                  className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent"
+                  disabled={isRecording || isUploading || isTranscribing || isGettingFeedback}
+                >
+                  {rubrics.map((rubric) => (
+                    <option key={rubric.id} value={rubric.id}>
+                      {rubric.title}
+                    </option>
+                  ))}
+                </select>
               )}
-              {selectedRubric.target_duration_seconds && (
-                <p className="text-xs text-[#6B7280] mt-1">
-                  Target: {Math.floor(selectedRubric.target_duration_seconds / 60)}m {selectedRubric.target_duration_seconds % 60}s
+              {selectedRubric && (
+                <div className="mt-4 p-3 bg-[#F3F4F6] rounded-lg">
+                  <p className="text-xs text-[#6B7280] mb-1">Selected rubric:</p>
+                  <p className="text-sm font-medium text-[#111827]">{selectedRubric.title}</p>
+                  {selectedRubric.description && (
+                    <p className="text-xs text-[#6B7280] mt-1">{selectedRubric.description}</p>
+                  )}
+                  {selectedRubric.target_duration_seconds && (
+                    <p className="text-xs text-[#6B7280] mt-1">
+                      Target: {Math.floor(selectedRubric.target_duration_seconds / 60)}m {selectedRubric.target_duration_seconds % 60}s
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Pitch Context (part of Step 1) */}
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-[#111827] mb-2">
+                  What are you pitching? <span className="text-[#6B7280] font-normal">(optional)</span>
+                </label>
+                <textarea
+                  value={pitchContext}
+                  onChange={(e) => setPitchContext(e.target.value)}
+                  placeholder="E.g., A SaaS product for small businesses, a startup idea to investors, a presentation for my team..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-sm text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
+                  disabled={isRecording || isUploading || isTranscribing || isGettingFeedback}
+                />
+                <p className="text-xs text-[#6B7280] mt-2">
+                  This context helps provide more relevant feedback tailored to your specific pitch.
                 </p>
-              )}
+              </div>
+            </>
+          ) : (
+            <div className="min-h-[600px]">
+              <CustomRubricBuilder
+                initialData={customRubric}
+                onSave={handleCustomRubricSave}
+                onUse={handleCustomRubricUse}
+                disabled={isRecording || isUploading || isTranscribing || isGettingFeedback}
+              />
+            </div>
+          )}
+
+          {!hasValidRubric && (
+            <div className="mt-4 p-3 bg-[#FEE2E2] border border-[#FCA5A5] rounded-lg">
+              <p className="text-xs text-[#DC2626]">
+                ⚠️ You must select a rubric before recording
+              </p>
+            </div>
+          )}
+
+          {/* Show guiding questions for custom rubrics */}
+          {selectedRubricSource === 'custom' && customRubric && customRubric.guidingQuestions && customRubric.guidingQuestions.length > 0 && (
+            <div className="mt-4 p-4 bg-[#FEF3C7] border border-[#F59E0B]/40 rounded-lg">
+              <h3 className="text-sm font-semibold text-[#92400E] mb-2">Guiding Questions</h3>
+              <ul className="space-y-2">
+                {customRubric.guidingQuestions.map((question, idx) => (
+                  <li key={idx} className="text-sm text-[#111827] flex items-start gap-2">
+                    <span className="text-[#F59E0B] mt-0.5">•</span>
+                    <span>{question}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Note about custom rubric feedback */}
+          {selectedRubricSource === 'custom' && customRubric && (
+            <div className="mt-4 p-3 bg-[#EFF6FF] border border-[#93C5FD] rounded-lg">
+              <p className="text-xs text-[#1E40AF]">
+                ℹ️ Using custom rubric: "{customRubric.title}". Feedback will be generated based on your custom criteria.
+              </p>
             </div>
           )}
         </Card>
 
-        {/* Pitch Context */}
+        {/* Step 2: Record or Upload */}
         <Card className="p-6 bg-white border-[rgba(17,24,39,0.10)] shadow-sm mb-6">
-          <h2 className="text-lg font-semibold text-[#111827] mb-3">What are you pitching?</h2>
-          <textarea
-            value={pitchContext}
-            onChange={(e) => setPitchContext(e.target.value)}
-            placeholder="E.g., A SaaS product for small businesses, a startup idea to investors, a presentation for my team..."
-            rows={3}
-            className="w-full px-3 py-2 border border-[rgba(17,24,39,0.10)] rounded-lg text-sm text-[#111827] bg-white focus:outline-none focus:ring-2 focus:ring-[#F59E0B] focus:border-transparent resize-none"
-            disabled={isRecording || isUploading || isTranscribing || isGettingFeedback}
-          />
-          <p className="text-xs text-[#6B7280] mt-2">
-            This context helps provide more relevant feedback tailored to your specific pitch.
-          </p>
-        </Card>
+          <div className="flex items-center mb-6 pb-4 border-b border-[rgba(17,24,39,0.10)]">
+            <div className="flex-shrink-0 w-px h-8 bg-gradient-to-b from-[#F59E0B] to-[#D97706] mr-4"></div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-semibold text-[#6B7280] uppercase tracking-wider">Step 2</span>
+              </div>
+              <h2 className="text-xl font-bold text-[#111827]">Record or Upload Your Pitch</h2>
+              <p className="text-sm text-[#6B7280] mt-0.5">Choose your preferred method</p>
+            </div>
+          </div>
 
-        {/* Two-Column Layout */}
-        <div className="grid lg:grid-cols-[320px_1fr] gap-6">
-          {/* LEFT: Recording Controls */}
-          <div className="space-y-4">
-            <Card className="p-5 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">
-              <div className="text-center mb-3">
-                <p className="text-xs text-[#6B7280] mb-3">Record or upload your pitch</p>
-                
-                <div className="flex gap-2 justify-center mb-3">
+          {/* Two-Column Layout */}
+          <div className="grid lg:grid-cols-[320px_1fr] gap-6">
+            {/* LEFT: Recording Controls */}
+            <div className="space-y-4">
+              <div className="p-5 bg-[#F9FAFB] border border-[rgba(17,24,39,0.10)] rounded-lg">
+                <div className="text-center mb-3">
+                  <div className="flex gap-2 justify-center mb-3">
                   <button
                     onClick={() => setActiveTab('record')}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -835,6 +1026,7 @@ export default function PracticePage() {
                   >
                     Upload
                   </button>
+                </div>
                 </div>
               </div>
 
@@ -905,7 +1097,7 @@ export default function PracticePage() {
                         size="lg"
                         onClick={startRecording}
                         className="w-full shadow-lg shadow-[#F59E0B]/20"
-                        disabled={!selectedRubricId || isSilent}
+                        disabled={!hasValidRubric || isSilent}
                       >
                         <Mic className="mr-2 h-5 w-5" />
                         Start recording
@@ -1016,7 +1208,7 @@ export default function PracticePage() {
                         }
                       }}
                       className="w-full"
-                      disabled={!selectedRubricId}
+                      disabled={!hasValidRubric}
                     >
                       Get My Evaluation
                     </Button>
@@ -1074,12 +1266,11 @@ export default function PracticePage() {
                   </Button>
                 </div>
               )}
-            </Card>
-          </div>
+            </div>
 
-          {/* RIGHT: Results */}
-          <div className="space-y-6">
-            {!run ? (
+            {/* RIGHT: Results */}
+            <div className="space-y-6">
+              {!run ? (
               <Card className="p-12 bg-white border-[rgba(17,24,39,0.10)] shadow-sm text-center">
                 <h3 className="text-lg font-semibold text-[#111827] mb-2">Your transcript will appear here</h3>
                 <p className="text-sm text-[#6B7280]">Record or upload a pitch to get feedback.</p>
@@ -1159,7 +1350,7 @@ export default function PracticePage() {
                                   getFeedback(run.id)
                                 }
                               }}
-                              disabled={!selectedRubricId || isGettingFeedback}
+                              disabled={!hasValidRubric || isGettingFeedback}
                             >
                               {isGettingFeedback ? 'Evaluating...' : 'Get My Evaluation'}
                             </Button>
@@ -1170,14 +1361,93 @@ export default function PracticePage() {
                     return null
                   }
                   
+                  // Determine plan for display (use current plan, fallback to plan_at_time from analysis)
+                  const displayPlan = userPlan || feedbackData.meta?.plan_at_time || 'free'
+                  const isCoachOrDaypass = displayPlan === 'coach' || displayPlan === 'daypass'
+                  const isStarter = displayPlan === 'starter'
+                  const isFree = displayPlan === 'free'
+                  
                   return (
                     <>
-                      {/* Rubric Breakdown */}
-                      <Card className="p-10 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">
-                        <h3 className="text-xl font-bold text-[#111827] mb-8">Rubric Breakdown</h3>
-                        <div className="space-y-3">
-                          {feedbackData.rubric_scores && feedbackData.rubric_scores.length > 0 ? (
-                            feedbackData.rubric_scores.map((rubricScore: any, idx: number) => {
+                      {/* Summary - Visible to All Plans */}
+                      {feedbackData.summary && (
+                        <Card className="p-6 bg-[#FEF3C7] border-[#F59E0B]/40">
+                          <h4 className="text-sm font-semibold text-[#92400E] uppercase tracking-wide mb-2">
+                            Summary
+                          </h4>
+                          {feedbackData.summary.overall_score !== undefined && (
+                            <p className="text-lg font-bold text-[#111827] mb-2">
+                              Overall Score: {feedbackData.summary.overall_score}/10
+                            </p>
+                          )}
+                          {feedbackData.summary.overall_notes && (
+                            <p className="text-sm text-[#111827] mb-3">{feedbackData.summary.overall_notes}</p>
+                          )}
+                          {feedbackData.summary.top_strengths && feedbackData.summary.top_strengths.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-xs font-semibold text-[#92400E] mb-1">Strengths:</p>
+                              <ul className="list-disc list-inside text-sm text-[#111827] space-y-1">
+                                {feedbackData.summary.top_strengths.map((strength: string, idx: number) => (
+                                  <li key={idx}>{strength}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {feedbackData.summary.top_improvements && feedbackData.summary.top_improvements.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-xs font-semibold text-[#92400E] mb-1">Improvements:</p>
+                              <ul className="list-disc list-inside text-sm text-[#111827] space-y-1">
+                                {feedbackData.summary.top_improvements.map((improvement: string, idx: number) => (
+                                  <li key={idx}>{improvement}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </Card>
+                      )}
+
+                      {/* Question Grading - Visible to All Plans (if available) */}
+                      {feedbackData.question_grading && feedbackData.question_grading.length > 0 && (
+                        <Card className="p-6 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">
+                          <h3 className="text-xl font-bold text-[#111827] mb-4">Guiding Questions</h3>
+                          <div className="space-y-4">
+                            {feedbackData.question_grading.map((qg: any, idx: number) => (
+                              <div key={idx} className="p-4 border border-[rgba(17,24,39,0.10)] rounded-lg">
+                                <div className="flex items-start gap-2 mb-2">
+                                  {qg.answered ? (
+                                    <CheckCircle2 className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                                  ) : (
+                                    <AlertCircle className="h-5 w-5 text-[#EF4444] flex-shrink-0 mt-0.5" />
+                                  )}
+                                  <p className="text-sm font-medium text-[#111827] flex-1">{qg.question}</p>
+                                </div>
+                                {qg.evidence_quotes && qg.evidence_quotes.length > 0 && (
+                                  <div className="mt-2 pl-7">
+                                    <p className="text-xs text-[#6B7280] mb-1">Evidence:</p>
+                                    {qg.evidence_quotes.map((quote: string, qIdx: number) => (
+                                      <p key={qIdx} className="text-xs text-[#111827] italic mb-1">"{quote}"</p>
+                                    ))}
+                                  </div>
+                                )}
+                                {qg.improvement && (
+                                  <div className="mt-2 pl-7">
+                                    <p className="text-xs text-[#6B7280] mb-1">Improvement:</p>
+                                    <p className="text-xs text-[#111827]">{qg.improvement}</p>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </Card>
+                      )}
+
+                      {/* Rubric Breakdown - Visible to Starter+ */}
+                      {(isStarter || isCoachOrDaypass) && (
+                        <Card className="p-10 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">
+                          <h3 className="text-xl font-bold text-[#111827] mb-8">Rubric Breakdown</h3>
+                          <div className="space-y-3">
+                            {feedbackData.rubric_scores && feedbackData.rubric_scores.length > 0 ? (
+                              feedbackData.rubric_scores.map((rubricScore: any, idx: number) => {
                               const score = rubricScore.score || 0
                               const maxScore = 10
                               const scorePercent = (score / maxScore) * 100
@@ -1293,9 +1563,10 @@ export default function PracticePage() {
                   Record New Take
                 </Button>
               </>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   )

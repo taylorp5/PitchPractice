@@ -1,9 +1,13 @@
 'use client'
 
 import { Check } from 'lucide-react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
 
 export default function UpgradePage() {
+  // TODO: Replace with actual user plan from auth/session
+  const currentPlan: 'free' | 'starter' | 'coach' | 'day_pass' | null = null
+
   return (
     <div className="min-h-screen bg-[#F7F7F8] py-12 px-4">
       <div className="max-w-7xl mx-auto">
@@ -17,19 +21,81 @@ export default function UpgradePage() {
           </p>
         </div>
 
-        {/* Pricing Cards */}
-        <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-          {/* Practice (Starter) */}
+        {/* Pricing Cards - 4 cards: Free, Starter, Coach, Day Pass */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-7xl mx-auto">
+          {/* Free (Try) */}
           <div className="bg-white rounded-xl border border-[rgba(17,24,39,0.10)] shadow-sm p-8 flex flex-col">
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
-                <h2 className="text-2xl font-bold text-[#111827]">Practice</h2>
-                <span className="text-xs font-semibold text-[#F59E0B] uppercase tracking-wide bg-[#F59E0B]/10 px-2 py-1 rounded">
-                  Included
-                </span>
+                <div>
+                  <h2 className="text-2xl font-bold text-[#111827]">Free</h2>
+                  <p className="text-sm text-[#6B7280] mt-0.5">Try</p>
+                </div>
+                {currentPlan === 'free' && (
+                  <span className="text-xs font-semibold text-[#F59E0B] uppercase tracking-wide bg-[#F59E0B]/10 px-2 py-1 rounded">
+                    Included
+                  </span>
+                )}
               </div>
               <div className="mt-4">
-                <span className="text-4xl font-bold text-[#111827]">Free</span>
+                <span className="text-4xl font-bold text-[#111827]">$0</span>
+              </div>
+            </div>
+
+            <ul className="space-y-3 mb-8 flex-grow">
+              <li className="flex items-start gap-3">
+                <Check className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                <span className="text-sm text-[#6B7280]">Up to 2-minute recordings</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <Check className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                <span className="text-sm text-[#6B7280]">Transcript + basic feedback summary</span>
+              </li>
+              <li className="flex items-start gap-3">
+                <Check className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
+                <span className="text-sm text-[#6B7280]">Basic pacing metrics</span>
+              </li>
+            </ul>
+
+            {currentPlan === 'free' ? (
+              <Button
+                variant="secondary"
+                size="lg"
+                className="w-full bg-gray-100 text-[#6B7280] border-[rgba(17,24,39,0.10)] hover:bg-gray-100 hover:text-[#6B7280]"
+                disabled
+              >
+                Current plan
+              </Button>
+            ) : (
+              <Link href="/try" className="block">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="w-full"
+                >
+                  Try it free
+                </Button>
+              </Link>
+            )}
+          </div>
+
+          {/* Starter */}
+          <div className="bg-white rounded-xl border border-[rgba(17,24,39,0.10)] shadow-sm p-8 flex flex-col">
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-2xl font-bold text-[#111827]">Starter</h2>
+                {currentPlan === 'starter' && (
+                  <span className="text-xs font-semibold text-[#F59E0B] uppercase tracking-wide bg-[#F59E0B]/10 px-2 py-1 rounded">
+                    Included
+                  </span>
+                )}
+              </div>
+              <div className="mt-4">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl font-bold text-[#111827]">$</span>
+                  <span className="text-4xl font-bold text-[#111827]">—</span>
+                </div>
+                <p className="text-sm text-[#6B7280] mt-1">Monthly / Yearly</p>
               </div>
             </div>
 
@@ -57,16 +123,20 @@ export default function UpgradePage() {
             </ul>
 
             <Button
-              variant="secondary"
+              variant="primary"
               size="lg"
-              className="w-full bg-gray-100 text-[#6B7280] border-[rgba(17,24,39,0.10)] hover:bg-gray-100 hover:text-[#6B7280]"
+              className="w-full"
               disabled
+              title="Coming soon"
+              onClick={() => {
+                // Placeholder - wire to existing paid upgrade flow if Starter price exists
+              }}
             >
-              Current plan
+              Upgrade to Starter
             </Button>
           </div>
 
-          {/* Coach (Pro) */}
+          {/* Coach */}
           <div className="bg-white rounded-xl border border-[rgba(17,24,39,0.10)] shadow-sm p-8 flex flex-col relative">
             <div className="absolute top-4 right-4">
               <span className="text-xs font-semibold text-[#F59E0B] uppercase tracking-wide bg-[#F59E0B]/10 px-2 py-1 rounded">

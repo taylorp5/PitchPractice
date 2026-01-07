@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { ArrowLeft, Edit, Trash2, Clock, Info } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Clock } from 'lucide-react'
 import RubricForm from '../RubricForm'
 import { getUserPlan, type UserPlan } from '@/lib/plan'
 import { canEditRubrics } from '@/lib/entitlements'
@@ -255,23 +255,6 @@ export default function RubricDetailPage() {
             </Button>
           </div>
         </div>
-
-        {/* Plan-based restrictions notice - Only show for Day Pass users */}
-        {!canEditRubrics(userPlan) && (
-          <Card className="p-4 mb-6 bg-[#FEF3C7] border-[#FCD34D]">
-            <div className="flex items-start gap-3">
-              <Info className="h-5 w-5 text-[#D97706] flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-[#92400E] mb-1">
-                  Read-only Rubric
-                </p>
-                <p className="text-xs text-[#92400E]">
-                  Day Pass users can view AI-generated rubrics but cannot edit or refine them. Editing is available on Coach plan.
-                </p>
-              </div>
-            </div>
-          </Card>
-        )}
 
         {/* Criteria List */}
         <Card className="p-6 bg-white border-[rgba(17,24,39,0.10)] shadow-sm">

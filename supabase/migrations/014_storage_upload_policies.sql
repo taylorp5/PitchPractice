@@ -2,6 +2,12 @@
 -- Allows users to upload audio files to their session_id folder
 -- Path format: {session_id}/{runId}.{ext} or {session_id}/{runId}/chunk_{index}.{ext}
 
+-- Drop existing policies if they exist (idempotent)
+DROP POLICY IF EXISTS "Authenticated users can upload to their runs" ON storage.objects;
+DROP POLICY IF EXISTS "Anonymous users can upload to session folders" ON storage.objects;
+DROP POLICY IF EXISTS "Authenticated users can read their own files" ON storage.objects;
+DROP POLICY IF EXISTS "Anonymous users can read session files" ON storage.objects;
+
 -- Policy: Allow authenticated users to upload files to runs they own
 -- The path contains the run_id, which we validate belongs to the user
 CREATE POLICY "Authenticated users can upload to their runs"

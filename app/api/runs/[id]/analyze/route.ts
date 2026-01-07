@@ -1804,20 +1804,63 @@ export async function POST(
     }
 
     // Update the run with analysis and plan_at_time
+    // Note: plan_at_time column may not exist if migration hasn't been applied yet
+    // Use a try-catch to handle gracefully if column doesn't exist
+    let updateData: any = {
+      analysis_json: analysisJson,
+      status: 'analyzed',
+      error_message: null,
+    }
+    
+    // Only include plan_at_time if it's a valid value
+    // This allows the update to succeed even if the column doesn't exist yet
+    if (userPlan && ['free', 'starter', 'coach', 'daypass'].includes(userPlan)) {
+      updateData.plan_at_time = userPlan
+    }
+
     const { data: updatedRun, error: updateError } = await getSupabaseAdmin()
       .from('pitch_runs')
-      .update({
-        analysis_json: analysisJson,
-        plan_at_time: userPlan, // Store plan_at_time on run record for reliable UI gating
-        status: 'analyzed',
-        error_message: null,
-      })
+      .update(updateData)
       .eq('id', id)
       .select('*')
       .single()
 
     if (updateError) {
       console.error('Database update error:', updateError)
+      
+      // If the error is about a missing column, try again without plan_at_time
+      if (updateError.message?.includes('plan_at_time') || updateError.message?.includes('column') || updateError.code === '42703') {
+        console.warn('[Analyze] plan_at_time column may not exist, retrying without it:', updateError.message)
+        
+        const { data: retryRun, error: retryError } = await getSupabaseAdmin()
+          .from('pitch_runs')
+          .update({
+            analysis_json: analysisJson,
+            status: 'analyzed',
+            error_message: null,
+          })
+          .eq('id', id)
+          .select('*')
+          .single()
+        
+        if (retryError) {
+          console.error('Database update error (retry):', retryError)
+          return NextResponse.json(
+            { error: 'Failed to save analysis', details: retryError.message },
+            { status: 500 }
+          )
+        }
+        
+        // Use the retry result
+        const finalRun = retryRun
+        return NextResponse.json({
+          ok: true,
+          run: finalRun,
+          success: true,
+          analysis: analysisJson,
+        })
+      }
+      
       return NextResponse.json(
         { error: 'Failed to save analysis', details: updateError.message },
         { status: 500 }

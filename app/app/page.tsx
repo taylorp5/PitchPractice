@@ -478,7 +478,7 @@ export default function HomePage() {
       
       // Get plan-based recording limit
       const getMaxRecordingSeconds = (): number => {
-        if (canViewPremiumInsights(userPlan)) return 90 * 60 // 90:00 (Coach and Day Pass)
+        if (canViewPremiumInsights(userPlan)) return 60 * 60 // 60:00 (Coach and Day Pass)
         if (userPlan === 'starter') return 30 * 60 // 30:00
         return 2 * 60 // 2:00 for free
       }
@@ -921,7 +921,7 @@ export default function HomePage() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-mono text-[#F59E0B]">
                         {formatTime(recordingTime)} / {(() => {
-                          if (canViewPremiumInsights(userPlan)) return '90:00'
+                          if (canViewPremiumInsights(userPlan)) return '60:00'
                           if (userPlan === 'starter') return '30:00'
                           return '2:00'
                         })()}
@@ -931,7 +931,7 @@ export default function HomePage() {
                   <div className="text-center">
                     <p className="text-xs text-[#9AA4B2]">
                       {canViewPremiumInsights(userPlan)
-                        ? 'Up to 90 minutes per recording'
+                        ? 'Up to 60 minutes per recording'
                         : userPlan === 'starter'
                         ? 'Up to 30 minutes per recording'
                         : 'Up to 2 minutes per recording'}

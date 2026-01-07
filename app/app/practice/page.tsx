@@ -726,9 +726,9 @@ export default function PracticePage() {
       setPausedTotalMs(0)
       setPauseStartTime(null)
 
-      // Coach-only: Set up checkpoint intervals (30:00, 60:00, 90:00)
+      // Coach-only: Set up checkpoint intervals (30:00, 60:00)
       if (isCoach) {
-        const checkpointTimes = [1800, 3600, 5400] // 30, 60, 90 minutes in seconds
+        const checkpointTimes = [1800, 3600] // 30, 60 minutes in seconds
         checkpointIntervalRef.current = setInterval(() => {
           setRecordingTime(prev => {
             const newTime = prev + 1
@@ -736,7 +736,7 @@ export default function PracticePage() {
             // Check for checkpoint boundaries
             for (const checkpointTime of checkpointTimes) {
               if (newTime === checkpointTime && lastCheckpointTimeRef.current < checkpointTime) {
-                const chunkIndex = checkpointTime / 1800 - 1 // 0, 1, 2
+                const chunkIndex = checkpointTime / 1800 - 1 // 0, 1
                 const startMs = lastCheckpointTimeRef.current * 1000
                 const endMs = checkpointTime * 1000
                 createCheckpoint(chunkIndex, startMs, endMs)
@@ -745,8 +745,8 @@ export default function PracticePage() {
               }
             }
             
-            // Auto-stop at 90 minutes for Coach
-            const maxSeconds = 5400 // 90 minutes
+            // Auto-stop at 60 minutes for Coach
+            const maxSeconds = 3600 // 60 minutes
             if (newTime >= maxSeconds) {
               stopRecording()
               return maxSeconds
@@ -902,7 +902,7 @@ export default function PracticePage() {
       return
     }
 
-    // For Coach users, allow up to 90 minutes but don't rely on client-side duration extraction
+    // For Coach users, allow up to 60 minutes but don't rely on client-side duration extraction
     // The server will handle duration validation if needed
     const fileDurationMs = await getAudioDuration(file)
     if (fileDurationMs !== null && fileDurationMs > 0) {
@@ -1427,7 +1427,7 @@ export default function PracticePage() {
   
   // Plan-based recording duration limits (in seconds)
   const getMaxRecordingSeconds = (): number => {
-    if (canViewPremium) return 5400 // 90:00 (Coach and Day Pass)
+    if (canViewPremium) return 3600 // 60:00 (Coach and Day Pass)
     if (userPlan === 'starter') return 1800 // 30:00
     return 120 // 2:00 for free
   }
@@ -2164,8 +2164,8 @@ export default function PracticePage() {
                   })}
                   
                   {/* Show pending checkpoints */}
-                  {[0, 1, 2].map((index) => {
-                    const checkpointTime = (index + 1) * 1800 // 30, 60, 90 minutes
+                  {[0, 1].map((index) => {
+                    const checkpointTime = (index + 1) * 1800 // 30, 60 minutes
                     const isCompleted = checkpoints.some(c => c.chunk_index === index)
                     const isPending = recordingTime < checkpointTime && !isCompleted
                     

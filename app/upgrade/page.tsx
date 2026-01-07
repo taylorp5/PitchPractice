@@ -308,7 +308,7 @@ function UpgradePageContent() {
             <ul className="space-y-3 mb-8 flex-grow">
               <li className="flex items-start gap-3">
                 <Check className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
-                <span className="text-sm text-[#6B7280]">Up to 90-minute recordings</span>
+                <span className="text-sm text-[#6B7280]">Up to 60-minute recordings</span>
               </li>
               <li className="flex items-start gap-3">
                 <Check className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />

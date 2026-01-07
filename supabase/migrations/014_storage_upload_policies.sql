@@ -40,8 +40,8 @@ WITH CHECK (
   bucket_id = 'pitchpractice-audio' AND
   -- Path must start with a valid session_id that exists in pitch_runs
   -- The /api/uploads/sign endpoint validates run ownership before returning the path
-  -- Extract first folder (session_id) from path
-  (storage.foldername(name))[1] IN (
+  -- Extract first folder (session_id) from path using split_part
+  split_part(name, '/', 1) IN (
     SELECT DISTINCT session_id::text FROM pitch_runs WHERE session_id IS NOT NULL
   )
 );
@@ -55,12 +55,20 @@ USING (
   bucket_id = 'pitchpractice-audio' AND
   (
     -- Check if run_id in path belongs to user
-    (storage.foldername(name))[2] IN (
-      SELECT id::text FROM pitch_runs WHERE user_id = auth.uid()
+    -- Path format: {session_id}/{runId}.{ext} or {session_id}/{runId}/chunk_{index}.{ext}
+    -- Use same pattern matching as upload policy for consistency
+    EXISTS (
+      SELECT 1 FROM pitch_runs 
+      WHERE user_id = auth.uid() 
+      AND (
+        -- Match run_id in path (before .ext or /chunk_)
+        name LIKE '%/' || id::text || '.%'
+        OR name LIKE '%/' || id::text || '/%'
+      )
     )
     OR
-    -- Fallback: check session_id
-    (storage.foldername(name))[1] IN (
+    -- Fallback: check session_id (first part)
+    split_part(name, '/', 1) IN (
       SELECT session_id::text FROM pitch_runs WHERE user_id = auth.uid()
     )
   )
@@ -73,7 +81,7 @@ FOR SELECT
 TO anon
 USING (
   bucket_id = 'pitchpractice-audio' AND
-  (storage.foldername(name))[1] IN (
+  split_part(name, '/', 1) IN (
     SELECT DISTINCT session_id::text FROM pitch_runs WHERE session_id IS NOT NULL
   )
 );

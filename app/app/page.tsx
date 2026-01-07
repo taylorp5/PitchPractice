@@ -855,6 +855,13 @@ export default function HomePage() {
                 </div>
               )}
 
+              {/* Troubleshooting Text */}
+              <div className="pt-2 border-t border-[rgba(255,255,255,0.08)]">
+                <p className="text-xs text-[#6B7280] leading-relaxed">
+                  💡 <span className="font-medium text-[#9AA4B2]">Troubleshooting:</span> If the test fails, try restarting the page, reconnecting your Bluetooth device, and make sure Bluetooth is turned off on other nearby devices.
+                </p>
+              </div>
+
               {/* Recording Timer Display */}
               {isRecording && (
                 <div className="space-y-2">

@@ -1567,9 +1567,12 @@ export default function PracticePage() {
                     onClick={() => {
                       if (selectedRubricId) {
                         window.open(`/app/rubrics/${selectedRubricId}`, '_blank')
+                      } else {
+                        // If no rubric selected, navigate to create rubric page
+                        router.push('/app/rubrics/new')
                       }
                     }}
-                    disabled={!selectedRubricId || rubricMode !== 'default'}
+                    disabled={rubricMode !== 'default'}
                     variant="secondary"
                     size="sm"
                     className="whitespace-nowrap"
@@ -1598,6 +1601,16 @@ export default function PracticePage() {
                     </span>
                   )}
                 </div>
+                {/* Create Rubric Button */}
+                <Button
+                  onClick={() => router.push('/app/rubrics/new')}
+                  disabled={rubricMode !== 'default' || isUploading || isRecording}
+                  variant="secondary"
+                  size="sm"
+                  className="whitespace-nowrap"
+                >
+                  Create rubric
+                </Button>
               </div>
               {rubricMode === 'default' && selectedRubric && (
                 <p className="mt-2 text-sm text-[#9AA4B2]">
@@ -1827,12 +1840,10 @@ export default function PracticePage() {
             )}
 
             {/* Validation Message */}
-            {!hasValidRubric && (
+            {!hasValidRubric && userPlan === 'free' && (
               <div className="p-3 bg-[#F59E0B20] border border-[#F59E0B30] rounded-lg">
                 <p className="text-sm text-[#F59E0B]">
-                  {userPlan === 'free' 
-                    ? '⚠️ Select a rubric from the dropdown.'
-                    : '⚠️ Select a rubric OR upload/paste one and parse it.'}
+                  ⚠️ Select a rubric from the dropdown.
                 </p>
               </div>
             )}
@@ -1929,6 +1940,13 @@ export default function PracticePage() {
                 )}
               </div>
             )}
+
+            {/* Troubleshooting Text */}
+            <div className="pt-2 border-t border-[rgba(255,255,255,0.08)]">
+              <p className="text-xs text-[#6B7280] leading-relaxed">
+                💡 <span className="font-medium text-[#9AA4B2]">Troubleshooting:</span> If the test fails, try restarting the page, reconnecting your Bluetooth device, and make sure Bluetooth is turned off on other nearby devices.
+              </p>
+            </div>
 
             {/* Recording Timer */}
             {isRecording && (

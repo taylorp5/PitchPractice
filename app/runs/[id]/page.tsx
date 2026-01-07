@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Check, ArrowLeft, RefreshCw, ChevronDown, ChevronUp, FileText, Download, Copy, Sparkles } from 'lucide-react'
 import { getUserPlan } from '@/lib/plan'
 import { hasCoachAccess, hasDayPassAccess, canViewPremiumInsights, canViewProgressPanel, canEditRubrics } from '@/lib/entitlements'
+import { RunChunk } from '@/lib/types'
 
 // Helper function to log fetch errors with full details
 async function logFetchError(url: string, response: Response, error?: any) {
@@ -288,6 +289,9 @@ export default function RunPage() {
     } | null
     loading: boolean
   }>({ comparisons: null, loading: false })
+  const [chunks, setChunks] = useState<RunChunk[]>([])
+  const [chunksLoading, setChunksLoading] = useState(false)
+  const [retryingChunkId, setRetryingChunkId] = useState<string | null>(null)
   
   // Use ref to track current run for polling logic (avoids stale closures)
   const runRef = useRef<Run | null>(null)
@@ -473,6 +477,96 @@ export default function RunPage() {
     }
   }, [routeRunId, userPlan])
 
+  // Fetch chunks for Coach users only
+  const fetchChunks = useCallback(async () => {
+    if (!routeRunId || !hasCoachAccess(userPlan)) {
+      return
+    }
+
+    setChunksLoading(true)
+    try {
+      const res = await fetch(`/api/runs/${routeRunId}/chunks`, {
+        cache: 'no-store',
+      })
+      if (!res.ok) {
+        console.error('[Chunks] Failed to fetch chunks')
+        setChunks([])
+        setChunksLoading(false)
+        return
+      }
+      const data = await res.json()
+      if (data.ok && data.chunks) {
+        setChunks(data.chunks)
+      } else {
+        setChunks([])
+      }
+    } catch (err) {
+      console.error('[Chunks] Error fetching chunks:', err)
+      setChunks([])
+    } finally {
+      setChunksLoading(false)
+    }
+  }, [routeRunId, userPlan])
+
+  // Download chunk transcript
+  const downloadChunkTranscript = async (chunkId: string) => {
+    try {
+      const res = await fetch(`/api/runs/${routeRunId}/chunks/${chunkId}/transcript.txt`, {
+        cache: 'no-store',
+      })
+      if (!res.ok) {
+        if (res.status === 404) {
+          setError('Transcript not ready yet')
+        } else {
+          setError('Failed to download transcript')
+        }
+        return
+      }
+      const text = await res.text()
+      const blob = new Blob([text], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `chunk_${chunkId}_transcript.txt`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('[Chunks] Error downloading transcript:', err)
+      setError('Failed to download transcript')
+    }
+  }
+
+  // Retry chunk transcription
+  const retryChunkTranscription = async (chunkId: string) => {
+    setRetryingChunkId(chunkId)
+    try {
+      const res = await fetch(`/api/runs/${routeRunId}/chunks/${chunkId}/transcribe`, {
+        method: 'POST',
+        cache: 'no-store',
+      })
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || 'Transcription failed')
+      }
+      const data = await res.json()
+      if (data.ok && data.chunk) {
+        // Update chunk in state
+        setChunks(prev => prev.map(chunk => 
+          chunk.id === chunkId ? data.chunk : chunk
+        ))
+      }
+      // Refetch chunks to get updated status
+      await fetchChunks()
+    } catch (err: any) {
+      console.error('[Chunks] Error retrying transcription:', err)
+      setError(err.message || 'Failed to retry transcription')
+    } finally {
+      setRetryingChunkId(null)
+    }
+  }
+
   useEffect(() => {
     // Get user plan on mount
     getUserPlan().then(plan => {
@@ -488,6 +582,13 @@ export default function RunPage() {
       fetchProgress()
     }
   }, [run, userPlan, fetchProgress])
+
+  // Fetch chunks when run is loaded and user is Coach
+  useEffect(() => {
+    if (run && hasCoachAccess(userPlan)) {
+      fetchChunks()
+    }
+  }, [run, userPlan, fetchChunks])
 
   // Polling: poll every 1500ms while status is in ["uploaded","transcribing","transcribed"]
   useEffect(() => {
@@ -1171,8 +1272,14 @@ export default function RunPage() {
               const wasDayPassAtTime = runPlanAtTime === 'daypass' || runPlanAtTime === 'day_pass'
               const isDayPassExpired = wasDayPassAtTime && !dayPassActive && !coachAccess
               
-              // Show Premium Insights if user can view premium (Coach or active Day Pass) and insights exist
-              if (canViewPremium && (hasPremiumInsights || hasPremiumContent)) {
+              // Show Premium Insights if:
+              // 1. User can view premium (current plan is Coach or active Day Pass) OR
+              // 2. Run was analyzed with Coach plan (plan_at_time === 'coach')
+              // This ensures Coach users see their premium insights even if plan changes
+              const wasCoachAtTime = runPlanAtTime === 'coach'
+              const shouldShowPremium = (canViewPremium || wasCoachAtTime) && (hasPremiumInsights || hasPremiumContent) && !isDayPassExpired
+              
+              if (shouldShowPremium) {
                 return (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -1300,74 +1407,92 @@ export default function RunPage() {
                         </div>
                       )}
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* 1. Filler Words (Legacy - keeping for backward compatibility) */}
-                    {run.analysis_json.premium_insights.filler_words && (
-                      <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
-                        <h3 className="text-sm font-semibold text-[#E5E7EB] mb-3">Filler Words</h3>
-                        <div className="space-y-3">
-                          {run.analysis_json.premium_insights.filler_words.total_count !== undefined && (
-                            <div>
-                              <p className="text-xs text-[#9CA3AF] mb-1">Total Count</p>
-                              <p className="text-lg font-bold text-[#F59E0B]">
+                      {/* Filler Words Section - Coach only */}
+                      {(runPlanAtTime === 'coach' || userPlan === 'coach') && run.analysis_json.premium_insights?.filler_words && (
+                        <div className="mb-6">
+                          <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                            <h3 className="text-sm font-semibold text-[#E5E7EB] mb-4">Filler Words</h3>
+                            
+                            {/* Total Count */}
+                            <div className="mb-4">
+                              <p className="text-xs text-[#9CA3AF] mb-1">Total Filler Words Used</p>
+                              <p className="text-2xl font-bold text-[#F59E0B]">
                                 {run.analysis_json.premium_insights.filler_words.total_count}
                               </p>
                             </div>
-                          )}
-                          
-                          {run.analysis_json.premium_insights.filler_words.totals && Object.keys(run.analysis_json.premium_insights.filler_words.totals).length > 0 && (
-                            <div>
-                              <p className="text-xs text-[#9CA3AF] mb-2">Top Words</p>
-                              <div className="flex flex-wrap gap-2">
-                                {Object.entries(run.analysis_json.premium_insights.filler_words.totals)
-                                  .sort(([, a], [, b]) => (b as number) - (a as number))
-                                  .slice(0, 5)
-                                  .map(([word, count]) => (
-                                    <Badge key={word} variant="warning" size="sm">
-                                      {word}: {count as number}
-                                    </Badge>
-                                  ))}
-                              </div>
-                            </div>
-                          )}
-                          
-                          {run.analysis_json.premium_insights.filler_words.top_sentences && 
-                           run.analysis_json.premium_insights.filler_words.top_sentences.length > 0 && (
-                            <div>
-                              <p className="text-xs text-[#9CA3AF] mb-2">Top Sentences to Fix</p>
-                              <div className="space-y-3">
-                                {run.analysis_json.premium_insights.filler_words.top_sentences
-                                  .slice(0, 3)
-                                  .map((item: any, idx: number) => (
-                                    <div key={idx} className="p-3 bg-[#0F1419] rounded border border-[#1A1F2E]">
-                                      <p className="text-xs text-[#E5E7EB] mb-1">{item.sentence}</p>
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <span className="text-xs text-[#F59E0B]">
-                                          {item.count} filler{item.count !== 1 ? 's' : ''}
-                                        </span>
-                                        {item.words && item.words.length > 0 && (
-                                          <span className="text-xs text-[#9CA3AF]">
-                                            ({item.words.join(', ')})
-                                          </span>
+
+                            {/* Table/List: Word | Count | Example | Suggested replacement */}
+                            {run.analysis_json.premium_insights.filler_words.by_word && 
+                             run.analysis_json.premium_insights.filler_words.by_word.length > 0 ? (
+                              <div className="space-y-3 mb-4">
+                                {run.analysis_json.premium_insights.filler_words.by_word.map((item: any, idx: number) => (
+                                  <div key={idx} className="p-3 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                                    <div className="flex items-start justify-between gap-3 mb-2">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <span className="text-sm font-semibold text-[#E5E7EB]">{item.word}</span>
+                                          <Badge variant="warning" size="sm">
+                                            {item.count} {item.count === 1 ? 'time' : 'times'}
+                                          </Badge>
+                                        </div>
+                                        
+                                        {/* Examples */}
+                                        {item.examples && item.examples.length > 0 && (
+                                          <div className="mb-2">
+                                            <p className="text-xs text-[#9CA3AF] mb-1">Examples:</p>
+                                            <div className="space-y-1">
+                                              {item.examples.map((example: string, exIdx: number) => (
+                                                <p key={exIdx} className="text-xs text-[#E5E7EB] italic">
+                                                  "{example}"
+                                                </p>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                        
+                                        {/* Suggestions */}
+                                        {item.suggestions && item.suggestions.length > 0 && (
+                                          <div>
+                                            <p className="text-xs text-[#9CA3AF] mb-1">Suggested approach:</p>
+                                            <div className="flex flex-wrap gap-1">
+                                              {item.suggestions.map((suggestion: string, sugIdx: number) => (
+                                                <Badge key={sugIdx} variant="info" size="sm">
+                                                  {suggestion}
+                                                </Badge>
+                                              ))}
+                                            </div>
+                                          </div>
                                         )}
                                       </div>
-                                      {item.rewrite && (
-                                        <div className="mt-2 p-2 bg-[#22283A] rounded border border-[#2A3142]">
-                                          <p className="text-xs text-[#9CA3AF] mb-1">Rewrite:</p>
-                                          <p className="text-xs text-[#E5E7EB] italic">{item.rewrite}</p>
-                                        </div>
-                                      )}
-                                      {item.suggestion && (
-                                        <p className="text-xs text-[#9CA3AF] mt-1">{item.suggestion}</p>
-                                      )}
                                     </div>
-                                  ))}
+                                  </div>
+                                ))}
                               </div>
-                            </div>
-                          )}
+                            ) : (
+                              <div className="mb-4 p-3 bg-[#0F1419] rounded border border-[#1A1F2E]">
+                                <p className="text-sm text-[#9CA3AF]">No filler words detected.</p>
+                              </div>
+                            )}
+
+                            {/* Coaching Notes */}
+                            {run.analysis_json.premium_insights.filler_words.coaching_notes && 
+                             run.analysis_json.premium_insights.filler_words.coaching_notes.length > 0 && (
+                              <div className="pt-3 border-t border-[#22283A]">
+                                <p className="text-xs text-[#9CA3AF] mb-2">Coaching Notes</p>
+                                <ul className="space-y-1.5 list-disc list-inside">
+                                  {run.analysis_json.premium_insights.filler_words.coaching_notes.map((note: string, noteIdx: number) => (
+                                    <li key={noteIdx} className="text-xs text-[#E5E7EB]">
+                                      {note}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                     {/* 2. Pacing & Pauses */}
                     {run.analysis_json.premium_insights.pacing && (
@@ -1701,6 +1826,145 @@ export default function RunPage() {
               }
               
               // No Premium Insights and user has coach access (insights not generated yet)
+              return null
+            })()}
+
+            {/* Transcript Checkpoints - Coach only */}
+            {(() => {
+              // Guard: ensure run exists
+              if (!run) return null
+              
+              const isCoach = hasCoachAccess(userPlan)
+              
+              // Show checkpoints section if user is Coach and chunks exist or are loading
+              if (isCoach && (chunks.length > 0 || chunksLoading)) {
+                // Format time helper for checkpoint ranges
+                const formatCheckpointTime = (startMs: number, endMs: number) => {
+                  const formatTime = (ms: number) => {
+                    const totalSeconds = Math.floor(ms / 1000)
+                    const minutes = Math.floor(totalSeconds / 60)
+                    const seconds = totalSeconds % 60
+                    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+                  }
+                  return `${formatTime(startMs)}–${formatTime(endMs)}`
+                }
+
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
+                  >
+                    <Card>
+                      <div className="flex items-center gap-2 mb-4">
+                        <SectionHeader title="Transcript Checkpoints" />
+                      </div>
+                      
+                      {chunksLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <LoadingSpinner className="h-5 w-5 text-[#F59E0B]" />
+                          <span className="ml-2 text-sm text-[#9CA3AF]">Loading checkpoints...</span>
+                        </div>
+                      ) : chunks.length === 0 ? (
+                        <p className="text-xs text-[#9CA3AF]">No checkpoints available for this run.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {chunks.map((chunk) => {
+                            const rangeLabel = formatCheckpointTime(chunk.start_ms, chunk.end_ms)
+                            const isTranscribed = chunk.status === 'transcribed'
+                            const isTranscribing = chunk.status === 'transcribing'
+                            const isError = chunk.status === 'error'
+                            const isUploaded = chunk.status === 'uploaded'
+                            const isRetrying = retryingChunkId === chunk.id
+
+                            return (
+                              <div
+                                key={chunk.id}
+                                className="flex items-center justify-between p-3 bg-[#0F1419] rounded border border-[#1A1F2E]"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <span className="text-sm font-medium text-[#E5E7EB] min-w-[100px]">
+                                    {rangeLabel}
+                                  </span>
+                                  
+                                  {/* Status Badge */}
+                                  {isTranscribed && (
+                                    <Badge variant="success" className="text-xs">
+                                      Ready
+                                    </Badge>
+                                  )}
+                                  {isTranscribing && (
+                                    <div className="flex items-center gap-1">
+                                      <LoadingSpinner className="h-3 w-3 text-[#F59E0B]" />
+                                      <span className="text-xs text-[#F59E0B]">Transcribing</span>
+                                    </div>
+                                  )}
+                                  {isUploaded && (
+                                    <Badge variant="info" className="text-xs">
+                                      Saved
+                                    </Badge>
+                                  )}
+                                  {isError && (
+                                    <Badge variant="danger" className="text-xs">
+                                      Error
+                                    </Badge>
+                                  )}
+
+                                  {/* Error Message */}
+                                  {isError && chunk.error_message && (
+                                    <span className="text-xs text-[#EF4444] ml-2">
+                                      {chunk.error_message}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  {/* Download Button */}
+                                  {isTranscribed && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-xs h-7 px-2"
+                                      onClick={() => downloadChunkTranscript(chunk.id)}
+                                    >
+                                      <Download className="h-3 w-3 mr-1" />
+                                      Download transcript (.txt)
+                                    </Button>
+                                  )}
+
+                                  {/* Retry Button */}
+                                  {isError && (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      className="text-xs h-7 px-2"
+                                      onClick={() => retryChunkTranscription(chunk.id)}
+                                      disabled={isRetrying}
+                                    >
+                                      {isRetrying ? (
+                                        <>
+                                          <LoadingSpinner className="h-3 w-3 mr-1" />
+                                          Retrying...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <RefreshCw className="h-3 w-3 mr-1" />
+                                          Retry transcribe
+                                        </>
+                                      )}
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </Card>
+                  </motion.div>
+                )
+              }
+              
               return null
             })()}
 

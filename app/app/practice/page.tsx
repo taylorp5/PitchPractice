@@ -10,10 +10,11 @@ import { Badge } from '@/components/ui/Badge'
 import { Mic, Upload, Play, Pause, Square, AlertCircle, X, CheckCircle2, Edit2, ExternalLink, Check } from 'lucide-react'
 import Link from 'next/link'
 import { getUserPlan, UserPlan } from '@/lib/plan'
-import { canEditRubrics, canViewPremiumInsights } from '@/lib/entitlements'
+import { canEditRubrics, canViewPremiumInsights, hasCoachAccess } from '@/lib/entitlements'
 import CustomRubricBuilder, { CustomRubric } from '@/components/CustomRubricBuilder'
 import { SignInModal } from '@/components/SignInModal'
 import { createClient } from '@/lib/supabase/client-auth'
+import { RunChunk } from '@/lib/types'
 
 interface Run {
   id: string
@@ -88,6 +89,14 @@ export default function PracticePage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
+  
+  // Coach-only checkpointing state
+  const [checkpoints, setCheckpoints] = useState<RunChunk[]>([])
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null)
+  const chunkChunksRef = useRef<Blob[]>([]) // Chunks since last checkpoint
+  const lastCheckpointTimeRef = useRef<number>(0) // Time of last checkpoint in seconds
+  const checkpointIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const mimeTypeRef = useRef<string>('audio/webm')
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const animationFrameRef = useRef<number | null>(null)
@@ -365,6 +374,174 @@ export default function PracticePage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Format time for checkpoint display (e.g., "0:00-30:00")
+  const formatCheckpointTime = (startSeconds: number, endSeconds: number) => {
+    return `${formatTime(startSeconds)}–${formatTime(endSeconds)}`
+  }
+
+  // Coach-only: Create run first (before recording starts)
+  const createRunForCheckpointing = async (): Promise<string | null> => {
+    if (!hasCoachAccess(userPlan)) {
+      return null
+    }
+
+    try {
+      const sessionId = getSessionId()
+      if (!hasValidRubric) {
+        return null
+      }
+
+      const formData = new FormData()
+      formData.append('audio', new Blob([], { type: 'audio/webm' }), 'placeholder.webm')
+      formData.append('session_id', sessionId)
+      
+      // Handle rubric selection (same logic as uploadAudio)
+      if ((rubricMode === 'upload' || rubricMode === 'paste') && parsedCustomRubric) {
+        const rubricJson = {
+          name: parsedCustomRubric.title || 'Custom Rubric',
+          description: parsedCustomRubric.description || parsedCustomRubric.context_summary || null,
+          criteria: parsedCustomRubric.criteria.map((c: any) => ({
+            name: c.name,
+            description: c.description || null,
+            weight: c.weight || null,
+          })),
+          target_duration_seconds: parsedCustomRubric.target_duration_seconds || null,
+          max_duration_seconds: parsedCustomRubric.max_duration_seconds || null,
+          guiding_questions: parsedCustomRubric.guiding_questions || [],
+        }
+        formData.append('rubric_json', JSON.stringify(rubricJson))
+        const contextToUse = parsedCustomRubric.context_summary || pitchContext
+        if (contextToUse && contextToUse.trim()) {
+          formData.append('pitch_context', contextToUse.trim())
+        }
+      } else if (selectedRubricSource === 'custom' && customRubric) {
+        if (customRubricId) {
+          formData.append('rubric_id', customRubricId)
+        } else if (rubrics.length > 0) {
+          formData.append('rubric_id', rubrics[0].id)
+        }
+        const contextToUse = customRubric.context || pitchContext
+        if (contextToUse.trim()) {
+          formData.append('pitch_context', contextToUse.trim())
+        }
+      } else if (rubricMode === 'default') {
+        formData.append('rubric_id', selectedRubricId)
+        if (pitchContext.trim()) {
+          formData.append('pitch_context', pitchContext.trim())
+        }
+      }
+
+      const response = await fetch('/api/runs/create', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        console.error('[Checkpoint] Failed to create run')
+        return null
+      }
+
+      const data = await response.json()
+      const runId = data.runId || data.run?.id || data.id
+      return runId || null
+    } catch (err) {
+      console.error('[Checkpoint] Error creating run:', err)
+      return null
+    }
+  }
+
+  // Coach-only: Create checkpoint at specified time
+  const createCheckpoint = async (chunkIndex: number, startMs: number, endMs: number) => {
+    if (!hasCoachAccess(userPlan) || !currentRunId) {
+      return
+    }
+
+    try {
+      // Combine chunks since last checkpoint
+      if (chunkChunksRef.current.length === 0) {
+        console.warn('[Checkpoint] No chunks to upload')
+        return
+      }
+
+      const chunkBlob = new Blob(chunkChunksRef.current, { type: mimeTypeRef.current })
+      const fileExt = mimeTypeRef.current.includes('webm') ? 'webm' : 'mp3'
+      const fileName = `chunk_${chunkIndex}.${fileExt}`
+
+      // Upload chunk
+      const formData = new FormData()
+      formData.append('audio', chunkBlob, fileName)
+      formData.append('chunk_index', chunkIndex.toString())
+      formData.append('start_ms', startMs.toString())
+      formData.append('end_ms', endMs.toString())
+
+      const response = await fetch(`/api/runs/${currentRunId}/chunks`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to upload chunk')
+      }
+
+      const data = await response.json()
+      if (data.ok && data.chunk) {
+        // Add to checkpoints state
+        setCheckpoints(prev => [...prev, data.chunk])
+        
+        // Show toast notification
+        const startSeconds = Math.floor(startMs / 1000)
+        const endSeconds = Math.floor(endMs / 1000)
+        const toastMessage = `Checkpoint saved (${formatCheckpointTime(startSeconds, endSeconds)})`
+        console.log('[Checkpoint]', toastMessage)
+        // You can add a toast library here if needed
+        
+        // Trigger transcription
+        transcribeChunk(data.chunk.id)
+        
+        // Clear chunks for next checkpoint
+        chunkChunksRef.current = []
+      }
+    } catch (err: any) {
+      console.error('[Checkpoint] Error creating checkpoint:', err)
+      setError(`Failed to create checkpoint: ${err.message}`)
+    }
+  }
+
+  // Coach-only: Transcribe a chunk
+  const transcribeChunk = async (chunkId: string) => {
+    if (!hasCoachAccess(userPlan) || !currentRunId) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/runs/${currentRunId}/chunks/${chunkId}/transcribe`, {
+        method: 'POST',
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Transcription failed')
+      }
+
+      const data = await response.json()
+      if (data.ok && data.chunk) {
+        // Update checkpoint in state
+        setCheckpoints(prev => prev.map(chunk => 
+          chunk.id === chunkId ? data.chunk : chunk
+        ))
+      }
+    } catch (err: any) {
+      console.error('[Checkpoint] Error transcribing chunk:', err)
+      // Update checkpoint status to error
+      setCheckpoints(prev => prev.map(chunk => 
+        chunk.id === chunkId 
+          ? { ...chunk, status: 'error', error_message: err.message }
+          : chunk
+      ))
+    }
+  }
+
   // Start recording
   const startRecording = async () => {
     if (isSilent) {
@@ -405,31 +582,46 @@ export default function PracticePage() {
       } else if (MediaRecorder.isTypeSupported('audio/webm')) {
         mimeType = 'audio/webm'
       }
+      mimeTypeRef.current = mimeType
+
+      // Coach-only: Create run first for checkpointing
+      const isCoach = hasCoachAccess(userPlan)
+      let runId: string | null = null
+      if (isCoach) {
+        runId = await createRunForCheckpointing()
+        if (runId) {
+          setCurrentRunId(runId)
+          setCheckpoints([])
+          chunkChunksRef.current = []
+          lastCheckpointTimeRef.current = 0
+        } else {
+          setError('Failed to initialize recording. Please try again.')
+          return
+        }
+      }
 
       const mediaRecorder = new MediaRecorder(stream, { mimeType })
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
 
-      // TODO: Hook function for chunked upload (future implementation)
-      // This will be called each time a chunk becomes available during recording
-      // For now, this is a no-op but provides the scaffolding for chunked uploads
-      const onChunkAvailable = (blob: Blob) => {
-        // TODO: Implement chunked upload logic here
-        // This will allow progressive upload of chunks during long Coach recordings
-        // to avoid memory issues and enable resumable uploads
-      }
-
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data)
-          // Call the chunk hook for future chunked upload implementation
-          // For now, chunks are still collected and uploaded as a single blob at the end
-          onChunkAvailable(event.data)
+          // Coach-only: Also track chunks for checkpointing
+          if (isCoach) {
+            chunkChunksRef.current.push(event.data)
+          }
         }
       }
 
       mediaRecorder.onstop = async () => {
         stopMicLevelMeter()
+        
+        // Clean up checkpoint interval
+        if (checkpointIntervalRef.current) {
+          clearInterval(checkpointIntervalRef.current)
+          checkpointIntervalRef.current = null
+        }
         
         // Check if recording should be discarded
         if (shouldDiscardRecordingRef.current) {
@@ -442,6 +634,11 @@ export default function PracticePage() {
           setPausedTotalMs(0)
           setPauseStartTime(null)
           audioChunksRef.current = []
+          if (isCoach) {
+            chunkChunksRef.current = []
+            setCheckpoints([])
+            setCurrentRunId(null)
+          }
           return
         }
         
@@ -453,6 +650,14 @@ export default function PracticePage() {
           stream.getTracks().forEach(track => track.stop())
           streamRef.current = null
           return
+        }
+        
+        // Coach-only: Handle final chunk if there's remaining audio
+        if (isCoach && currentRunId && chunkChunksRef.current.length > 0) {
+          const finalChunkIndex = Math.floor(recordingTime / 1800) // Which 30-min segment
+          const startMs = lastCheckpointTimeRef.current * 1000
+          const endMs = recordingTime * 1000
+          await createCheckpoint(finalChunkIndex, startMs, endMs)
         }
         
         const audioBlob = new Blob(audioChunksRef.current, { type: actualMimeType })
@@ -484,7 +689,12 @@ export default function PracticePage() {
           ;(audioBlob as any).__durationMs = calculatedDurationMs
         }
         
+        // Coach-only: If we have a run with checkpoints, we still need to upload final audio
+        // The chunks are already linked to currentRunId, so we'll upload the final audio
+        // which will create/update the run. For now, we'll use regular upload.
+        // TODO: In the future, we could update the existing run's audio path
         await uploadAudio(audioBlob, 'recording.webm')
+        
         stream.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
@@ -512,18 +722,49 @@ export default function PracticePage() {
       setPausedTotalMs(0)
       setPauseStartTime(null)
 
-      timerIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => {
-          const newTime = prev + 1
-          // Auto-stop at plan limit (calculate dynamically to use current plan)
-          const maxSeconds = getMaxRecordingSeconds()
-          if (newTime >= maxSeconds) {
-            stopRecording()
-            return maxSeconds
-          }
-          return newTime
-        })
-      }, 1000)
+      // Coach-only: Set up checkpoint intervals (30:00, 60:00, 90:00)
+      if (isCoach) {
+        const checkpointTimes = [1800, 3600, 5400] // 30, 60, 90 minutes in seconds
+        checkpointIntervalRef.current = setInterval(() => {
+          setRecordingTime(prev => {
+            const newTime = prev + 1
+            
+            // Check for checkpoint boundaries
+            for (const checkpointTime of checkpointTimes) {
+              if (newTime === checkpointTime && lastCheckpointTimeRef.current < checkpointTime) {
+                const chunkIndex = checkpointTime / 1800 - 1 // 0, 1, 2
+                const startMs = lastCheckpointTimeRef.current * 1000
+                const endMs = checkpointTime * 1000
+                createCheckpoint(chunkIndex, startMs, endMs)
+                lastCheckpointTimeRef.current = checkpointTime
+                break
+              }
+            }
+            
+            // Auto-stop at 90 minutes for Coach
+            const maxSeconds = 5400 // 90 minutes
+            if (newTime >= maxSeconds) {
+              stopRecording()
+              return maxSeconds
+            }
+            return newTime
+          })
+        }, 1000)
+      } else {
+        // Non-Coach: Regular timer
+        timerIntervalRef.current = setInterval(() => {
+          setRecordingTime(prev => {
+            const newTime = prev + 1
+            // Auto-stop at plan limit (calculate dynamically to use current plan)
+            const maxSeconds = getMaxRecordingSeconds()
+            if (newTime >= maxSeconds) {
+              stopRecording()
+              return maxSeconds
+            }
+            return newTime
+          })
+        }, 1000)
+      }
     } catch (err) {
       console.error('Error starting recording:', err)
       setError('Failed to start recording. Please check microphone permissions.')
@@ -650,6 +891,15 @@ export default function PracticePage() {
   }
 
   const handleFileUpload = async (file: File) => {
+    // File size validation (500MB cap)
+    const maxFileSize = 500 * 1024 * 1024 // 500MB in bytes
+    if (file.size > maxFileSize) {
+      setError('File too large for upload right now.')
+      return
+    }
+
+    // For Coach users, allow up to 90 minutes but don't rely on client-side duration extraction
+    // The server will handle duration validation if needed
     const fileDurationMs = await getAudioDuration(file)
     if (fileDurationMs !== null && fileDurationMs > 0) {
       setDurationMs(fileDurationMs)
@@ -1697,6 +1947,99 @@ export default function PracticePage() {
               </div>
             )}
 
+            {/* Coach-only: Checkpoints Section */}
+            {isRecording && hasCoachAccess(userPlan) && (
+              <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
+                <h3 className="text-sm font-semibold text-[#E6E8EB] mb-3">Checkpoints</h3>
+                <div className="space-y-2">
+                  {/* Show completed checkpoints */}
+                  {checkpoints.map((chunk) => {
+                    const startSeconds = Math.floor(chunk.start_ms / 1000)
+                    const endSeconds = Math.floor(chunk.end_ms / 1000)
+                    return (
+                      <div
+                        key={chunk.id}
+                        className="flex items-center justify-between p-2 bg-[#0F1419] rounded border border-[#22283A]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[#9AA4B2]">
+                            {formatCheckpointTime(startSeconds, endSeconds)}
+                          </span>
+                          {chunk.status === 'transcribed' && (
+                            <Badge variant="success" className="text-xs">
+                              Saved ✓
+                            </Badge>
+                          )}
+                          {chunk.status === 'transcribing' && (
+                            <div className="flex items-center gap-1">
+                              <LoadingSpinner className="h-3 w-3 text-[#F59E0B]" />
+                              <span className="text-xs text-[#F59E0B]">Transcribing…</span>
+                            </div>
+                          )}
+                          {chunk.status === 'uploaded' && (
+                            <Badge variant="info" className="text-xs">
+                              Uploaded
+                            </Badge>
+                          )}
+                          {chunk.status === 'error' && (
+                            <Badge variant="danger" className="text-xs">
+                              Error
+                            </Badge>
+                          )}
+                        </div>
+                        {chunk.status === 'transcribed' && chunk.transcript && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs h-6 px-2"
+                            onClick={() => {
+                              // Download transcript
+                              const blob = new Blob([chunk.transcript!], { type: 'text/plain' })
+                              const url = URL.createObjectURL(blob)
+                              const a = document.createElement('a')
+                              a.href = url
+                              a.download = `transcript_${formatCheckpointTime(startSeconds, endSeconds).replace(':', '-')}.txt`
+                              document.body.appendChild(a)
+                              a.click()
+                              document.body.removeChild(a)
+                              URL.revokeObjectURL(url)
+                            }}
+                          >
+                            Download transcript
+                          </Button>
+                        )}
+                      </div>
+                    )
+                  })}
+                  
+                  {/* Show pending checkpoints */}
+                  {[0, 1, 2].map((index) => {
+                    const checkpointTime = (index + 1) * 1800 // 30, 60, 90 minutes
+                    const isCompleted = checkpoints.some(c => c.chunk_index === index)
+                    const isPending = recordingTime < checkpointTime && !isCompleted
+                    
+                    if (!isPending && !isCompleted) return null
+                    
+                    if (isPending) {
+                      return (
+                        <div
+                          key={`pending-${index}`}
+                          className="flex items-center justify-between p-2 bg-[#0F1419] rounded border border-[#22283A] opacity-60"
+                        >
+                          <span className="text-xs text-[#9AA4B2]">
+                            {formatCheckpointTime(index * 1800, checkpointTime)}
+                          </span>
+                          <span className="text-xs text-[#9AA4B2]">Pending</span>
+                        </div>
+                      )
+                    }
+                    
+                    return null
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Record/Upload Buttons */}
             <div className="flex gap-3">
               <Button
@@ -1718,26 +2061,39 @@ export default function PracticePage() {
                   </>
                 )}
               </Button>
-              <div className="flex-1 relative group">
+              {userPlan === 'coach' ? (
                 <Button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                  }}
-                  disabled={true}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={!hasValidRubric || isUploading || isRecording}
                   variant="secondary"
-                  className="w-full cursor-not-allowed opacity-60"
+                  className="flex-1"
+                  title={!hasValidRubric ? 'Please complete Step 1 first' : undefined}
                 >
                   <Upload className="h-4 w-4 mr-2" />
                   Upload
                 </Button>
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#1F2937] text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 border border-[#374151] shadow-lg">
-                  Coming soon
-                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                    <div className="w-2 h-2 bg-[#1F2937] border-r border-b border-[#374151] transform rotate-45"></div>
+              ) : (
+                <div className="flex-1 relative group">
+                  <Button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }}
+                    disabled={true}
+                    variant="secondary"
+                    className="w-full cursor-not-allowed opacity-60"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload
+                  </Button>
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1.5 bg-[#1F2937] text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 border border-[#374151] shadow-lg">
+                    Coming soon
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                      <div className="w-2 h-2 bg-[#1F2937] border-r border-b border-[#374151] transform rotate-45"></div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
             <input
               ref={fileInputRef}
@@ -1750,7 +2106,15 @@ export default function PracticePage() {
                 }
               }}
               className="hidden"
+              disabled={userPlan !== 'coach' || isUploading || isRecording}
             />
+
+            {/* Helper text */}
+            {userPlan === 'coach' && (
+              <p className="text-xs text-[#9CA3AF] italic mt-2">
+                Coach: Upload long recordings for testing (dev).
+              </p>
+            )}
 
             {/* Pause/Resume for Recording */}
             {isRecording && (

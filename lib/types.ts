@@ -27,6 +27,19 @@ export interface PitchRun {
   audio_url?: string | null
 }
 
+export interface RunChunk {
+  id: string
+  run_id: string
+  chunk_index: number
+  start_ms: number
+  end_ms: number
+  audio_path: string
+  transcript: string | null
+  status: 'uploaded' | 'transcribing' | 'transcribed' | 'error'
+  error_message: string | null
+  created_at: string
+}
+
 
 
 

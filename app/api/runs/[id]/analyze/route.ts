@@ -81,15 +81,14 @@ interface AnalysisOutput {
   }>
   premium_insights?: {
     filler_words: {
-      totals: { [word: string]: number }
       total_count: number
-      top_sentences: Array<{
-        sentence: string
+      by_word: Array<{
+        word: string
         count: number
-        words: string[]
-        suggestion: string
-        rewrite: string | null
+        examples: string[]
+        suggestions: string[]
       }>
+      coaching_notes: string[]
     }
     pacing: {
       wpm_overall: number | null
@@ -354,97 +353,147 @@ function detectFillerWordsAndHesitation(
 
 // Premium Insights: Filler Words Analysis
 function analyzeFillerWords(transcript: string): {
-  totals: { [word: string]: number }
   total_count: number
-  top_sentences: Array<{
-    sentence: string
+  by_word: Array<{
+    word: string
     count: number
-    words: string[]
-    suggestion: string
-    rewrite: string | null
+    examples: string[]
+    suggestions: string[]
   }>
+  coaching_notes: string[]
 } {
+  // Filler words list (case-insensitive, count whole words)
   const fillerWordPatterns: { [key: string]: RegExp } = {
     'um': /\bum\b/gi,
     'uh': /\buh\b/gi,
     'like': /\blike\b/gi,
     'you know': /\byou\s+know\b/gi,
-    'so': /\bso\b/gi,
-    'well': /\bwell\b/gi,
-    'kind of': /\bkind\s+of\b/gi,
     'sort of': /\bsort\s+of\b/gi,
-    'I mean': /\bi\s+mean\b/gi,
-    'actually': /\bactually\b/gi,
+    'kind of': /\bkind\s+of\b/gi,
     'basically': /\bbasically\b/gi,
+    'actually': /\bactually\b/gi,
+    'literally': /\bliterally\b/gi,
+    'so': /\bso\b/gi,
+    'right': /\bright\b/gi,
+    'okay': /\bokay\b/gi,
   }
 
-  const totals: { [word: string]: number } = {}
-  const sentenceData: Array<{
-    sentence: string
-    count: number
-    words: string[]
-  }> = []
-
-  // Normalize transcript
+  // Normalize transcript (preserve original for examples)
   const normalized = transcript.replace(/\s+/g, ' ').trim()
   
-  // Count totals
+  // Track matches with their positions for example extraction
+  const wordMatches: { [word: string]: Array<{ index: number; match: string }> } = {}
+  
+  // Find all matches for each filler word
   Object.entries(fillerWordPatterns).forEach(([word, pattern]) => {
-    const matches = normalized.match(pattern)
-    totals[word] = matches ? matches.length : 0
+    const matches: Array<{ index: number; match: string }> = []
+    let match
+    // Reset regex lastIndex for global patterns
+    pattern.lastIndex = 0
+    while ((match = pattern.exec(normalized)) !== null) {
+      matches.push({
+        index: match.index,
+        match: match[0]
+      })
+    }
+    wordMatches[word] = matches
   })
 
-  const total_count = Object.values(totals).reduce((sum, count) => sum + count, 0)
+  // Build by_word array
+  const by_word: Array<{
+    word: string
+    count: number
+    examples: string[]
+    suggestions: string[]
+  }> = []
 
-  // Split into sentences
-  const sentenceParts = normalized.split(/([.!?]+\s+)/)
-  const sentences: string[] = []
-  for (let i = 0; i < sentenceParts.length; i += 2) {
-    const sentence = (sentenceParts[i] || '').trim()
-    const punctuation = (sentenceParts[i + 1] || '').trim()
-    if (sentence.length > 0) {
-      sentences.push(sentence + punctuation)
+  Object.entries(wordMatches).forEach(([word, matches]) => {
+    const count = matches.length
+    if (count === 0) return
+
+    // Extract up to 3 examples with context (~35 chars before/after)
+    const examples: string[] = []
+    const contextLength = 35
+    
+    matches.slice(0, 3).forEach(({ index }) => {
+      const start = Math.max(0, index - contextLength)
+      const end = Math.min(normalized.length, index + word.length + contextLength)
+      let snippet = normalized.substring(start, end)
+      
+      // Add ellipses if not at start/end
+      if (start > 0) snippet = '...' + snippet
+      if (end < normalized.length) snippet = snippet + '...'
+      
+      examples.push(snippet)
+    })
+
+    // Generate suggestions based on word type
+    const suggestions: string[] = []
+    if (word === 'um' || word === 'uh') {
+      suggestions.push('remove', 'pause', 'take a breath')
+    } else if (word === 'like') {
+      suggestions.push('remove', 'pause', 'replace with a precise verb')
+    } else if (word === 'you know') {
+      suggestions.push('remove', 'pause', 'assume the listener understands')
+    } else if (word === 'sort of' || word === 'kind of') {
+      suggestions.push('remove', 'be more direct', 'use precise language')
+    } else if (word === 'basically' || word === 'actually' || word === 'literally') {
+      suggestions.push('remove', 'pause', 'use only when necessary')
+    } else if (word === 'so') {
+      suggestions.push('remove', 'pause', 'start directly with your point')
+    } else if (word === 'right' || word === 'okay') {
+      suggestions.push('remove', 'pause', 'avoid seeking validation')
+    } else {
+      suggestions.push('remove', 'pause', 'replace with a brief pause')
+    }
+
+    by_word.push({
+      word,
+      count,
+      examples: examples.slice(0, 3),
+      suggestions: suggestions.slice(0, 3),
+    })
+  })
+
+  // Sort by count descending
+  by_word.sort((a, b) => b.count - a.count)
+
+  // Calculate total count
+  const total_count = by_word.reduce((sum, item) => sum + item.count, 0)
+
+  // Generate coaching notes (2-4 bullets)
+  const coaching_notes: string[] = []
+  
+  if (total_count === 0) {
+    coaching_notes.push('No filler words detected. Your delivery is clean and confident.')
+    coaching_notes.push('Continue practicing to maintain this level of clarity.')
+  } else {
+    const topWord = by_word[0]
+    if (topWord) {
+      if (total_count >= 10) {
+        coaching_notes.push(`You used ${total_count} filler words total, with "${topWord.word}" appearing ${topWord.count} times.`)
+        coaching_notes.push('Practice replacing fillers with brief pauses (1-2 seconds) to maintain flow.')
+        coaching_notes.push('Record yourself speaking for 30 seconds and count fillers, then re-record aiming for 0-1 fillers.')
+      } else if (total_count >= 5) {
+        coaching_notes.push(`You used ${total_count} filler words, with "${topWord.word}" being the most common (${topWord.count} times).`)
+        coaching_notes.push('Focus on eliminating your top filler word by practicing brief pauses instead.')
+        coaching_notes.push('Before speaking, take a moment to think about your next point to reduce fillers.')
+      } else {
+        coaching_notes.push(`You used ${total_count} filler word${total_count > 1 ? 's' : ''} total.`)
+        coaching_notes.push('Practice pausing briefly instead of using fillers when you need thinking time.')
+      }
+    }
+    
+    // Add a general tip if we have space
+    if (coaching_notes.length < 4 && total_count > 0) {
+      coaching_notes.push('Aim to reduce filler words to 0-2 per minute for maximum clarity and confidence.')
     }
   }
 
-  // Analyze each sentence
-  sentences.forEach(sentence => {
-    const foundWords: string[] = []
-    let count = 0
-
-    Object.entries(fillerWordPatterns).forEach(([word, pattern]) => {
-      const matches = sentence.match(pattern)
-      if (matches) {
-        foundWords.push(word)
-        count += matches.length
-      }
-    })
-
-    if (count > 0) {
-      sentenceData.push({ sentence, count, words: foundWords })
-    }
-  })
-
-  // Get top sentences (sorted by count, limit to 5)
-  const topSentences = sentenceData
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5)
-    .map(item => ({
-      sentence: item.sentence,
-      count: item.count,
-      words: [...new Set(item.words)], // Remove duplicates
-      suggestion: item.count >= 3
-        ? 'Multiple filler words reduce clarity. Practice pausing instead of using fillers.'
-        : item.count === 2
-        ? 'Two filler words detected. Try removing them for a more confident delivery.'
-        : 'One filler word found. Consider a brief pause instead.',
-      rewrite: null, // Could be enhanced with AI rewrite later
-    }))
-
   return {
-    totals,
     total_count,
-    top_sentences: topSentences,
+    by_word,
+    coaching_notes: coaching_notes.slice(0, 4), // Ensure max 4 bullets
   }
 }
 
@@ -1547,14 +1596,31 @@ export async function POST(
     // Use duration_ms as source of truth, fallback to audio_seconds
     const audioSeconds = run.duration_ms ? run.duration_ms / 1000 : run.audio_seconds
 
-    // Get user plan from database (source of truth) - NOT from client input or user_metadata
-    // This ensures plan_at_time is accurate for feature gating
+    // Get user plan from database (source of truth) - prioritize authenticated user
+    // getUserPlanFromDB already checks authenticated user first, then falls back to session_id
+    // If no authenticated user, it returns 'free'
     const userPlan = await getUserPlanFromDB(run.session_id)
+    
+    // Verify: if run has user_id, ensure we're using the authenticated user's plan
+    // (getUserPlanFromDB already does this, but we log it for debugging)
+    let authenticatedUserId: string | null = null
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        authenticatedUserId = user.id
+      }
+    } catch (err) {
+      // Not authenticated - that's fine, plan will be 'free'
+    }
+    
     console.log('[Analyze] Resolved user plan from database:', {
       runId: id,
       sessionId: run.session_id,
-      userId: run.user_id,
+      runUserId: run.user_id,
+      authenticatedUserId,
       plan: userPlan,
+      note: authenticatedUserId ? 'Using authenticated user plan' : 'No authenticated user, using session_id or free',
     })
 
     // Build the analysis prompt

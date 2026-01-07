@@ -246,10 +246,9 @@ function UpgradePageContent() {
               </div>
               <div className="mt-4">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-bold text-[#111827]">$</span>
-                  <span className="text-4xl font-bold text-[#111827]">—</span>
+                  <span className="text-4xl font-bold text-[#111827]">$12</span>
                 </div>
-                <p className="text-sm text-[#6B7280] mt-1">Monthly / Yearly</p>
+                <p className="text-sm text-[#6B7280] mt-1">Monthly</p>
               </div>
             </div>
 
@@ -300,10 +299,9 @@ function UpgradePageContent() {
               <h2 className="text-2xl font-bold text-[#111827] mb-2">Coach</h2>
               <div className="mt-4">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-bold text-[#111827]">$</span>
-                  <span className="text-4xl font-bold text-[#111827]">—</span>
+                  <span className="text-4xl font-bold text-[#111827]">$24</span>
                 </div>
-                <p className="text-sm text-[#6B7280] mt-1">Monthly / Yearly</p>
+                <p className="text-sm text-[#6B7280] mt-1">Monthly</p>
               </div>
             </div>
 
@@ -356,9 +354,8 @@ function UpgradePageContent() {
                 </span>
               </div>
               <div className="mt-4">
-                <span className="text-4xl font-bold text-[#111827]">$</span>
-                <span className="text-4xl font-bold text-[#111827]">—</span>
-                <p className="text-sm text-[#6B7280] mt-1">Coach insights for 24 hours</p>
+                <span className="text-4xl font-bold text-[#111827]">$9</span>
+                <p className="text-sm text-[#6B7280] mt-1">One-time • Coach insights for 24 hours</p>
               </div>
             </div>
 

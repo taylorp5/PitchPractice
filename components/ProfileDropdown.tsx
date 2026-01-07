@@ -150,12 +150,6 @@ export function ProfileDropdown({ userEmail, userName }: ProfileDropdownProps) {
                 >
                   {userName || 'User'}
                 </p>
-                <p
-                  className="text-xs truncate mt-1"
-                  style={{ color: colors.text.secondary }}
-                >
-                  {userEmail || ''}
-                </p>
               </div>
 
               {/* Menu items */}

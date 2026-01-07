@@ -5,28 +5,53 @@ import { v4 as uuidv4 } from 'uuid'
 
 export const dynamic = 'force-dynamic'
 
-// Increase body size limit for audio uploads (up to 100MB)
-export const maxDuration = 60 // 60 seconds max execution time
-export const runtime = 'nodejs'
-
+/**
+ * POST /api/runs/create
+ * Create a pitch run record (metadata only, no audio upload)
+ * Audio upload is handled separately via direct-to-storage upload
+ * Input: { session_id, rubric_id?, rubric_json?, title?, duration_ms?, pitch_context? }
+ * Output: { ok: true, run: {...}, runId: string }
+ */
 export async function POST(request: NextRequest) {
   const DEBUG = true
   
   if (DEBUG) {
-    console.log('[Create Run] Request received')
+    console.log('[Create Run] Request received (metadata only)')
   }
 
   try {
-    const formData = await request.formData()
-    const audioFile = formData.get('audio') as File
-    const rubricId = formData.get('rubric_id') as string
-    const rubricJsonStr = formData.get('rubric_json') as string | null
-    const sessionId = formData.get('session_id') as string
-    const title = formData.get('title') as string | null
-    const durationMsStr = formData.get('duration_ms') as string | null
+    // Accept both formData and JSON for flexibility
+    let rubricId: string | null = null
+    let rubricJsonStr: string | null = null
+    let sessionId: string | null = null
+    let title: string | null = null
+    let durationMsStr: string | null = null
+    let pitchContext: string | null = null
+
+    const contentType = request.headers.get('content-type') || ''
+    
+    if (contentType.includes('application/json')) {
+      // JSON body
+      const body = await request.json()
+      rubricId = body.rubric_id || null
+      rubricJsonStr = body.rubric_json || null
+      sessionId = body.session_id || null
+      title = body.title || null
+      durationMsStr = body.duration_ms?.toString() || null
+      pitchContext = body.pitch_context || null
+    } else {
+      // FormData (for backwards compatibility)
+      const formData = await request.formData()
+      rubricId = formData.get('rubric_id') as string | null
+      rubricJsonStr = formData.get('rubric_json') as string | null
+      sessionId = formData.get('session_id') as string | null
+      title = formData.get('title') as string | null
+      durationMsStr = formData.get('duration_ms') as string | null
+      pitchContext = formData.get('pitch_context') as string | null
+    }
+
     const durationMs = durationMsStr ? parseInt(durationMsStr, 10) : null
     const audioSeconds = durationMs ? durationMs / 1000 : null
-    const pitchContext = formData.get('pitch_context') as string | null
 
     // Check if user is authenticated (optional - for practice page)
     let userId: string | null = null
@@ -44,13 +69,6 @@ export async function POST(request: NextRequest) {
       if (DEBUG) {
         console.log('[Create Run] No authenticated user (trial run)')
       }
-    }
-
-    if (!audioFile) {
-      return NextResponse.json(
-        { ok: false, error: 'Audio file is required' },
-        { status: 400 }
-      )
     }
 
     if (!sessionId) {
@@ -167,39 +185,42 @@ export async function POST(request: NextRequest) {
 
     if (DEBUG) {
       console.log('[Create Run] Request data:', {
-        hasAudioFile: !!audioFile,
-        audioFileName: audioFile?.name,
-        audioFileSize: audioFile?.size,
         rubricId: finalRubricId,
         sessionId,
         title,
+        durationMs,
+        note: 'Audio upload happens separately via direct-to-storage',
       })
     }
 
     // Generate run ID
     const runId = uuidv4()
     
-    // Determine file extension
-    const fileExt = audioFile.name.split('.').pop() || 'webm'
-    const audioPath = `${sessionId}/${runId}.${fileExt}`
+    // Note: audio_path will be set later when upload completes via /api/uploads/complete
+    // For now, set a placeholder or null
+    const audioPath = null
 
     if (DEBUG) {
       console.log('[Create Run] Creating database record:', {
         runId,
         sessionId,
         rubricId: finalRubricId,
-        audioPath,
         title,
+        durationMs,
       })
     }
 
     // Create pitch run record - use .select('*') to get all fields back
+    // Note: audio_path is a placeholder initially, will be updated when upload completes
+    // Use placeholder to satisfy NOT NULL constraint (migration 013 allows NULL but may not be applied)
+    const placeholderPath = `${sessionId}/${runId}.webm`
+    
     const insertData: any = {
       id: runId,
       session_id: sessionId,
       title: finalTitle,
-      audio_path: audioPath,
-      status: 'uploaded',
+      audio_path: placeholderPath, // Placeholder - will be updated when upload completes via /api/uploads/complete
+      status: 'uploading', // Initial status - will be 'uploaded' when audio upload completes
       audio_seconds: audioSeconds, // Set from duration_ms if provided
       duration_ms: durationMs, // Store duration_ms as source of truth
       user_id: userId, // Store user_id if authenticated
@@ -267,190 +288,9 @@ export async function POST(request: NextRequest) {
       console.log('[Create Run] Run created successfully:', {
         runId: run.id,
         status: run.status,
-        audioPath: run.audio_path,
+        note: 'Audio upload will happen separately via direct-to-storage',
       })
     }
-
-    // Convert File to ArrayBuffer
-    const arrayBuffer = await audioFile.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-    const fileSizeKB = buffer.length / 1024
-    const fileSizeMB = fileSizeKB / 1024
-    
-    // Reject silent/empty recordings
-    if (buffer.length < 8 * 1024) { // Less than 8KB
-      // Clean up database record
-      await getSupabaseAdmin()
-        .from('pitch_runs')
-        .delete()
-        .eq('id', runId)
-      
-      return NextResponse.json(
-        { 
-          ok: false,
-          error: 'Recording was empty or silent.',
-          details: `File size (${fileSizeKB.toFixed(2)} KB) is too small. Minimum size is 8 KB.`,
-          fix: 'Check microphone permissions and ensure you are speaking during recording.',
-        },
-        { status: 400 }
-      )
-    }
-
-    // Determine content type - ensure .webm recordings get correct type
-    let contentType = audioFile.type
-    if (!contentType || contentType === 'application/octet-stream') {
-      if (fileExt === 'webm') {
-        // Prefer codecs=opus if it was recorded that way, otherwise use audio/webm
-        contentType = 'audio/webm;codecs=opus'
-      } else if (fileExt === 'mp3') {
-        contentType = 'audio/mpeg'
-      } else if (fileExt === 'wav') {
-        contentType = 'audio/wav'
-      } else if (fileExt === 'ogg') {
-        contentType = 'audio/ogg'
-      } else {
-        contentType = 'audio/webm' // Default fallback
-      }
-    }
-    
-    // Log content type for debugging
-    console.log('[Upload] Content type:', {
-      original: audioFile.type,
-      determined: contentType,
-      fileExt,
-      fileName: audioFile.name,
-    })
-
-    // Check if bucket exists, create if missing
-    const bucketName = 'pitchpractice-audio'
-    const { data: buckets, error: listError } = await getSupabaseAdmin().storage.listBuckets()
-    
-    if (listError) {
-      console.error('[Storage] Error listing buckets:', {
-        error: listError,
-        message: listError.message,
-        code: (listError as any).statusCode,
-      })
-    }
-
-    const bucketExists = buckets?.some(b => b.name === bucketName)
-    
-    if (!bucketExists) {
-      console.error('[Storage] Bucket not found:', {
-        bucketName,
-        availableBuckets: buckets?.map(b => b.name) || [],
-      })
-      
-      // Try to create the bucket
-      const { data: newBucket, error: createError } = await getSupabaseAdmin().storage.createBucket(bucketName, {
-        public: false,
-        fileSizeLimit: 52428800, // 50MB
-        allowedMimeTypes: ['audio/webm', 'audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/ogg'],
-      })
-
-      if (createError) {
-        console.error('[Storage] Failed to create bucket:', {
-          bucketName,
-          error: createError,
-          message: createError.message,
-          code: (createError as any).statusCode,
-        })
-        
-        // Clean up database record
-        await getSupabaseAdmin()
-          .from('pitch_runs')
-          .delete()
-          .eq('id', runId)
-
-        return NextResponse.json(
-          { 
-            ok: false,
-            error: 'Storage bucket not found',
-            details: `Bucket '${bucketName}' does not exist and could not be created. Please create it manually in Supabase Storage.`,
-            fix: 'Go to Supabase Dashboard → Storage → Create bucket named "pitchpractice-audio" (private)',
-          },
-          { status: 500 }
-        )
-      }
-      
-      console.log('[Storage] Created bucket:', bucketName)
-    }
-
-    // Upload to Supabase Storage with detailed logging
-    console.log('[Storage] Uploading file:', {
-      bucketName,
-      path: audioPath,
-      fileSize: `${fileSizeMB.toFixed(2)} MB (${fileSizeKB.toFixed(2)} KB)`,
-      contentType,
-      fileExt,
-      runId,
-    })
-
-    const { data: uploadData, error: storageError } = await getSupabaseAdmin().storage
-      .from(bucketName)
-      .upload(audioPath, buffer, {
-        contentType,
-        upsert: false,
-        cacheControl: '3600',
-      })
-
-    if (storageError) {
-      const errorCode = (storageError as any).statusCode || (storageError as any).error
-      const errorMessage = storageError.message || 'Unknown storage error'
-      
-      console.error('[Storage] Upload failed:', {
-        bucketName,
-        path: audioPath,
-        fileSize: `${fileSizeMB.toFixed(2)} MB`,
-        contentType,
-        error: storageError,
-        errorCode,
-        errorMessage,
-        fullError: JSON.stringify(storageError, null, 2),
-      })
-      
-      // Clean up database record on storage failure
-      await getSupabaseAdmin()
-        .from('pitch_runs')
-        .delete()
-        .eq('id', runId)
-
-      // Parse error and return helpful message
-      let userMessage = 'Failed to upload audio file'
-      let fixSuggestion = 'Please try again or contact support'
-
-      if (errorMessage.includes('Bucket not found') || errorCode === 404) {
-        userMessage = 'Storage bucket not found'
-        fixSuggestion = 'Bucket "pitchpractice-audio" does not exist. Create it in Supabase Dashboard → Storage'
-      } else if (errorMessage.includes('permission') || errorMessage.includes('policy') || errorCode === 403) {
-        userMessage = 'Permission denied (policy/RLS)'
-        fixSuggestion = 'Check Supabase Storage policies. Service role key should bypass RLS, but bucket policies may be blocking uploads.'
-      } else if (errorMessage.includes('too large') || errorMessage.includes('size') || fileSizeMB > 50) {
-        userMessage = 'File too large'
-        fixSuggestion = `File size (${fileSizeMB.toFixed(2)} MB) exceeds limit. Maximum size is 50 MB.`
-      } else if (errorMessage.includes('duplicate') || errorCode === 409) {
-        userMessage = 'File already exists'
-        fixSuggestion = 'A file with this path already exists. This should not happen - please try again.'
-      }
-
-      return NextResponse.json(
-        { 
-          ok: false,
-          error: userMessage,
-          details: errorMessage,
-          fix: fixSuggestion,
-          code: errorCode,
-        },
-        { status: 500 }
-      )
-    }
-
-    console.log('[Storage] Upload successful:', {
-      bucketName,
-      path: audioPath,
-      fileSize: `${fileSizeMB.toFixed(2)} MB`,
-      contentType,
-    })
 
     // Return the full run object with ok: true
     return NextResponse.json({
@@ -481,20 +321,6 @@ export async function POST(request: NextRequest) {
       stack: error?.stack,
       name: error?.name,
     })
-    
-    // Check if this is a 413 Payload Too Large error
-    if (error?.message?.includes('413') || error?.message?.includes('Payload Too Large') || error?.message?.includes('body size')) {
-      return NextResponse.json(
-        { 
-          ok: false,
-          error: 'File too large',
-          details: 'The audio file exceeds the maximum upload size limit (4.5MB).',
-          fix: 'Please record a shorter clip or compress the audio file. For longer recordings, consider splitting into multiple segments.',
-          code: 'PAYLOAD_TOO_LARGE',
-        },
-        { status: 413 }
-      )
-    }
     
     return NextResponse.json(
       { 

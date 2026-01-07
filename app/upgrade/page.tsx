@@ -370,7 +370,7 @@ function UpgradePageContent() {
               </li>
               <li className="flex items-start gap-3">
                 <Check className="h-5 w-5 text-[#22C55E] flex-shrink-0 mt-0.5" />
-                <span className="text-sm text-[#6B7280]">Keep your runs and rubrics forever (view anytime)</span>
+                <span className="text-sm text-[#6B7280]">Keep your runs and rubrics forever (view-only after access expires)</span>
               </li>
             </ul>
             <p className="text-xs text-[#6B7280] italic mb-8">

@@ -140,6 +140,8 @@ export default function TryPage() {
   const [isTestingMic, setIsTestingMic] = useState(false)
   const [isSilent, setIsSilent] = useState(false)
   const [hasMicPermission, setHasMicPermission] = useState(false)
+  // Store last audio blob for retry
+  const lastAudioBlobRef = useRef<{ blob: Blob; fileName: string } | null>(null)
   const [lastError, setLastError] = useState<any>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [lastFeedbackResponse, setLastFeedbackResponse] = useState<any>(null)
@@ -1252,22 +1254,15 @@ FEEDBACK SUMMARY
     await uploadAudio(file, file.name)
   }
 
-  // Upload audio and create run
+  // Upload audio using direct-to-storage (no Vercel body size limits)
   const uploadAudio = async (audioBlob: Blob, fileName: string) => {
     setIsUploading(true)
     setError(null)
+    
+    // Store blob for retry
+    lastAudioBlobRef.current = { blob: audioBlob, fileName }
 
     try {
-      // Check file size before upload (Vercel limit is 4.5MB)
-      const MAX_UPLOAD_SIZE = 4.5 * 1024 * 1024 // 4.5MB in bytes
-      const fileSizeMB = audioBlob.size / (1024 * 1024)
-      
-      if (audioBlob.size > MAX_UPLOAD_SIZE) {
-        setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
-        setIsUploading(false)
-        return
-      }
-
       const sessionId = getSessionId()
       if (!selectedRubricId) {
         setError('Please wait for rubrics to load')
@@ -1278,134 +1273,126 @@ FEEDBACK SUMMARY
       // Get duration_ms from blob if available (from recording)
       const blobDurationMs = (audioBlob as any).__durationMs || null
       const uploadDurationMs = blobDurationMs || durationMs || null
-      const durationSeconds = uploadDurationMs ? uploadDurationMs / 1000 : null
 
       if (DEBUG) {
-        console.log('[Try] Uploading audio:', {
+        console.log('[Try] Starting upload flow:', {
           fileName,
           size: audioBlob.size,
-          sizeMB: fileSizeMB.toFixed(2),
+          sizeMB: (audioBlob.size / (1024 * 1024)).toFixed(2),
           type: audioBlob.type,
           durationMs: uploadDurationMs,
-          durationSeconds,
-          fromBlob: !!blobDurationMs,
-          fromState: !!durationMs,
         })
       }
 
-      const formData = new FormData()
-      formData.append('audio', audioBlob, fileName)
-      formData.append('session_id', sessionId)
-      formData.append('rubric_id', selectedRubricId)
-      if (selectedPrompt) {
-        formData.append('title', PROMPTS.find(p => p.id === selectedPrompt)?.title || '')
-      }
-      if (uploadDurationMs !== null && uploadDurationMs > 0) {
-        formData.append('duration_ms', uploadDurationMs.toString())
-      }
-
-      const response = await fetch('/api/runs/create', {
+      // Step 1: Create run record (metadata only)
+      const createResponse = await fetch('/api/runs/create', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          rubric_id: selectedRubricId,
+          title: selectedPrompt ? PROMPTS.find(p => p.id === selectedPrompt)?.title || null : null,
+          duration_ms: uploadDurationMs,
+        }),
       })
 
-      // Capture full response for error handling
-      const responseText = await response.text()
-      let data: any = null
-      let errorData: any = null
-      
-      try {
-        data = JSON.parse(responseText)
-      } catch (e) {
-        // Response might not be JSON
-        if (DEBUG) {
-          console.warn('[Try] Could not parse response as JSON:', responseText.substring(0, 200))
-        }
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to create run record')
       }
 
-      if (!response.ok) {
-        errorData = data
-        
-        // Handle 413 Payload Too Large error specifically
-        if (response.status === 413 || errorData?.code === 'PAYLOAD_TOO_LARGE') {
-          const fileSizeMB = audioBlob.size / (1024 * 1024)
-          setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
-          setIsUploading(false)
-          return
-        }
-        
-        const errorMessage = errorData?.error || 'Upload failed'
-        const errorDetails = errorData?.details ? ` Details: ${errorData.details}` : ''
-        const errorFix = errorData?.fix ? ` Fix: ${errorData.fix}` : ''
-        const fullError = {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorData?.error || 'Unknown error',
-          details: errorData?.details || null,
-          fix: errorData?.fix || null,
-          code: errorData?.code || null,
-          fullResponse: errorData,
-          responseText: responseText.substring(0, 1000),
-        }
-        
-        setLastError(fullError)
-        
-        if (DEBUG) {
-          console.error('[Try] Create run failed:', {
-            status: response.status,
-            statusText: response.statusText,
-            errorData,
-            responseText: responseText.substring(0, 500),
-          })
-        }
-        
-        throw new Error(`${errorMessage}${errorDetails}${errorFix}`)
+      const createData = await createResponse.json()
+      if (!createData.ok || !createData.run?.id) {
+        throw new Error('Run creation failed: invalid response')
+      }
+
+      const runId = createData.run.id
+      if (DEBUG) {
+        console.log('[Try] Run created:', { runId })
+      }
+
+      // Step 2: Get signed upload path
+      const signResponse = await fetch('/api/uploads/sign', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          runId,
+          mimeType: audioBlob.type || 'audio/webm',
+        }),
+      })
+
+      if (!signResponse.ok) {
+        const errorData = await signResponse.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to get upload path')
+      }
+
+      const signData = await signResponse.json()
+      if (!signData.ok || !signData.storagePath) {
+        throw new Error('Failed to get upload path: invalid response')
+      }
+
+      const { storagePath, bucketName } = signData
+      if (DEBUG) {
+        console.log('[Try] Got upload path:', { storagePath, bucketName })
+      }
+
+      // Step 3: Upload directly to Supabase Storage
+      const supabase = createClient()
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(bucketName)
+        .upload(storagePath, audioBlob, {
+          contentType: audioBlob.type || 'audio/webm',
+          upsert: false,
+        })
+
+      if (uploadError) {
+        console.error('[Try] Storage upload failed:', uploadError)
+        throw new Error(`Upload failed: ${uploadError.message}`)
       }
 
       if (DEBUG) {
-        console.log('[Try] Create run response:', data)
+        console.log('[Try] Storage upload successful:', uploadData)
       }
 
-      // Handle different response formats
-      let runId: string | null = null
-      let runData: any = null
+      // Step 4: Notify upload completion
+      const completeResponse = await fetch('/api/uploads/complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          runId,
+          storagePath,
+        }),
+      })
 
-      if (data.ok === false) {
-        throw new Error(data.error || 'Run creation failed')
+      if (!completeResponse.ok) {
+        const errorData = await completeResponse.json().catch(() => ({}))
+        console.warn('[Try] Upload complete notification failed:', errorData)
+        // Don't throw - upload succeeded, just notification failed
       }
 
-      if (data.runId) {
-        runId = data.runId
-        runData = data.run || { id: data.runId }
-      } else if (data.run?.id) {
-        runId = data.run.id
-        runData = data.run
-      } else if (data.id) {
-        // Fallback for old format
-        runId = data.id
-        runData = { id: data.id }
-      } else {
-        throw new Error(`Run creation failed: no run ID returned. Response: ${JSON.stringify(data)}`)
-      }
-
-      if (!runId) {
-        throw new Error(`Run creation failed: invalid response format. Response: ${JSON.stringify(data)}`)
-      }
+      const completeData = await completeResponse.json().catch(() => ({ ok: true }))
+      const updatedRun = completeData.run || createData.run
 
       if (DEBUG) {
-        console.log('[Try] Run created:', { 
+        console.log('[Try] Upload complete:', { 
           runId, 
-          status: runData.status,
-          audioPath: runData.audio_path,
+          status: updatedRun.status,
+          audioPath: updatedRun.audio_path,
         })
       }
 
       // Ensure duration_ms is set in run data if we have it
       if (uploadDurationMs !== null && uploadDurationMs > 0) {
-        runData.duration_ms = uploadDurationMs
+        updatedRun.duration_ms = uploadDurationMs
       }
       
-      setRun({ ...runData, audio_url: null })
+      setRun({ ...updatedRun, audio_url: null })
       setIsUploading(false)
       
       // Auto-start transcription
@@ -1421,7 +1408,6 @@ FEEDBACK SUMMARY
         console.error('[Try] Upload failed:', {
           error: err,
           message: err.message,
-          lastError,
         })
       }
     }

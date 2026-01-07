@@ -16,6 +16,8 @@ import { SignInModal } from '@/components/SignInModal'
 import { createClient } from '@/lib/supabase/client-auth'
 import { RunChunk } from '@/lib/types'
 
+const DEBUG = true
+
 interface Run {
   id: string
   status: string
@@ -74,6 +76,8 @@ export default function PracticePage() {
   // Keep 'custom' mode for Coach/daypass custom rubric builder
   const [rubricMode, setRubricMode] = useState<'default' | 'upload' | 'paste' | 'custom'>('default')
   const [customRubric, setCustomRubric] = useState<CustomRubric | null>(null)
+  // Store last audio blob for retry
+  const lastAudioBlobRef = useRef<{ blob: Blob; fileName: string } | null>(null)
   const [selectedRubricSource, setSelectedRubricSource] = useState<'template' | 'custom'>('template')
   const [customRubricId, setCustomRubricId] = useState<string | null>(null)
   
@@ -907,22 +911,15 @@ export default function PracticePage() {
     await uploadAudio(file, file.name)
   }
 
-  // Upload audio and create run
+  // Upload audio using direct-to-storage (supports chunking for Coach plan)
   const uploadAudio = async (audioBlob: Blob, fileName: string) => {
     setIsUploading(true)
     setError(null)
+    
+    // Store blob for retry
+    lastAudioBlobRef.current = { blob: audioBlob, fileName }
 
     try {
-      // Check file size before upload (Vercel limit is 4.5MB)
-      const MAX_UPLOAD_SIZE = 4.5 * 1024 * 1024 // 4.5MB in bytes
-      const fileSizeMB = audioBlob.size / (1024 * 1024)
-      
-      if (audioBlob.size > MAX_UPLOAD_SIZE) {
-        setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
-        setIsUploading(false)
-        return
-      }
-
       const sessionId = getSessionId()
       if (!hasValidRubric) {
         setError('Please select a rubric')
@@ -932,16 +929,31 @@ export default function PracticePage() {
 
       const blobDurationMs = (audioBlob as any).__durationMs || null
       const uploadDurationMs = blobDurationMs || durationMs || null
+      const durationSeconds = uploadDurationMs ? uploadDurationMs / 1000 : null
 
-      const formData = new FormData()
-      formData.append('audio', audioBlob, fileName)
-      formData.append('session_id', sessionId)
-      
-      // Handle rubric selection: parsed rubric (upload/paste), custom rubric (builder), or default
+      // Determine if we need chunking (Coach plan, > 30 min)
+      const isCoach = hasCoachAccess(userPlan)
+      const CHUNK_DURATION_MS = 30 * 60 * 1000 // 30 minutes in ms
+      const needsChunking = isCoach && uploadDurationMs && uploadDurationMs > CHUNK_DURATION_MS
+
+      if (DEBUG) {
+        console.log('[Practice] Starting upload:', {
+          fileName,
+          size: audioBlob.size,
+          sizeMB: (audioBlob.size / (1024 * 1024)).toFixed(2),
+          durationMs: uploadDurationMs,
+          isCoach,
+          needsChunking,
+        })
+      }
+
+      // Build rubric data
+      let rubricId: string | null = null
+      let rubricJson: any = null
+      let pitchContextStr: string | null = null
+
       if ((rubricMode === 'upload' || rubricMode === 'paste') && parsedCustomRubric) {
-        // For parsed rubrics, send rubric_json instead of rubric_id
-        // Convert parsed rubric to the format expected by the API
-        const rubricJson = {
+        rubricJson = {
           name: parsedCustomRubric.title || 'Custom Rubric',
           description: parsedCustomRubric.description || parsedCustomRubric.context_summary || null,
           criteria: parsedCustomRubric.criteria.map((c: any) => ({
@@ -953,105 +965,192 @@ export default function PracticePage() {
           max_duration_seconds: parsedCustomRubric.max_duration_seconds || null,
           guiding_questions: parsedCustomRubric.guiding_questions || [],
         }
-        formData.append('rubric_json', JSON.stringify(rubricJson))
-        
-        // Use parsed rubric context if available, otherwise use pitchContext
-        const contextToUse = parsedCustomRubric.context_summary || pitchContext
-        if (contextToUse && contextToUse.trim()) {
-          formData.append('pitch_context', contextToUse.trim())
-        }
+        pitchContextStr = parsedCustomRubric.context_summary || pitchContext || null
       } else if (selectedRubricSource === 'custom' && customRubric) {
-        // Use the saved rubric_id if available, otherwise fall back to first available
-        if (customRubricId) {
-          formData.append('rubric_id', customRubricId)
-        } else if (rubrics.length > 0) {
-          formData.append('rubric_id', rubrics[0].id)
-        } else {
-          // If no rubrics exist, API will use default
-          formData.append('rubric_id', '')
-        }
-        // Use custom rubric context if available
-        const contextToUse = customRubric.context || pitchContext
-        if (contextToUse.trim()) {
-          formData.append('pitch_context', contextToUse.trim())
-        }
+        rubricId = customRubricId || (rubrics.length > 0 ? rubrics[0].id : null)
+        pitchContextStr = customRubric.context || pitchContext || null
       } else if (rubricMode === 'default') {
-        // Default mode: send rubric_id
-        formData.append('rubric_id', selectedRubricId)
-        if (pitchContext.trim()) {
-          formData.append('pitch_context', pitchContext.trim())
-        }
+        rubricId = selectedRubricId
+        pitchContextStr = pitchContext || null
       } else {
-        // Fallback: should not happen, but send rubric_id if available
-        if (selectedRubricId) {
-          formData.append('rubric_id', selectedRubricId)
-        }
-        if (pitchContext.trim()) {
-          formData.append('pitch_context', pitchContext.trim())
-        }
-      }
-      
-      if (uploadDurationMs !== null && uploadDurationMs > 0) {
-        formData.append('duration_ms', uploadDurationMs.toString())
+        rubricId = selectedRubricId || null
+        pitchContextStr = pitchContext || null
       }
 
-      const response = await fetch('/api/runs/create', {
+      // Step 1: Create run record (metadata only)
+      const createBody: any = {
+        session_id: sessionId,
+        duration_ms: uploadDurationMs,
+        pitch_context: pitchContextStr?.trim() || null,
+      }
+      if (rubricId) {
+        createBody.rubric_id = rubricId
+      }
+      if (rubricJson) {
+        createBody.rubric_json = JSON.stringify(rubricJson)
+      }
+
+      const createResponse = await fetch('/api/runs/create', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(createBody),
       })
 
-      const responseText = await response.text()
-      let data: any = null
-      
-      try {
-        data = JSON.parse(responseText)
-      } catch (e) {
-        // Response might not be JSON
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to create run record')
       }
 
-      if (!response.ok) {
-        const errorData = data || {}
-        
-        // Handle 413 Payload Too Large error specifically
-        if (response.status === 413 || errorData?.code === 'PAYLOAD_TOO_LARGE') {
-          const fileSizeMB = audioBlob.size / (1024 * 1024)
-          setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
-          setIsUploading(false)
-          return
+      const createData = await createResponse.json()
+      if (!createData.ok || !createData.run?.id) {
+        throw new Error('Run creation failed: invalid response')
+      }
+
+      const runId = createData.run.id
+      if (DEBUG) {
+        console.log('[Practice] Run created:', { runId, needsChunking })
+      }
+
+      // Step 2: Upload audio directly to storage
+      const supabase = createClient()
+      const bucketName = 'pitchpractice-audio'
+
+      if (needsChunking && uploadDurationMs) {
+        // Coach plan: chunk every 30 minutes
+        const numChunks = Math.ceil(uploadDurationMs / CHUNK_DURATION_MS)
+        if (DEBUG) {
+          console.log('[Practice] Uploading as chunks:', { numChunks, durationMs: uploadDurationMs })
         }
-        
-        throw new Error(errorData.error || errorData.details || 'Upload failed')
-      }
 
-      let runId: string | null = null
-      let runData: any = null
+        // Upload full file first (main audio_path)
+        const signResponse = await fetch('/api/uploads/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            runId,
+            mimeType: audioBlob.type || 'audio/webm',
+          }),
+        })
 
-      if (data.ok === false) {
-        throw new Error(data.error || 'Run creation failed')
-      }
+        if (!signResponse.ok) {
+          throw new Error('Failed to get upload path')
+        }
 
-      if (data.runId) {
-        runId = data.runId
-        runData = data.run || { id: data.runId }
-      } else if (data.run?.id) {
-        runId = data.run.id
-        runData = data.run
-      } else if (data.id) {
-        runId = data.id
-        runData = { id: data.id }
+        const signData = await signResponse.json()
+        if (!signData.ok || !signData.storagePath) {
+          throw new Error('Failed to get upload path: invalid response')
+        }
+
+        const mainStoragePath = signData.storagePath
+
+        // Upload main file
+        const { error: uploadError } = await supabase.storage
+          .from(bucketName)
+          .upload(mainStoragePath, audioBlob, {
+            contentType: audioBlob.type || 'audio/webm',
+            upsert: false,
+          })
+
+        if (uploadError) {
+          throw new Error(`Upload failed: ${uploadError.message}`)
+        }
+
+        // Notify main upload complete
+        await fetch('/api/uploads/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            runId,
+            storagePath: mainStoragePath,
+          }),
+        })
+
+        // Create chunk records for each 30-minute segment
+        // Note: For now, chunks reference the main file with time ranges
+        // Future optimization: extract actual audio segments client-side or server-side
+        for (let i = 0; i < numChunks; i++) {
+          const startMs = i * CHUNK_DURATION_MS
+          const endMs = Math.min((i + 1) * CHUNK_DURATION_MS, uploadDurationMs)
+
+          // Create chunk record that references the main file with time range
+          // The chunk audio_path points to the main file, and start_ms/end_ms define the range
+          await fetch('/api/uploads/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              runId,
+              storagePath: mainStoragePath, // Chunks reference the main file
+              chunkIndex: i,
+              start_ms: startMs,
+              end_ms: endMs,
+            }),
+          })
+
+          if (DEBUG) {
+            console.log(`[Practice] Chunk ${i} record created:`, { startMs, endMs, references: mainStoragePath })
+          }
+        }
       } else {
-        throw new Error(`Run creation failed: no run ID returned`)
+        // Single upload (Starter/Free or Coach < 30 min)
+        const signResponse = await fetch('/api/uploads/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            runId,
+            mimeType: audioBlob.type || 'audio/webm',
+          }),
+        })
+
+        if (!signResponse.ok) {
+          throw new Error('Failed to get upload path')
+        }
+
+        const signData = await signResponse.json()
+        if (!signData.ok || !signData.storagePath) {
+          throw new Error('Failed to get upload path: invalid response')
+        }
+
+        const { storagePath } = signData
+
+        // Upload directly to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from(bucketName)
+          .upload(storagePath, audioBlob, {
+            contentType: audioBlob.type || 'audio/webm',
+            upsert: false,
+          })
+
+        if (uploadError) {
+          throw new Error(`Upload failed: ${uploadError.message}`)
+        }
+
+        // Notify upload complete
+        const completeResponse = await fetch('/api/uploads/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            runId,
+            storagePath,
+          }),
+        })
+
+        if (!completeResponse.ok) {
+          console.warn('[Practice] Upload complete notification failed')
+        }
       }
 
-      if (!runId) {
-        throw new Error(`Run creation failed: invalid response format`)
-      }
+      // Fetch updated run
+      const runResponse = await fetch(`/api/runs/${runId}`, { cache: 'no-store' })
+      const runData = await runResponse.json()
+      const updatedRun = runData.run || createData.run
 
       if (uploadDurationMs !== null && uploadDurationMs > 0) {
-        runData.duration_ms = uploadDurationMs
+        updatedRun.duration_ms = uploadDurationMs
       }
       
-      setRun({ ...runData, audio_url: null })
+      setRun({ ...updatedRun, audio_url: null })
       setIsUploading(false)
       
       setIsTranscribing(true)
@@ -1469,7 +1568,22 @@ export default function PracticePage() {
               <AlertCircle className="h-5 w-5 text-[#EF4444] flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <h3 className="text-sm font-semibold text-[#EF4444] mb-1">Error</h3>
-                <div className="text-sm text-[#E6E8EB] whitespace-pre-line">{error}</div>
+                <div className="text-sm text-[#E6E8EB] whitespace-pre-line mb-3">{error}</div>
+                {lastAudioBlobRef.current && (
+                  <Button
+                    onClick={() => {
+                      setError(null)
+                      if (lastAudioBlobRef.current) {
+                        uploadAudio(lastAudioBlobRef.current.blob, lastAudioBlobRef.current.fileName)
+                      }
+                    }}
+                    variant="secondary"
+                    size="sm"
+                    disabled={isUploading}
+                  >
+                    Retry Upload
+                  </Button>
+                )}
               </div>
               <button
                 onClick={() => setError(null)}

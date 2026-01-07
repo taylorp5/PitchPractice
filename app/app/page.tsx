@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { getSessionId } from '@/lib/session'
 import { getUserPlan, type UserPlan } from '@/lib/plan'
 import { canViewPremiumInsights } from '@/lib/entitlements'
+import { createClient } from '@/lib/supabase/client-auth'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
@@ -550,115 +551,148 @@ export default function HomePage() {
     setError(null)
 
     try {
-      // Check file size before upload (Vercel limit is 4.5MB)
-      const MAX_UPLOAD_SIZE = 4.5 * 1024 * 1024 // 4.5MB in bytes
-      const fileSizeMB = audioFile.size / (1024 * 1024)
-      
-      if (audioFile.size > MAX_UPLOAD_SIZE) {
-        setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
-        setIsUploading(false)
-        return
-      }
-
       const sessionId = getSessionId()
-      const formData = new FormData()
       
-      // Convert Blob to File if needed - ensure correct extension based on mimeType
+      // Convert Blob to File if needed
       let file: File
       if (audioFile instanceof File) {
         file = audioFile
       } else {
-        // Determine extension from mimeType
         const mimeType = (audioFile as any).__mimeType || audioFile.type || 'audio/webm'
         let extension = 'webm'
-        if (mimeType.includes('webm')) {
-          extension = 'webm'
-        } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
-          extension = 'mp3'
-        } else if (mimeType.includes('wav')) {
-          extension = 'wav'
-        } else if (mimeType.includes('ogg')) {
-          extension = 'ogg'
-        }
+        if (mimeType.includes('webm')) extension = 'webm'
+        else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) extension = 'mp3'
+        else if (mimeType.includes('wav')) extension = 'wav'
+        else if (mimeType.includes('ogg')) extension = 'ogg'
         
-        file = new File([audioFile], `recording.${extension}`, { 
-          type: mimeType
-        })
-      }
-      
-      formData.append('audio', file)
-      formData.append('rubric_id', selectedRubric)
-      formData.append('session_id', sessionId)
-      if (title.trim()) {
-        formData.append('title', title.trim())
+        file = new File([audioFile], `recording.${extension}`, { type: mimeType })
       }
 
-      const url = '/api/runs/create'
-      const response = await fetch(url, {
+      // Get duration from file metadata if available
+      const blobDurationMs = (audioFile as any).__durationMs || null
+      const uploadDurationMs = blobDurationMs || null
+
+      // Determine if we need chunking (Coach plan, > 30 min)
+      const isCoach = userPlan === 'coach'
+      const CHUNK_DURATION_MS = 30 * 60 * 1000 // 30 minutes
+      const needsChunking = isCoach && uploadDurationMs && uploadDurationMs > CHUNK_DURATION_MS
+
+      // Step 1: Create run record (metadata only)
+      const createResponse = await fetch('/api/runs/create', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          rubric_id: selectedRubric,
+          title: title.trim() || null,
+          duration_ms: uploadDurationMs,
+        }),
       })
 
-      // Log error if non-2xx
-      if (!response.ok) {
-        await logFetchError(url, response)
+      if (!createResponse.ok) {
+        const errorData = await createResponse.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to create run record')
       }
 
-      // Capture full response for error handling
-      const responseText = await response.text()
-      let data: any = null
-      
-      try {
-        data = JSON.parse(responseText)
-        
-        // Handle 413 Payload Too Large error specifically
-        if (response.status === 413 || data?.code === 'PAYLOAD_TOO_LARGE') {
-          setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
-          setIsUploading(false)
-          return
+      const createData = await createResponse.json()
+      if (!createData.ok || !createData.run?.id) {
+        throw new Error('Run creation failed: invalid response')
+      }
+
+      const runId = createData.run.id
+
+      // Step 2: Upload audio directly to storage
+      const supabase = createClient()
+      const bucketName = 'pitchpractice-audio'
+
+      if (needsChunking && uploadDurationMs) {
+        // Coach plan: chunk every 30 minutes
+        const numChunks = Math.ceil(uploadDurationMs / CHUNK_DURATION_MS)
+
+        // Upload main file
+        const signResponse = await fetch('/api/uploads/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            runId,
+            mimeType: file.type || 'audio/webm',
+          }),
+        })
+
+        if (!signResponse.ok) throw new Error('Failed to get upload path')
+        const signData = await signResponse.json()
+        if (!signData.ok || !signData.storagePath) throw new Error('Invalid upload path response')
+
+        const mainStoragePath = signData.storagePath
+
+        const { error: uploadError } = await supabase.storage
+          .from(bucketName)
+          .upload(mainStoragePath, file, {
+            contentType: file.type || 'audio/webm',
+            upsert: false,
+          })
+
+        if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`)
+
+        await fetch('/api/uploads/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ runId, storagePath: mainStoragePath }),
+        })
+
+        // Create chunk records for each 30-minute segment
+        // Note: Chunks reference the main file with time ranges (no separate uploads needed)
+        for (let i = 0; i < numChunks; i++) {
+          const startMs = i * CHUNK_DURATION_MS
+          const endMs = Math.min((i + 1) * CHUNK_DURATION_MS, uploadDurationMs)
+
+          // Create chunk record that references the main file with time range
+          await fetch('/api/uploads/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              runId,
+              storagePath: mainStoragePath, // Chunks reference the main file
+              chunkIndex: i,
+              start_ms: startMs,
+              end_ms: endMs,
+            }),
+          })
         }
-      } catch (e) {
-        // Response might not be JSON
-        console.warn('[Dashboard] Could not parse response as JSON:', responseText.substring(0, 200))
-      }
-
-      if (!response.ok) {
-        const errorData = data || {}
-        // Create a detailed error message with fix suggestion
-        let errorMessage = errorData.error || 'Failed to create run'
-        if (errorData.details) {
-          errorMessage += `: ${errorData.details}`
-        }
-        if (errorData.fix) {
-          errorMessage += `\n\n💡 Fix: ${errorData.fix}`
-        }
-        throw new Error(errorMessage)
-      }
-
-      // Handle different response formats (matching Try Free page)
-      let runId: string | null = null
-
-      if (data.ok === false) {
-        throw new Error(data.error || 'Run creation failed')
-      }
-
-      if (data.runId) {
-        runId = data.runId
-      } else if (data.run?.id) {
-        runId = data.run.id
-      } else if (data.id) {
-        // Fallback for old format
-        runId = data.id
       } else {
-        throw new Error(`Run creation failed: no run ID returned. Response: ${JSON.stringify(data)}`)
+        // Single upload
+        const signResponse = await fetch('/api/uploads/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            runId,
+            mimeType: file.type || 'audio/webm',
+          }),
+        })
+
+        if (!signResponse.ok) throw new Error('Failed to get upload path')
+        const signData = await signResponse.json()
+        if (!signData.ok || !signData.storagePath) throw new Error('Invalid upload path response')
+
+        const { storagePath } = signData
+
+        const { error: uploadError } = await supabase.storage
+          .from(bucketName)
+          .upload(storagePath, file, {
+            contentType: file.type || 'audio/webm',
+            upsert: false,
+          })
+
+        if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`)
+
+        await fetch('/api/uploads/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ runId, storagePath }),
+        })
       }
 
-      // Guard: NEVER navigate if runId is falsy
-      if (!runId) {
-        throw new Error(`Run creation failed: invalid response format. Response: ${JSON.stringify(data)}`)
-      }
-
-      // Only navigate if we have a valid runId
+      // Navigate to run page
       router.push(`/runs/${runId}`)
     } catch (err) {
       console.error('[Fetch Error] Error submitting:', {

@@ -913,6 +913,16 @@ export default function PracticePage() {
     setError(null)
 
     try {
+      // Check file size before upload (Vercel limit is 4.5MB)
+      const MAX_UPLOAD_SIZE = 4.5 * 1024 * 1024 // 4.5MB in bytes
+      const fileSizeMB = audioBlob.size / (1024 * 1024)
+      
+      if (audioBlob.size > MAX_UPLOAD_SIZE) {
+        setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
+        setIsUploading(false)
+        return
+      }
+
       const sessionId = getSessionId()
       if (!hasValidRubric) {
         setError('Please select a rubric')
@@ -1001,7 +1011,16 @@ export default function PracticePage() {
 
       if (!response.ok) {
         const errorData = data || {}
-        throw new Error(errorData.error || 'Upload failed')
+        
+        // Handle 413 Payload Too Large error specifically
+        if (response.status === 413 || errorData?.code === 'PAYLOAD_TOO_LARGE') {
+          const fileSizeMB = audioBlob.size / (1024 * 1024)
+          setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
+          setIsUploading(false)
+          return
+        }
+        
+        throw new Error(errorData.error || errorData.details || 'Upload failed')
       }
 
       let runId: string | null = null

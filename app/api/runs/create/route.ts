@@ -5,6 +5,10 @@ import { v4 as uuidv4 } from 'uuid'
 
 export const dynamic = 'force-dynamic'
 
+// Increase body size limit for audio uploads (up to 100MB)
+export const maxDuration = 60 // 60 seconds max execution time
+export const runtime = 'nodejs'
+
 export async function POST(request: NextRequest) {
   const DEBUG = true
   
@@ -477,6 +481,21 @@ export async function POST(request: NextRequest) {
       stack: error?.stack,
       name: error?.name,
     })
+    
+    // Check if this is a 413 Payload Too Large error
+    if (error?.message?.includes('413') || error?.message?.includes('Payload Too Large') || error?.message?.includes('body size')) {
+      return NextResponse.json(
+        { 
+          ok: false,
+          error: 'File too large',
+          details: 'The audio file exceeds the maximum upload size limit (4.5MB).',
+          fix: 'Please record a shorter clip or compress the audio file. For longer recordings, consider splitting into multiple segments.',
+          code: 'PAYLOAD_TOO_LARGE',
+        },
+        { status: 413 }
+      )
+    }
+    
     return NextResponse.json(
       { 
         ok: false,

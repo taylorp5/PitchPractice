@@ -550,6 +550,16 @@ export default function HomePage() {
     setError(null)
 
     try {
+      // Check file size before upload (Vercel limit is 4.5MB)
+      const MAX_UPLOAD_SIZE = 4.5 * 1024 * 1024 // 4.5MB in bytes
+      const fileSizeMB = audioFile.size / (1024 * 1024)
+      
+      if (audioFile.size > MAX_UPLOAD_SIZE) {
+        setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
+        setIsUploading(false)
+        return
+      }
+
       const sessionId = getSessionId()
       const formData = new FormData()
       
@@ -600,6 +610,13 @@ export default function HomePage() {
       
       try {
         data = JSON.parse(responseText)
+        
+        // Handle 413 Payload Too Large error specifically
+        if (response.status === 413 || data?.code === 'PAYLOAD_TOO_LARGE') {
+          setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
+          setIsUploading(false)
+          return
+        }
       } catch (e) {
         // Response might not be JSON
         console.warn('[Dashboard] Could not parse response as JSON:', responseText.substring(0, 200))

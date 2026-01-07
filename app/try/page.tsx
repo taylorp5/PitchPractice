@@ -1258,6 +1258,16 @@ FEEDBACK SUMMARY
     setError(null)
 
     try {
+      // Check file size before upload (Vercel limit is 4.5MB)
+      const MAX_UPLOAD_SIZE = 4.5 * 1024 * 1024 // 4.5MB in bytes
+      const fileSizeMB = audioBlob.size / (1024 * 1024)
+      
+      if (audioBlob.size > MAX_UPLOAD_SIZE) {
+        setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
+        setIsUploading(false)
+        return
+      }
+
       const sessionId = getSessionId()
       if (!selectedRubricId) {
         setError('Please wait for rubrics to load')
@@ -1274,6 +1284,7 @@ FEEDBACK SUMMARY
         console.log('[Try] Uploading audio:', {
           fileName,
           size: audioBlob.size,
+          sizeMB: fileSizeMB.toFixed(2),
           type: audioBlob.type,
           durationMs: uploadDurationMs,
           durationSeconds,
@@ -1314,6 +1325,15 @@ FEEDBACK SUMMARY
 
       if (!response.ok) {
         errorData = data
+        
+        // Handle 413 Payload Too Large error specifically
+        if (response.status === 413 || errorData?.code === 'PAYLOAD_TOO_LARGE') {
+          const fileSizeMB = audioBlob.size / (1024 * 1024)
+          setError(`File too large (${fileSizeMB.toFixed(2)} MB). Maximum upload size is 4.5 MB. Please record a shorter clip or compress the audio.`)
+          setIsUploading(false)
+          return
+        }
+        
         const errorMessage = errorData?.error || 'Upload failed'
         const errorDetails = errorData?.details ? ` Details: ${errorData.details}` : ''
         const errorFix = errorData?.fix ? ` Fix: ${errorData.fix}` : ''

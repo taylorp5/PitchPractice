@@ -16,11 +16,11 @@ export default function LandingPage() {
   const [focusedInsight, setFocusedInsight] = useState<string | null>(null)
 
   const testimonials = [
-    { quote: "I didn't realize how many filler phrases I used until I saw it highlighted.", author: "Maya, Student" },
-    { quote: "The pacing notes were the difference between 'okay' and actually confident.", author: "Chris, Sales" },
-    { quote: "Helped me cut 30 seconds without losing the point.", author: "Elena, Founder" },
-    { quote: "I practiced twice and felt way calmer walking into the meeting.", author: "Jordan, Product" },
-    { quote: "Seeing my transcript made it obvious where I rambled.", author: "Sam, Consultant" },
+    { text: "See how often you rely on filler words and where they break your flow" },
+    { text: "Practice with real class or interview rubrics instead of generic advice" },
+    { text: "Get structured feedback on clarity, pacing, and structure" },
+    { text: "Identify where you ramble, pause unnecessarily, or lose your point" },
+    { text: "Compare multiple practice runs to track improvement over time" },
   ]
 
   const exampleTranscript = [
@@ -204,7 +204,7 @@ export default function LandingPage() {
               className="text-sm md:text-base font-medium tracking-wide"
               style={{ color: colors.text.secondary }}
             >
-              Trusted by students, professionals, and founders preparing for real moments
+              Useful for students, professionals, and founders preparing for real moments
             </p>
           </div>
           <div className="relative overflow-hidden">
@@ -238,16 +238,10 @@ export default function LandingPage() {
                       }}
                     >
                       <p 
-                        className="text-lg md:text-xl font-normal mb-4 leading-relaxed"
+                        className="text-lg md:text-xl font-normal leading-relaxed"
                         style={{ color: colors.text.primary }}
                       >
-                        "{testimonial.quote}"
-                      </p>
-                      <p 
-                        className="text-sm font-medium"
-                        style={{ color: colors.text.secondary }}
-                      >
-                        — {testimonial.author}
+                        {testimonial.text}
                       </p>
                     </div>
                   </div>

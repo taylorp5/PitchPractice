@@ -2638,7 +2638,7 @@ export default function RunPage() {
                 )}
                 <div className="space-y-2">
                   <Button
-                    onClick={() => router.push('/try')}
+                    onClick={() => router.push('/app/practice')}
                     variant="primary"
                     size="sm"
                     className="w-full"

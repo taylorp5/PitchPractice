@@ -3,26 +3,22 @@
 -- Path format: {session_id}/{runId}.{ext} or {session_id}/{runId}/chunk_{index}.{ext}
 
 -- Policy: Allow authenticated users to upload files to runs they own
--- Validates that the run_id in the path belongs to the authenticated user
+-- The path contains the run_id, which we validate belongs to the user
 CREATE POLICY "Authenticated users can upload to their runs"
 ON storage.objects
 FOR INSERT
 TO authenticated
 WITH CHECK (
   bucket_id = 'pitchpractice-audio' AND
-  -- Extract run_id from path: {session_id}/{runId}.{ext} or {session_id}/{runId}/chunk_{index}.{ext}
-  -- The run_id is the second folder or appears before the file extension
-  (
-    -- Check if run_id (second path segment) belongs to user
-    (storage.foldername(name))[2] IN (
-      SELECT id::text FROM pitch_runs WHERE user_id = auth.uid()
-    )
-    OR
-    -- Fallback: check if any part of the path contains a run_id owned by the user
-    EXISTS (
-      SELECT 1 FROM pitch_runs 
-      WHERE user_id = auth.uid() 
-      AND name LIKE '%' || id::text || '%'
+  -- Check if the path contains a run_id that belongs to the authenticated user
+  -- Path format: {session_id}/{runId}.{ext} or {session_id}/{runId}/chunk_{index}.{ext}
+  EXISTS (
+    SELECT 1 FROM pitch_runs 
+    WHERE user_id = auth.uid() 
+    AND (
+      -- Match run_id in path (before .ext or /chunk_)
+      name LIKE '%/' || id::text || '.%'
+      OR name LIKE '%/' || id::text || '/%'
     )
   )
 );
@@ -38,6 +34,7 @@ WITH CHECK (
   bucket_id = 'pitchpractice-audio' AND
   -- Path must start with a valid session_id that exists in pitch_runs
   -- The /api/uploads/sign endpoint validates run ownership before returning the path
+  -- Extract first folder (session_id) from path
   (storage.foldername(name))[1] IN (
     SELECT DISTINCT session_id::text FROM pitch_runs WHERE session_id IS NOT NULL
   )

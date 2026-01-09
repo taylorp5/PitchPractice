@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
+import { createClient } from '@/lib/supabase/server-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,17 @@ function getPriceId(plan: string): string {
 export async function POST(request: NextRequest) {
   let plan: string | undefined
   try {
+    // Check authentication
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      return NextResponse.json(
+        { ok: false, error: 'Authentication required. Please sign in before purchasing a plan.' },
+        { status: 401 }
+      )
+    }
+
     // Validate Stripe configuration
     let stripe: Stripe
     try {

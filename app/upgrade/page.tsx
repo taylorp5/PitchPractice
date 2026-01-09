@@ -7,23 +7,55 @@ import { useEffect, useState, Suspense } from 'react'
 import { Button } from '@/components/ui/Button'
 import { getUserPlan, UserPlan, setDevPlanOverride } from '@/lib/plan'
 import { getSessionId } from '@/lib/session'
+import { createClient } from '@/lib/supabase/client-auth'
 
 function UpgradePageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [currentPlan, setCurrentPlan] = useState<UserPlan>('free')
   const [isLoading, setIsLoading] = useState(true)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [devOverrideMessage, setDevOverrideMessage] = useState<string | null>(null)
   const [checkoutLoading, setCheckoutLoading] = useState(false)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   const isDev = typeof window !== 'undefined' && process.env.NODE_ENV !== 'production'
   
+  // Check authentication status
   useEffect(() => {
-    getUserPlan().then(plan => {
-      setCurrentPlan(plan)
-      setIsLoading(false)
-    })
-  }, [])
+    const checkAuth = async () => {
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        
+        if (!session) {
+          // Build redirect URL with current plan query param if present
+          const planParam = searchParams.get('plan')
+          const redirectUrl = new URL('/signin', window.location.origin)
+          redirectUrl.searchParams.set('redirect', planParam ? `/upgrade?plan=${planParam}` : '/upgrade')
+          redirectUrl.searchParams.set('message', 'signin_required')
+          
+          router.push(redirectUrl.pathname + redirectUrl.search)
+          return
+        }
+        
+        setIsCheckingAuth(false)
+      } catch (err) {
+        console.error('Failed to check auth:', err)
+        setIsCheckingAuth(false)
+      }
+    }
+
+    checkAuth()
+  }, [router, searchParams])
+  
+  useEffect(() => {
+    if (!isCheckingAuth) {
+      getUserPlan().then(plan => {
+        setCurrentPlan(plan)
+        setIsLoading(false)
+      })
+    }
+  }, [isCheckingAuth])
   
   // Get plan from query param if present (for highlighting)
   const highlightedPlan = searchParams.get('plan') as UserPlan | null
@@ -33,6 +65,21 @@ function UpgradePageContent() {
   const handleCheckout = async (plan: UserPlan) => {
     if (!['starter', 'coach', 'daypass'].includes(plan)) {
       setCheckoutError('Invalid plan selected')
+      return
+    }
+
+    // Double-check authentication before checkout
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    if (!session) {
+      // Build redirect URL with current plan query param
+      const planParam = searchParams.get('plan')
+      const redirectUrl = new URL('/signin', window.location.origin)
+      redirectUrl.searchParams.set('redirect', planParam ? `/upgrade?plan=${planParam}` : '/upgrade')
+      redirectUrl.searchParams.set('message', 'signin_required')
+      
+      router.push(redirectUrl.pathname + redirectUrl.search)
       return
     }
 
@@ -85,6 +132,17 @@ function UpgradePageContent() {
     getUserPlan().then(plan => {
       setCurrentPlan(plan)
     })
+  }
+
+  // Show loading state while checking auth
+  if (isCheckingAuth || isLoading) {
+    return (
+      <div className="min-h-screen bg-[#F7F7F8] py-12 px-4">
+        <div className="max-w-7xl mx-auto text-center">
+          <p className="text-[#6B7280]">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   return (

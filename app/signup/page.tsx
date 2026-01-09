@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client-auth'
@@ -15,6 +15,16 @@ export default function SignUpPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  
+  // Check for message parameter from URL
+  const [showSignInMessage, setShowSignInMessage] = useState(false)
+  
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('message') === 'signin_required') {
+      setShowSignInMessage(true)
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -110,6 +120,15 @@ export default function SignUpPage() {
           <h1 className="text-2xl font-bold text-[#111827] mb-2">Sign Up</h1>
           <p className="text-sm text-[#6B7280]">Create an account to get started</p>
         </div>
+
+        {showSignInMessage && (
+          <div className="mb-4 p-4 bg-[#FEF3C7] border border-[#FCD34D] rounded-lg">
+            <p className="text-sm text-[#92400E] font-medium mb-1">Sign in required</p>
+            <p className="text-sm text-[#92400E]">
+              Please sign up or sign in before upgrading your plan. Once signed in, you'll be redirected back to the upgrade page.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 p-3 bg-[#FEE2E2] border border-[#FCA5A5] rounded-lg">

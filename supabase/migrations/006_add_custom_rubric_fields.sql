@@ -10,3 +10,6 @@ COMMENT ON COLUMN user_rubrics.guiding_questions IS 'Array of guiding questions 
 COMMENT ON COLUMN user_rubrics.context_summary IS 'Summary of pitch context and audience';
 
 
+
+
+

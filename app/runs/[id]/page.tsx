@@ -261,6 +261,15 @@ function LineByLineItem({
   )
 }
 
+type AnalysisStage =
+  | 'idle'
+  | 'uploading'
+  | 'transcribing'
+  | 'analyzing'
+  | 'finalizing'
+  | 'complete'
+  | 'error'
+
 export default function RunPage() {
   const params = useParams()
   const router = useRouter()
@@ -271,6 +280,9 @@ export default function RunPage() {
   const [error, setError] = useState<string | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isGettingFeedback, setIsGettingFeedback] = useState(false)
+  const [analysisStage, setAnalysisStage] = useState<AnalysisStage>('idle')
+  const [analysisStartTime, setAnalysisStartTime] = useState<number | null>(null)
+  const [showTimeoutMessage, setShowTimeoutMessage] = useState(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const [audioError, setAudioError] = useState(false)
   const [showDebug, setShowDebug] = useState(false)
@@ -314,6 +326,32 @@ export default function RunPage() {
     return statusPriority[status] || 0
   }
 
+  // Determine analysis stage from run data
+  const determineAnalysisStage = (runData: Run | null): AnalysisStage => {
+    if (!runData) return 'idle'
+    
+    const status = runData.status
+    const hasTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
+    const hasSummary = !!(runData.analysis_json?.summary)
+    
+    // Error state
+    if (status === 'error') return 'error'
+    
+    // Complete when we have transcript + summary (don't wait for premium insights)
+    if (hasTranscript && hasSummary) return 'complete'
+    
+    // Analyzing state
+    if (status === 'analyzing' || (hasTranscript && !hasSummary)) return 'analyzing'
+    
+    // Transcribing state
+    if (status === 'transcribing' || status === 'transcribed') return 'transcribing'
+    
+    // Uploading state
+    if (status === 'uploaded') return 'uploading'
+    
+    return 'idle'
+  }
+
   const fetchRun = useCallback(async (isPolling: boolean = false): Promise<boolean> => {
     // Guard: Never fetch if runId is falsy or the string "undefined"
     if (!routeRunId || routeRunId === 'undefined') {
@@ -354,19 +392,35 @@ export default function RunPage() {
       // Get current run from ref to avoid stale closure
       const currentRun = runRef.current
 
+      // Determine and update analysis stage
+      const newStage = determineAnalysisStage(runData)
+      setAnalysisStage(newStage)
+      
+      // Track analysis start time
+      if (newStage === 'analyzing' && analysisStage !== 'analyzing' && !analysisStartTime) {
+        setAnalysisStartTime(Date.now())
+      }
+      
+      // Reset timeout message if analysis completes
+      if (newStage === 'complete') {
+        setShowTimeoutMessage(false)
+        setAnalysisStartTime(null)
+      }
+
       // Debug logging (dev-only)
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV !== 'production') {
         const hasTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
-        const hasAnalysis = !!runData.analysis_json
-        console.log('[RunPage] Fetch result:', {
-          timestamp: fetchTimestamp,
-          status: runData.status,
-          statusPriority: getStatusPriority(runData.status),
+        const hasSummary = !!(runData.analysis_json?.summary)
+        const hasPremium = !!(runData.analysis_json?.premium_insights || runData.analysis_json?.premium)
+        console.debug('[analysis]', {
+          stage: newStage,
+          runId: routeRunId,
+          plan: userPlan,
           hasTranscript,
-          hasAnalysis,
-          isPolling,
-          currentRunStatus: currentRun?.status,
-          currentRunPriority: getStatusPriority(currentRun?.status),
+          hasSummary,
+          hasPremium,
+          status: runData.status,
+          timestamp: fetchTimestamp,
         })
       }
 
@@ -408,12 +462,16 @@ export default function RunPage() {
       }
 
       // Return true if we should continue polling
-      // Stop polling when status is "analyzed" OR when we have both transcript and analysis
-      const hasCompleteData = runData.status === 'analyzed' || (hasNewTranscript && hasNewAnalysis)
+      // Stop polling when we have transcript + summary (don't wait for premium insights)
+      const hasTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
+      const hasSummary = !!(runData.analysis_json?.summary)
+      const hasCompleteData = runData.status === 'analyzed' || (hasTranscript && hasSummary)
+      
       const shouldContinuePolling = 
         (runData.status === 'uploaded' || 
          runData.status === 'transcribing' || 
-         runData.status === 'transcribed') &&
+         runData.status === 'transcribed' ||
+         runData.status === 'analyzing') &&
         !hasCompleteData
 
       return shouldContinuePolling
@@ -590,20 +648,34 @@ export default function RunPage() {
     }
   }, [run, userPlan, fetchChunks])
 
-  // Polling: poll every 1500ms while status is in ["uploaded","transcribing","transcribed"]
+  // Polling: poll every 1500ms while analysis is in progress
+  // MAX_ANALYSIS_WAIT_MS: 60 seconds timeout
+  const MAX_ANALYSIS_WAIT_MS = 60_000
+  
   useEffect(() => {
     if (!run) return
 
     const status = run.status
-    const shouldPoll = status === 'uploaded' || status === 'transcribing' || status === 'transcribed'
+    const hasTranscript = !!(run.transcript && run.transcript.trim().length > 0)
+    const hasSummary = !!(run.analysis_json?.summary)
     
-    // Stop polling when status is "analyzed" OR when transcript && (analysis_json || analysis) exist
-    const hasCompleteData = run.status === 'analyzed' || 
-      (run.transcript && run.transcript.trim().length > 0 && 
-       (run.analysis_json || false))
+    // Stop polling when we have transcript + summary (complete)
+    const hasCompleteData = run.status === 'analyzed' || (hasTranscript && hasSummary)
+    
+    // Determine if we should poll based on stage
+    const shouldPoll = analysisStage !== 'idle' && 
+                       analysisStage !== 'complete' && 
+                       analysisStage !== 'error' &&
+                       !hasCompleteData
 
-    if (!shouldPoll || hasCompleteData) {
+    if (!shouldPoll) {
       return
+    }
+
+    // Check for timeout
+    if (analysisStartTime && Date.now() - analysisStartTime > MAX_ANALYSIS_WAIT_MS) {
+      setShowTimeoutMessage(true)
+      // Don't stop polling, but show message
     }
 
     const intervalId = setInterval(async () => {
@@ -616,7 +688,7 @@ export default function RunPage() {
     return () => {
       clearInterval(intervalId)
     }
-  }, [run?.status, run?.transcript, run?.analysis_json, routeRunId, fetchRun])
+  }, [run?.status, run?.transcript, run?.analysis_json, analysisStage, analysisStartTime, routeRunId, fetchRun])
 
   useEffect(() => {
     if (run?.audio_path) {
@@ -703,6 +775,9 @@ export default function RunPage() {
     if (!routeRunId) return
 
     setIsGettingFeedback(true)
+    setAnalysisStage('analyzing')
+    setAnalysisStartTime(Date.now())
+    setShowTimeoutMessage(false)
     setError(null)
     setLastAction(null)
 
@@ -1277,9 +1352,18 @@ export default function RunPage() {
               // 2. Run was analyzed with Coach plan (plan_at_time === 'coach')
               // This ensures Coach users see their premium insights even if plan changes
               const wasCoachAtTime = runPlanAtTime === 'coach'
-              const shouldShowPremium = (canViewPremium || wasCoachAtTime) && (hasPremiumInsights || hasPremiumContent) && !isDayPassExpired
+              // Show premium section if:
+              // 1. User has access AND (has premium data OR analysis is complete and might still be generating premium)
+              // 2. This allows progressive loading - show section even if premium is still processing
+              const hasSummary = !!(run.analysis_json?.summary)
+              const isAnalysisComplete = hasSummary && !!(run.transcript && run.transcript.trim().length > 0)
+              const shouldShowPremium = (canViewPremium || wasCoachAtTime) && 
+                                        !isDayPassExpired &&
+                                        (hasPremiumInsights || hasPremiumContent || (isAnalysisComplete && (runPlanAtTime === 'coach' || userPlan === 'coach')))
               
               if (shouldShowPremium) {
+                const isPremiumStillLoading = isAnalysisComplete && !hasPremiumInsights && !hasPremiumContent && (wasCoachAtTime || coachAccess)
+                
                 return (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -1291,6 +1375,20 @@ export default function RunPage() {
                         <Sparkles className="h-5 w-5 text-[#F59E0B]" />
                         <SectionHeader title="Premium Insights" />
                       </div>
+                      
+                      {/* Premium insights still loading message */}
+                      {isPremiumStillLoading && (
+                        <div className="mb-6 p-4 bg-[#1A1F2E] border border-[#F59E0B]/30 rounded-lg">
+                          <div className="flex items-start gap-3">
+                            <LoadingSpinner size="sm" />
+                            <div className="flex-1">
+                              <p className="text-sm text-[#E5E7EB]">
+                                Some advanced insights are still processing. They may appear shortly.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       
                       {/* Signature Insight */}
                       {run.analysis_json.premium?.signature_insight && (
@@ -2257,7 +2355,7 @@ export default function RunPage() {
             </motion.div>
 
             {/* Missing Analysis Placeholder */}
-            {run.transcript && !run.analysis_json && (
+            {run.transcript && !run.analysis_json?.summary && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -2265,30 +2363,66 @@ export default function RunPage() {
               >
                 <Card>
                   <div className="p-12 text-center">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#22283A] mb-4">
-                      <FileText className="h-8 w-8 text-[#9CA3AF]" />
-                    </div>
-                    <p className="text-[#E5E7EB] font-medium mb-2">Feedback not generated yet</p>
-                    <p className="text-sm text-[#9CA3AF] mb-6">
-                      Your transcript is ready. Generate AI-powered feedback to see analysis of your pitch.
-                    </p>
-                    <Button
-                      onClick={handleGetFeedback}
-                      variant="primary"
-                      disabled={isGettingFeedback || (!run.rubrics && !run.rubric_snapshot_json)}
-                      isLoading={isGettingFeedback}
-                    >
-                      {isGettingFeedback ? (
-                        <>
-                          <LoadingSpinner size="sm" />
-                          Generating feedback...
-                        </>
-                      ) : (
-                        <>
-                          Generate feedback
-                        </>
-                      )}
-                    </Button>
+                    {/* Analysis in progress */}
+                    {(analysisStage === 'analyzing' || isGettingFeedback) && (
+                      <div className="mb-6">
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#22283A] mb-4">
+                          <LoadingSpinner size="md" />
+                        </div>
+                        <p className="text-[#E5E7EB] font-medium mb-2">
+                          {(() => {
+                            // Show stage-specific messages for Coach plan
+                            if (hasCoachAccess(userPlan) || hasDayPassAccess(userPlan)) {
+                              if (analysisStage === 'transcribing') {
+                                return 'Transcribing your recording...'
+                              } else if (analysisStage === 'analyzing') {
+                                return 'Analyzing clarity and structure...'
+                              } else if (run.analysis_json?.summary && !run.analysis_json?.premium_insights) {
+                                return 'Generating premium insights...'
+                              }
+                            }
+                            return 'Generating feedback...'
+                          })()}
+                        </p>
+                        {showTimeoutMessage && (
+                          <div className="mt-4 p-3 bg-[#1A1F2E] border border-[#F59E0B]/30 rounded-lg">
+                            <p className="text-sm text-[#E5E7EB]">
+                              This analysis is taking longer than usual. You can safely refresh — your results will continue processing.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Not started yet */}
+                    {analysisStage === 'idle' && (
+                      <>
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[#22283A] mb-4">
+                          <FileText className="h-8 w-8 text-[#9CA3AF]" />
+                        </div>
+                        <p className="text-[#E5E7EB] font-medium mb-2">Feedback not generated yet</p>
+                        <p className="text-sm text-[#9CA3AF] mb-6">
+                          Your transcript is ready. Generate AI-powered feedback to see analysis of your pitch.
+                        </p>
+                        <Button
+                          onClick={handleGetFeedback}
+                          variant="primary"
+                          disabled={isGettingFeedback || (!run.rubrics && !run.rubric_snapshot_json)}
+                          isLoading={isGettingFeedback}
+                        >
+                          {isGettingFeedback ? (
+                            <>
+                              <LoadingSpinner size="sm" />
+                              Generating feedback...
+                            </>
+                          ) : (
+                            <>
+                              Generate feedback
+                            </>
+                          )}
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </Card>
               </motion.div>

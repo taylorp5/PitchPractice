@@ -18,6 +18,15 @@ import { RunChunk } from '@/lib/types'
 
 const DEBUG = true
 
+type AnalysisStage =
+  | 'idle'
+  | 'uploading'
+  | 'transcribing'
+  | 'analyzing'
+  | 'finalizing'
+  | 'complete'
+  | 'error'
+
 interface Run {
   id: string
   status: string
@@ -56,6 +65,9 @@ export default function PracticePage() {
   const [run, setRun] = useState<Run | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isGettingFeedback, setIsGettingFeedback] = useState(false)
+  const [analysisStage, setAnalysisStage] = useState<AnalysisStage>('idle')
+  const [analysisStartTime, setAnalysisStartTime] = useState<number | null>(null)
+  const [showTimeoutMessage, setShowTimeoutMessage] = useState(false)
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null)
   const [pausedTotalMs, setPausedTotalMs] = useState(0)
   const [pauseStartTime, setPauseStartTime] = useState<number | null>(null)
@@ -1208,6 +1220,10 @@ export default function PracticePage() {
       setIsGettingFeedback(false)
       return
     }
+    
+    setAnalysisStage('analyzing')
+    setAnalysisStartTime(Date.now())
+    setShowTimeoutMessage(false)
 
     if (!hasValidRubric) {
       setError('Cannot get feedback: no rubric selected')
@@ -1327,6 +1343,32 @@ export default function PracticePage() {
     }
   }, [isGettingFeedback])
 
+  // Determine analysis stage from run data
+  const determineAnalysisStage = (runData: Run | null): AnalysisStage => {
+    if (!runData) return 'idle'
+    
+    const status = runData.status
+    const hasTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
+    const hasSummary = !!(runData.analysis_json?.summary)
+    
+    // Error state
+    if (status === 'error') return 'error'
+    
+    // Complete when we have transcript + summary (don't wait for premium insights)
+    if (hasTranscript && hasSummary) return 'complete'
+    
+    // Analyzing state
+    if (status === 'analyzing' || (hasTranscript && !hasSummary)) return 'analyzing'
+    
+    // Transcribing state
+    if (status === 'transcribing' || status === 'transcribed') return 'transcribing'
+    
+    // Uploading state
+    if (status === 'uploaded') return 'uploading'
+    
+    return 'idle'
+  }
+
   // Fetch run data
   const fetchRun = async (runId: string) => {
     // Guard: Never fetch if runId is falsy or the string "undefined"
@@ -1345,13 +1387,46 @@ export default function PracticePage() {
 
       const data = await response.json()
       if (data.ok && data.run) {
-        setRun(data.run)
-        setAudioUrl(data.run.audio_url)
+        const runData = data.run
         
-        if (data.run.analysis_json) {
-          setFeedback(data.run.analysis_json)
+        // Determine and update analysis stage
+        const newStage = determineAnalysisStage(runData)
+        setAnalysisStage(newStage)
+        
+        // Track analysis start time
+        if (newStage === 'analyzing' && analysisStage !== 'analyzing' && !analysisStartTime) {
+          setAnalysisStartTime(Date.now())
+        }
+        
+        // Reset timeout message if analysis completes
+        if (newStage === 'complete') {
+          setShowTimeoutMessage(false)
+          setAnalysisStartTime(null)
+        }
+        
+        setRun(runData)
+        setAudioUrl(runData.audio_url)
+        
+        if (runData.analysis_json) {
+          setFeedback(runData.analysis_json)
         } else {
           setFeedback(null)
+        }
+        
+        // Debug logging (dev-only)
+        if (process.env.NODE_ENV !== 'production') {
+          const hasTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
+          const hasSummary = !!(runData.analysis_json?.summary)
+          const hasPremium = !!(runData.analysis_json?.premium_insights || runData.analysis_json?.premium)
+          console.debug('[analysis]', {
+            stage: newStage,
+            runId,
+            plan: userPlan,
+            hasTranscript,
+            hasSummary,
+            hasPremium,
+            status: runData.status,
+          })
         }
       }
     } catch (err: any) {
@@ -1361,10 +1436,36 @@ export default function PracticePage() {
   }
 
   // Poll for run updates
+  // MAX_ANALYSIS_WAIT_MS: 60 seconds timeout
+  const MAX_ANALYSIS_WAIT_MS = 60_000
+  
   useEffect(() => {
     if (!run?.id || (!isTranscribing && !isGettingFeedback)) return
 
     const runId = run.id
+    const hasTranscript = !!(run.transcript && run.transcript.trim().length > 0)
+    const hasSummary = !!(run.analysis_json?.summary)
+    
+    // Stop polling when we have transcript + summary (complete)
+    const hasCompleteData = hasTranscript && hasSummary
+    
+    // Determine if we should poll based on stage
+    const shouldPoll = analysisStage !== 'idle' && 
+                       analysisStage !== 'complete' && 
+                       analysisStage !== 'error' &&
+                       !hasCompleteData &&
+                       (isTranscribing || isGettingFeedback)
+
+    if (!shouldPoll) {
+      return
+    }
+
+    // Check for timeout
+    if (analysisStartTime && Date.now() - analysisStartTime > MAX_ANALYSIS_WAIT_MS) {
+      setShowTimeoutMessage(true)
+      // Don't stop polling, but show message
+    }
+
     const interval = setInterval(() => {
       if (runId) {
         fetchRun(runId)
@@ -1372,7 +1473,7 @@ export default function PracticePage() {
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [run?.id, isTranscribing, isGettingFeedback])
+  }, [run?.id, run?.transcript, run?.analysis_json, isTranscribing, isGettingFeedback, analysisStage, analysisStartTime])
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -2344,7 +2445,21 @@ export default function PracticePage() {
                     {isGettingFeedback ? (
                       <>
                         <LoadingSpinner className="h-4 w-4 text-[#F59E0B]" />
-                        <span className="text-sm font-medium text-[#E6E8EB]">Analyzing…</span>
+                        <span className="text-sm font-medium text-[#E6E8EB]">
+                          {(() => {
+                            // Show stage-specific messages for Coach plan
+                            if (hasCoachAccess(userPlan)) {
+                              if (analysisStage === 'transcribing') {
+                                return 'Transcribing your recording…'
+                              } else if (analysisStage === 'analyzing') {
+                                return 'Analyzing clarity and structure…'
+                              } else if (run?.analysis_json?.summary && !run?.analysis_json?.premium_insights) {
+                                return 'Generating premium insights…'
+                              }
+                            }
+                            return 'Analyzing…'
+                          })()}
+                        </span>
                       </>
                     ) : (isUploading || isTranscribing) ? (
                       <>
@@ -2359,9 +2474,18 @@ export default function PracticePage() {
                     )}
                   </div>
                 </div>
-                <p className="text-xs text-[#9AA4B2] mt-3 italic">
-                  Long recordings can take several minutes.
-                </p>
+                {showTimeoutMessage && (
+                  <div className="mt-3 p-3 bg-[#1A1F2E] border border-[#F59E0B]/30 rounded-lg">
+                    <p className="text-xs text-[#E5E7EB]">
+                      This analysis is taking longer than usual. You can safely refresh — your results will continue processing.
+                    </p>
+                  </div>
+                )}
+                {!showTimeoutMessage && (
+                  <p className="text-xs text-[#9AA4B2] mt-3 italic">
+                    Long recordings can take several minutes.
+                  </p>
+                )}
               </div>
             )}
           </div>

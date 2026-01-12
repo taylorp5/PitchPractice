@@ -35,6 +35,14 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# video files
+*.mp4
+Demo/
+Recording*.mp4
+
+
+
+
 
 
 

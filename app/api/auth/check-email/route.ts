@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
+  let normalizedEmail = ''
   try {
     const { email } = await request.json()
 
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Normalize email (lowercase, trim)
-    const normalizedEmail = email.toLowerCase().trim()
+    normalizedEmail = email.toLowerCase().trim()
 
     // Check if email exists in auth.users via user_profiles table
     // Using service role to bypass RLS
@@ -75,7 +76,7 @@ export async function POST(request: NextRequest) {
     // Supabase will still prevent duplicates if email confirmation is disabled
     return NextResponse.json({
       exists: false,
-      email: email ? email.toLowerCase().trim() : '',
+      email: normalizedEmail,
     })
   }
 }

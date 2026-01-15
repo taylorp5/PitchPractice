@@ -53,13 +53,40 @@ export function SignInModal({ isOpen, onClose, runId }: SignInModalProps) {
       const supabase = createClient()
       
       if (isSignUp) {
+        // Check if email already exists before attempting signup
+        const checkEmailResponse = await fetch('/api/auth/check-email', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email }),
+        })
+
+        if (checkEmailResponse.ok) {
+          const { exists } = await checkEmailResponse.json()
+          if (exists) {
+            setError('This email is already registered. Please sign in instead.')
+            setIsLoading(false)
+            return
+          }
+        }
+
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
         })
 
         if (signUpError) {
-          setError(signUpError.message)
+          // Check for duplicate email errors
+          if (
+            signUpError.message.includes('already registered') ||
+            signUpError.message.includes('User already registered') ||
+            signUpError.message.includes('already exists')
+          ) {
+            setError('This email is already registered. Please sign in instead.')
+          } else {
+            setError(signUpError.message)
+          }
           setIsLoading(false)
           return
         }

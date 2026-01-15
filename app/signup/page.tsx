@@ -43,6 +43,29 @@ export default function SignUpPage() {
     setIsLoading(true)
 
     try {
+      // Check if email already exists before attempting signup
+      // This prevents duplicate accounts when email confirmation is enabled
+      const checkEmailResponse = await fetch('/api/auth/check-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      })
+
+      if (checkEmailResponse.ok) {
+        const { exists } = await checkEmailResponse.json()
+        if (exists) {
+          setError('This email is already registered. Please sign in instead.')
+          setIsLoading(false)
+          return
+        }
+      } else {
+        // If check fails, log but continue with signup attempt
+        // Supabase will still prevent duplicates if email confirmation is disabled
+        console.warn('[Signup] Email check failed, proceeding with signup')
+      }
+
       const supabase = createClient()
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email,
@@ -50,7 +73,23 @@ export default function SignUpPage() {
       })
 
       if (signUpError) {
-        setError(signUpError.message)
+        console.error('[Signup] Supabase auth error:', {
+          message: signUpError.message,
+          status: signUpError.status,
+          name: signUpError.name,
+        })
+        // Check for specific error types
+        if (signUpError.message.includes('database') || signUpError.message.includes('Database')) {
+          setError('Database error saving new user. Please contact support if this persists.')
+        } else if (
+          signUpError.message.includes('already registered') ||
+          signUpError.message.includes('User already registered') ||
+          signUpError.message.includes('already exists')
+        ) {
+          setError('This email is already registered. Please sign in instead.')
+        } else {
+          setError(signUpError.message)
+        }
         setIsLoading(false)
         return
       }
@@ -107,8 +146,9 @@ export default function SignUpPage() {
       
       // Use window.location for a full page reload to ensure middleware sees the session
       window.location.href = redirect
-    } catch (err) {
-      setError('An unexpected error occurred')
+    } catch (err: any) {
+      console.error('[Signup] Unexpected error:', err)
+      setError(err?.message || 'An unexpected error occurred. Please try again or contact support.')
       setIsLoading(false)
     }
   }

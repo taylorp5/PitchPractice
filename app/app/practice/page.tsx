@@ -602,6 +602,7 @@ export default function PracticePage() {
 
       // Coach-only: Create run first for checkpointing
       const isCoach = hasCoachAccess(userPlan)
+      let enableCheckpointing = isCoach
       let runId: string | null = null
       if (isCoach) {
         runId = await createRunForCheckpointing()
@@ -611,8 +612,9 @@ export default function PracticePage() {
           chunkChunksRef.current = []
           lastCheckpointTimeRef.current = 0
         } else {
-          setError('Failed to initialize recording. Please try again.')
-          return
+          // Fall back to normal recording if checkpoint run creation fails
+          enableCheckpointing = false
+          setCurrentRunId(null)
         }
       }
 
@@ -624,7 +626,7 @@ export default function PracticePage() {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data)
           // Coach-only: Also track chunks for checkpointing
-          if (isCoach) {
+          if (enableCheckpointing) {
             chunkChunksRef.current.push(event.data)
           }
         }
@@ -669,7 +671,7 @@ export default function PracticePage() {
         }
         
         // Coach-only: Handle final chunk if there's remaining audio
-        if (isCoach && currentRunId && chunkChunksRef.current.length > 0) {
+        if (enableCheckpointing && currentRunId && chunkChunksRef.current.length > 0) {
           const finalChunkIndex = Math.floor(recordingTime / 1800) // Which 30-min segment
           const startMs = lastCheckpointTimeRef.current * 1000
           const endMs = recordingTime * 1000

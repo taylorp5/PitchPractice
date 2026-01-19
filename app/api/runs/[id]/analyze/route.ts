@@ -1376,6 +1376,274 @@ REMEMBER (STRICT ENFORCEMENT):
 VALIDATION: Before including any feedback item, verify that the quote appears verbatim in the transcript.`
 }
 
+async function runFastAnalysis(transcript: string): Promise<FastAnalysisOutput> {
+  const fastTranscript = transcript.slice(0, 1200)
+  const fastPrompt = buildFastPrompt(fastTranscript)
+  const openai = getOpenAIClient()
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'user', content: fastPrompt }],
+    response_format: { type: 'json_object' },
+    temperature: 0.2,
+    max_tokens: 120,
+  })
+
+  const fastText = completion.choices[0]?.message?.content
+  if (!fastText) {
+    throw new Error('Empty response from fast analysis')
+  }
+
+  const parsed = JSON.parse(fastText) as FastAnalysisOutput
+  const rawScore = Number(parsed.overall_score)
+  const boundedScore = Number.isFinite(rawScore)
+    ? Math.max(0, Math.min(100, Math.round(rawScore)))
+    : 0
+  const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : ''
+
+  return {
+    overall_score: boundedScore,
+    summary,
+  }
+}
+
+async function persistFastAnalysisResult(
+  id: string,
+  run: any,
+  fastResult: FastAnalysisOutput
+): Promise<void> {
+  const { error: fastUpdateError } = await getSupabaseAdmin()
+    .from('pitch_runs')
+    .update({
+      initial_score: fastResult.overall_score,
+      initial_summary: fastResult.summary,
+      status: 'fast_analyzed',
+      error_message: null,
+    })
+    .eq('id', id)
+
+  if (fastUpdateError) {
+    const message = fastUpdateError.message || ''
+    if (message.includes('initial_score') || message.includes('initial_summary') || fastUpdateError.code === '42703') {
+      console.warn('[Analyze] initial_score/initial_summary columns missing, storing fast result in analysis_json meta')
+      const existingMeta = run.analysis_json?.meta || {}
+      await getSupabaseAdmin()
+        .from('pitch_runs')
+        .update({
+          analysis_json: {
+            ...(run.analysis_json || {}),
+            meta: {
+              ...existingMeta,
+              initial_score: fastResult.overall_score,
+              initial_summary: fastResult.summary,
+              full_feedback_pending: true,
+              generated_at: new Date().toISOString(),
+            },
+          },
+          status: 'fast_analyzed',
+        })
+        .eq('id', id)
+    } else {
+      throw fastUpdateError
+    }
+  }
+}
+
+async function runFullAnalysis(
+  run: any,
+  criteria: RubricCriterion[],
+  promptRubric: PromptRubricItem[] | null,
+  targetDurationSeconds: number | null,
+  maxDurationSeconds: number | null,
+  audioSeconds: number | null,
+  finalPitchContext: string | null,
+  guidingQuestions: string[],
+  userPlan: 'free' | 'starter' | 'coach' | 'daypass',
+  rubricName: string
+): Promise<AnalysisOutput> {
+  const prompt = buildAnalysisPrompt(
+    run.transcript,
+    criteria,
+    promptRubric,
+    targetDurationSeconds,
+    maxDurationSeconds,
+    audioSeconds,
+    run.words_per_minute,
+    finalPitchContext,
+    guidingQuestions,
+    userPlan,
+    rubricName
+  )
+  console.log('[Analyze] Prompt sizing:', {
+    runId: run.id,
+    transcriptLength: run.transcript?.length || 0,
+    promptLength: prompt.length,
+  })
+
+  const openai = getOpenAIClient()
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: 'You are an expert pitch coach. You provide detailed, actionable feedback that ALWAYS cites specific verbatim quotes from the transcript. You NEVER make generic claims without evidence. If you cannot cite an exact quote (≤120 characters) from the transcript, you must omit that feedback point entirely. Every piece of feedback must be anchored to a specific transcript excerpt. For rubric_scores, ALWAYS include evidence_quotes: if score >= 1, provide 1-2 quotes; if score = 0, use empty array [] and explain in notes. For line_by_line, provide 3-8 items with exact transcript substrings (≤120 characters each).',
+      },
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.7,
+  })
+
+  const responseText = completion.choices[0]?.message?.content
+  if (!responseText) {
+    throw new Error('Empty response from OpenAI')
+  }
+  console.log('[Analyze] OpenAI response size:', {
+    runId: run.id,
+    responseLength: responseText.length,
+  })
+
+  const analysisJson = JSON.parse(responseText) as AnalysisOutput
+
+  if (!analysisJson.summary || !analysisJson.rubric_scores || !analysisJson.line_by_line) {
+    throw new Error('Invalid analysis structure returned from OpenAI')
+  }
+
+  if (guidingQuestions.length > 0 && !analysisJson.question_grading) {
+    console.warn('[Analyze] Guiding questions provided but question_grading missing from response')
+  }
+
+  analysisJson.meta = {
+    plan_at_time: userPlan,
+    generated_at: new Date().toISOString(),
+  }
+
+  if (userPlan === 'coach') {
+    const fillerWordsAnalysis = analyzeFillerWords(run.transcript)
+    const pacingAnalysis = analyzePacing(
+      run.transcript,
+      run.duration_ms,
+      run.words_per_minute || null
+    )
+    const structureAnalysis = analyzeStructure(
+      run.transcript,
+      analysisJson.chunks,
+      analysisJson.rubric_scores
+    )
+    const coachingPlan = generateCoachingPlan(
+      analysisJson,
+      fillerWordsAnalysis.total_count,
+      run.words_per_minute || null
+    )
+
+    analysisJson.premium_insights = {
+      filler_words: fillerWordsAnalysis,
+      pacing: pacingAnalysis,
+      structure: structureAnalysis,
+      coaching_plan: coachingPlan,
+    }
+
+    const premiumContent = generatePremiumContent(
+      analysisJson,
+      fillerWordsAnalysis.total_count,
+      run.words_per_minute || null,
+      pacingAnalysis.segments,
+      structureAnalysis.missing_sections
+    )
+
+    const premiumFiller = analyzePremiumFillerWords(run.transcript)
+    premiumContent.filler = premiumFiller
+    analysisJson.premium = premiumContent
+  } else {
+    analysisJson.premium = null
+  }
+
+  if (userPlan === 'free' || userPlan === 'starter') {
+    const existingQuotes = new Set<string>()
+    analysisJson.line_by_line.forEach(item => {
+      existingQuotes.add(item.quote.toLowerCase().trim())
+    })
+
+    const deliveryIssues = detectFillerWordsAndHesitation(
+      run.transcript,
+      existingQuotes
+    )
+
+    if (deliveryIssues.length > 0) {
+      const maxItems = 12
+      const currentCount = analysisJson.line_by_line.length
+      const availableSlots = Math.max(0, maxItems - currentCount)
+
+      if (availableSlots > 0) {
+        const issuesToAdd = deliveryIssues.slice(0, Math.min(availableSlots, 3))
+        analysisJson.line_by_line = [
+          ...issuesToAdd,
+          ...analysisJson.line_by_line,
+        ]
+      } else {
+        const sortedByPriority = [...analysisJson.line_by_line].sort((a, b) => {
+          const priorityOrder = { high: 3, medium: 2, low: 1 }
+          return priorityOrder[a.priority] - priorityOrder[b.priority]
+        })
+
+        const topDeliveryIssues = deliveryIssues.slice(0, 2)
+        if (topDeliveryIssues.length > 0) {
+          const lowestPriorityItems = sortedByPriority.slice(-2)
+          const lowestPriorityQuotes = new Set(
+            lowestPriorityItems.map(item => item.quote.toLowerCase().trim())
+          )
+
+          analysisJson.line_by_line = analysisJson.line_by_line
+            .filter(item => !lowestPriorityQuotes.has(item.quote.toLowerCase().trim()))
+            .concat(topDeliveryIssues)
+        }
+      }
+    }
+  }
+
+  return analysisJson
+}
+
+async function persistFullAnalysisResult(
+  id: string,
+  analysisJson: AnalysisOutput,
+  userPlan: 'free' | 'starter' | 'coach' | 'daypass'
+): Promise<void> {
+  let updateData: any = {
+    analysis_json: analysisJson,
+    full_feedback: analysisJson,
+    status: 'analyzed',
+    error_message: null,
+  }
+
+  if (userPlan && ['free', 'starter', 'coach', 'daypass'].includes(userPlan)) {
+    updateData.plan_at_time = userPlan
+  }
+
+  const { error: updateError } = await getSupabaseAdmin()
+    .from('pitch_runs')
+    .update(updateData)
+    .eq('id', id)
+
+  if (updateError) {
+    const message = updateError.message || ''
+    if (message.includes('full_feedback') || updateError.code === '42703') {
+      await getSupabaseAdmin()
+        .from('pitch_runs')
+        .update({
+          analysis_json: analysisJson,
+          status: 'analyzed',
+          error_message: null,
+        })
+        .eq('id', id)
+    } else {
+      throw updateError
+    }
+  }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -1389,8 +1657,19 @@ export async function POST(
   const { id } = params
   const mode = request.nextUrl.searchParams.get('mode')?.toLowerCase()
   const isSummaryMode = mode === 'summary'
+  const isFullMode = mode === 'full'
 
   try {
+    if (!isSummaryMode && !isFullMode) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Invalid mode',
+          details: 'mode must be "summary" or "full"',
+        },
+        { status: 400 }
+      )
+    }
 
     // Parse request body for rubric_id (if provided)
     // Note: We'll use the run's rubric_id from the database, but this allows
@@ -1665,324 +1944,89 @@ export async function POST(
     const targetDurationSeconds = rubricJson?.target_duration_seconds ?? rubric.target_duration_seconds ?? null
     const maxDurationSeconds = rubricJson?.max_duration_seconds ?? rubric.max_duration_seconds ?? null
 
-    // --- Fast analysis section (immediate response) ---
-    // Safe async decision: we only await the minimal LLM call here to keep UI responsive.
-    let fastResult: FastAnalysisOutput
+    if (isSummaryMode) {
+      try {
+        const fastStart = Date.now()
+        const fastResult = await runFastAnalysis(run.transcript)
+        timing.analysisMs = Date.now() - fastStart
+
+        const fastUpdateStart = Date.now()
+        await persistFastAnalysisResult(id, run, fastResult)
+        timing.dbWriteMs += Date.now() - fastUpdateStart
+
+        timing.totalMs = Date.now() - startTime
+        console.log('[Analyze] Timing breakdown ms:', {
+          runId: id,
+          fast_analysis_ms: timing.analysisMs,
+          db_write_ms: timing.dbWriteMs,
+          total_ms: timing.totalMs,
+        })
+
+        return NextResponse.json({
+          ok: true,
+          status: 'fast_analyzed',
+          initial_score: fastResult.overall_score,
+          initial_summary: fastResult.summary,
+          has_full_feedback: false,
+        })
+      } catch (error: any) {
+        console.error('[Analyze] Fast analysis error:', error)
+        return NextResponse.json(
+          { error: 'Fast analysis failed', details: error.message },
+          { status: 500 }
+        )
+      }
+    }
+
     try {
-      const fastTranscript = run.transcript.slice(0, 1200)
-      const fastPrompt = buildFastPrompt(fastTranscript)
-      const openai = getOpenAIClient()
-      const fastStart = Date.now()
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: fastPrompt }],
-        response_format: { type: 'json_object' },
-        temperature: 0.2,
-        max_tokens: 120,
-      })
-      const fastMs = Date.now() - fastStart
-      timing.analysisMs = fastMs
+      const fullStart = Date.now()
+      const analysisJson = await runFullAnalysis(
+        run,
+        criteria,
+        promptRubric,
+        targetDurationSeconds,
+        maxDurationSeconds,
+        audioSeconds,
+        finalPitchContext,
+        guidingQuestions,
+        userPlan,
+        rubricName
+      )
+      timing.analysisMs = Date.now() - fullStart
 
-      const fastText = completion.choices[0]?.message?.content
-      if (!fastText) {
-        throw new Error('Empty response from fast analysis')
-      }
+      const updateStart = Date.now()
+      await persistFullAnalysisResult(id, analysisJson, userPlan)
+      timing.dbWriteMs += Date.now() - updateStart
 
-      const parsed = JSON.parse(fastText) as FastAnalysisOutput
-      const rawScore = Number(parsed.overall_score)
-      const boundedScore = Number.isFinite(rawScore)
-        ? Math.max(0, Math.min(100, Math.round(rawScore)))
-        : 0
-      const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : ''
-
-      fastResult = {
-        overall_score: boundedScore,
-        summary,
-      }
-
-      console.log('[Analyze] Fast analysis ms:', {
+      console.log('[Analyze] Full analysis ms:', {
         runId: id,
-        fast_analysis_ms: fastMs,
+        full_analysis_ms: timing.analysisMs,
+        db_write_ms: timing.dbWriteMs,
       })
     } catch (error: any) {
-      console.error('[Analyze] Fast analysis error:', error)
+      console.error('[Analyze] Full analysis error:', error)
+      await getSupabaseAdmin()
+        .from('pitch_runs')
+        .update({
+          status: 'error',
+          error_message: error.message || 'Analysis failed',
+        })
+        .eq('id', id)
       return NextResponse.json(
-        { error: 'Fast analysis failed', details: error.message },
+        { error: 'Full analysis failed', details: error.message },
         { status: 500 }
       )
     }
 
-    // Persist fast result (non-blocking). Safe because UI already has fast response.
-    void (async () => {
-      const fastUpdateStart = Date.now()
-      try {
-        const { error: fastUpdateError } = await getSupabaseAdmin()
-          .from('pitch_runs')
-          .update({
-            initial_score: fastResult.overall_score,
-            initial_summary: fastResult.summary,
-            status: 'fast_analyzed',
-            error_message: null,
-          })
-          .eq('id', id)
-        timing.dbWriteMs += Date.now() - fastUpdateStart
-
-        if (fastUpdateError) {
-          const message = fastUpdateError.message || ''
-          if (message.includes('initial_score') || message.includes('initial_summary') || fastUpdateError.code === '42703') {
-            console.warn('[Analyze] initial_score/initial_summary columns missing, storing fast result in analysis_json meta')
-            const existingMeta = run.analysis_json?.meta || {}
-            await getSupabaseAdmin()
-              .from('pitch_runs')
-              .update({
-                analysis_json: {
-                  ...(run.analysis_json || {}),
-                  meta: {
-                    ...existingMeta,
-                    initial_score: fastResult.overall_score,
-                    initial_summary: fastResult.summary,
-                    full_feedback_pending: true,
-                    generated_at: new Date().toISOString(),
-                  },
-                },
-                status: 'fast_analyzed',
-              })
-              .eq('id', id)
-          } else {
-            throw fastUpdateError
-          }
-        }
-      } catch (error: any) {
-        console.error('[Analyze] Failed to persist fast result:', error)
-      }
-    })()
-
-    // --- Deferred full analysis section (non-blocking) ---
-    // Safe async decision: full analysis is heavy and can run after the response; best-effort in serverless.
-    void (async () => {
-      const fullStart = Date.now()
-      try {
-        const prompt = buildAnalysisPrompt(
-          run.transcript,
-          criteria,
-          promptRubric,
-          targetDurationSeconds,
-          maxDurationSeconds,
-          audioSeconds,
-          run.words_per_minute,
-          finalPitchContext,
-          guidingQuestions,
-          userPlan,
-          rubricName
-        )
-        console.log('[Analyze] Prompt sizing:', {
-          runId: id,
-          transcriptLength: run.transcript?.length || 0,
-          promptLength: prompt.length,
-        })
-
-        const openai = getOpenAIClient()
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert pitch coach. You provide detailed, actionable feedback that ALWAYS cites specific verbatim quotes from the transcript. You NEVER make generic claims without evidence. If you cannot cite an exact quote (≤120 characters) from the transcript, you must omit that feedback point entirely. Every piece of feedback must be anchored to a specific transcript excerpt. For rubric_scores, ALWAYS include evidence_quotes: if score >= 1, provide 1-2 quotes; if score = 0, use empty array [] and explain in notes. For line_by_line, provide 3-8 items with exact transcript substrings (≤120 characters each).',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          response_format: { type: 'json_object' },
-          temperature: 0.7,
-        })
-
-        const responseText = completion.choices[0]?.message?.content
-        if (!responseText) {
-          throw new Error('Empty response from OpenAI')
-        }
-        console.log('[Analyze] OpenAI response size:', {
-          runId: id,
-          responseLength: responseText.length,
-        })
-
-        let analysisJson = JSON.parse(responseText) as AnalysisOutput
-
-        if (!analysisJson.summary || !analysisJson.rubric_scores || !analysisJson.line_by_line) {
-          throw new Error('Invalid analysis structure returned from OpenAI')
-        }
-
-        if (guidingQuestions.length > 0 && !analysisJson.question_grading) {
-          console.warn('[Analyze] Guiding questions provided but question_grading missing from response')
-        }
-
-        analysisJson.meta = {
-          plan_at_time: userPlan,
-          generated_at: new Date().toISOString(),
-        }
-
-        if (userPlan === 'coach') {
-          const fillerWordsAnalysis = analyzeFillerWords(run.transcript)
-          const pacingAnalysis = analyzePacing(
-            run.transcript,
-            run.duration_ms,
-            run.words_per_minute || null
-          )
-          const structureAnalysis = analyzeStructure(
-            run.transcript,
-            analysisJson.chunks,
-            analysisJson.rubric_scores
-          )
-          const coachingPlan = generateCoachingPlan(
-            analysisJson,
-            fillerWordsAnalysis.total_count,
-            run.words_per_minute || null
-          )
-
-          analysisJson.premium_insights = {
-            filler_words: fillerWordsAnalysis,
-            pacing: pacingAnalysis,
-            structure: structureAnalysis,
-            coaching_plan: coachingPlan,
-          }
-
-          const premiumContent = generatePremiumContent(
-            analysisJson,
-            fillerWordsAnalysis.total_count,
-            run.words_per_minute || null,
-            pacingAnalysis.segments,
-            structureAnalysis.missing_sections
-          )
-
-          const premiumFiller = analyzePremiumFillerWords(run.transcript)
-          premiumContent.filler = premiumFiller
-          analysisJson.premium = premiumContent
-        } else {
-          analysisJson.premium = null
-        }
-
-        if (userPlan === 'free' || userPlan === 'starter') {
-          const existingQuotes = new Set<string>()
-          analysisJson.line_by_line.forEach(item => {
-            existingQuotes.add(item.quote.toLowerCase().trim())
-          })
-
-          const deliveryIssues = detectFillerWordsAndHesitation(
-            run.transcript,
-            existingQuotes
-          )
-
-          if (deliveryIssues.length > 0) {
-            const maxItems = 12
-            const currentCount = analysisJson.line_by_line.length
-            const availableSlots = Math.max(0, maxItems - currentCount)
-
-            if (availableSlots > 0) {
-              const issuesToAdd = deliveryIssues.slice(0, Math.min(availableSlots, 3))
-              analysisJson.line_by_line = [
-                ...issuesToAdd,
-                ...analysisJson.line_by_line,
-              ]
-            } else {
-              const sortedByPriority = [...analysisJson.line_by_line].sort((a, b) => {
-                const priorityOrder = { high: 3, medium: 2, low: 1 }
-                return priorityOrder[a.priority] - priorityOrder[b.priority]
-              })
-
-              const topDeliveryIssues = deliveryIssues.slice(0, 2)
-              if (topDeliveryIssues.length > 0) {
-                const lowestPriorityItems = sortedByPriority.slice(-2)
-                const lowestPriorityQuotes = new Set(
-                  lowestPriorityItems.map(item => item.quote.toLowerCase().trim())
-                )
-
-                analysisJson.line_by_line = analysisJson.line_by_line
-                  .filter(item => !lowestPriorityQuotes.has(item.quote.toLowerCase().trim()))
-                  .concat(topDeliveryIssues)
-              }
-            }
-          }
-        }
-
-        let updateData: any = {
-          analysis_json: analysisJson,
-          full_feedback: analysisJson,
-          status: 'analyzed',
-          error_message: null,
-        }
-
-        if (userPlan && ['free', 'starter', 'coach', 'daypass'].includes(userPlan)) {
-          updateData.plan_at_time = userPlan
-        }
-
-        const updateStart = Date.now()
-        const { error: updateError } = await getSupabaseAdmin()
-          .from('pitch_runs')
-          .update(updateData)
-          .eq('id', id)
-        const dbWriteMs = Date.now() - updateStart
-
-        if (updateError) {
-          const message = updateError.message || ''
-          if (message.includes('full_feedback') || updateError.code === '42703') {
-            await getSupabaseAdmin()
-              .from('pitch_runs')
-              .update({
-                analysis_json: analysisJson,
-                status: 'analyzed',
-                error_message: null,
-              })
-              .eq('id', id)
-          } else {
-            throw updateError
-          }
-        }
-
-        console.log('[Analyze] Full analysis ms:', {
-          runId: id,
-          full_analysis_ms: Date.now() - fullStart,
-          db_write_ms: dbWriteMs,
-        })
-      } catch (error: any) {
-        console.error('[Analyze] Full analysis error:', error)
-        await getSupabaseAdmin()
-          .from('pitch_runs')
-          .update({
-            status: 'error',
-            error_message: error.message || 'Analysis failed',
-          })
-          .eq('id', id)
-      }
-    })()
-
     timing.totalMs = Date.now() - startTime
     console.log('[Analyze] Timing breakdown ms:', {
       runId: id,
-      fast_analysis_ms: timing.analysisMs,
+      full_analysis_ms: timing.analysisMs,
       db_write_ms: timing.dbWriteMs,
       total_ms: timing.totalMs,
     })
 
-    if (isSummaryMode) {
-      return NextResponse.json({
-        ok: true,
-        status: 'fast_analyzed',
-        initial_score: fastResult.overall_score,
-        initial_summary: fastResult.summary,
-        has_full_feedback: false,
-      })
-    }
-
-    return NextResponse.json({
-      ok: true,
-      runId: id,
-      initial_score: fastResult.overall_score,
-      initial_summary: fastResult.summary,
-      status: 'fast_analyzed',
-      full_feedback_pending: true,
-      success: true,
-    })
+    return NextResponse.json({ status: 'analyzed' })
   } catch (error: any) {
     const totalMs = Date.now() - startTime
     console.error('Unexpected error:', error)

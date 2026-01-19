@@ -1245,6 +1245,11 @@ FEEDBACK SUMMARY
     lastAudioBlobRef.current = { blob: audioBlob, fileName }
 
     try {
+      const uploadStart = Date.now()
+      let createRunMs = 0
+      let signMs = 0
+      let storageUploadMs = 0
+      let completeMs = 0
       const sessionId = getSessionId()
       if (!selectedRubricId) {
         setError('Please wait for rubrics to load')
@@ -1267,6 +1272,7 @@ FEEDBACK SUMMARY
       }
 
       // Step 1: Create run record (metadata only)
+      const createStart = Date.now()
       const createResponse = await fetch('/api/runs/create', {
         method: 'POST',
         headers: {
@@ -1279,6 +1285,7 @@ FEEDBACK SUMMARY
           duration_ms: uploadDurationMs,
         }),
       })
+      createRunMs = Date.now() - createStart
 
       if (!createResponse.ok) {
         const errorData = await createResponse.json().catch(() => ({}))
@@ -1296,6 +1303,7 @@ FEEDBACK SUMMARY
       }
 
       // Step 2: Get signed upload path
+      const signStart = Date.now()
       const signResponse = await fetch('/api/uploads/sign', {
         method: 'POST',
         headers: {
@@ -1306,6 +1314,7 @@ FEEDBACK SUMMARY
           mimeType: audioBlob.type || 'audio/webm',
         }),
       })
+      signMs = Date.now() - signStart
 
       if (!signResponse.ok) {
         const errorData = await signResponse.json().catch(() => ({}))
@@ -1324,12 +1333,14 @@ FEEDBACK SUMMARY
 
       // Step 3: Upload directly to Supabase Storage
       const supabase = createClient()
+      const storageStart = Date.now()
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from(bucketName)
         .upload(storagePath, audioBlob, {
           contentType: audioBlob.type || 'audio/webm',
           upsert: false,
         })
+      storageUploadMs = Date.now() - storageStart
 
       if (uploadError) {
         console.error('[Try] Storage upload failed:', uploadError)
@@ -1341,6 +1352,7 @@ FEEDBACK SUMMARY
       }
 
       // Step 4: Notify upload completion
+      const completeStart = Date.now()
       const completeResponse = await fetch('/api/uploads/complete', {
         method: 'POST',
         headers: {
@@ -1351,11 +1363,23 @@ FEEDBACK SUMMARY
           storagePath,
         }),
       })
+      completeMs = Date.now() - completeStart
 
       if (!completeResponse.ok) {
         const errorData = await completeResponse.json().catch(() => ({}))
         console.warn('[Try] Upload complete notification failed:', errorData)
         // Don't throw - upload succeeded, just notification failed
+      }
+
+      if (DEBUG) {
+        console.log('[Try] Upload timing:', {
+          runId,
+          upload_ms: storageUploadMs,
+          create_run_ms: createRunMs,
+          sign_ms: signMs,
+          complete_ms: completeMs,
+          total_ms: Date.now() - uploadStart,
+        })
       }
 
       const completeData = await completeResponse.json().catch(() => ({ ok: true }))

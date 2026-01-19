@@ -46,8 +46,13 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const startTime = Date.now()
-  const transcribeStart = Date.now()
   const { id } = params
+  const timing = {
+    downloadMs: 0,
+    openAiMs: 0,
+    dbWriteMs: 0,
+    totalMs: 0,
+  }
 
   try {
     // Fetch the run to get current status, transcript length, and duration_ms BEFORE doing any work
@@ -105,10 +110,7 @@ export async function POST(
     const { data: audioData, error: downloadError } = await getSupabaseAdmin().storage
       .from('pitchpractice-audio')
       .download(run.audio_path)
-    console.log('[Transcribe] Storage download duration ms:', {
-      runId: id,
-      durationMs: Date.now() - downloadStart,
-    })
+    timing.downloadMs = Date.now() - downloadStart
 
     if (downloadError || !audioData) {
       console.error('[Transcribe] Storage download failed:', {
@@ -207,7 +209,7 @@ export async function POST(
       }
     }
 
-    // Transcribe with OpenAI
+    // Transcribe with OpenAI Whisper
     let transcript: string
     try {
       // Create File object with correct name and type
@@ -216,25 +218,22 @@ export async function POST(
         type: mimeType 
       })
 
-    console.log('[Transcribe] Calling OpenAI transcription:', {
+      console.log('[Transcribe] Calling OpenAI Whisper:', {
         runId: id,
         fileName,
         fileSize: audioFile.size,
         fileType: audioFile.type,
-      model: 'gpt-4o-mini-transcribe',
+        model: 'whisper-1',
       })
 
       const openai = getOpenAIClient()
       const openAiStart = Date.now()
       const transcription = await openai.audio.transcriptions.create({
         file: audioFile,
-      model: 'gpt-4o-mini-transcribe',
+        model: 'whisper-1',
         language: 'en',
       })
-      console.log('[Transcribe] OpenAI duration ms:', {
-        runId: id,
-        durationMs: Date.now() - openAiStart,
-      })
+      timing.openAiMs = Date.now() - openAiStart
 
       transcript = transcription.text
 
@@ -320,6 +319,7 @@ export async function POST(
     // Update the run with transcript and timing data
     // IMPORTANT: Only update status to 'transcribed' AFTER successful transcription is saved
     // Use service role client (getSupabaseAdmin()) which bypasses RLS
+    const dbWriteStart = Date.now()
     const { data: updatedRun, error: updateError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .update({
@@ -334,6 +334,7 @@ export async function POST(
       .eq('id', id)
       .select('*')
       .single()
+    timing.dbWriteMs = Date.now() - dbWriteStart
 
     if (updateError) {
       const errorMessage = (updateError as any)?.message || 'Unknown database error'
@@ -443,6 +444,7 @@ export async function POST(
 
     const statusAfter = 'transcribed'
     const duration = Date.now() - startTime
+    timing.totalMs = duration
     
     console.log("UPDATED ROW TRANSCRIPT PREVIEW", updatedRun.transcript?.slice(0, 80))
     
@@ -457,11 +459,14 @@ export async function POST(
       savedStatus: updatedRun.status,
       savedTranscriptLen: updatedRun.transcript?.length,
     })
-
-    console.log('[Transcribe] Total duration ms:', {
+    console.log('[Transcribe] Timing breakdown ms:', {
       runId: id,
-      durationMs: Date.now() - transcribeStart,
+      download_ms: timing.downloadMs,
+      transcription_ms: timing.openAiMs,
+      db_write_ms: timing.dbWriteMs,
+      total_ms: timing.totalMs,
     })
+
     return NextResponse.json({
       ok: true,
       run: updatedRun,
@@ -476,12 +481,20 @@ export async function POST(
     })
   } catch (error: any) {
     const duration = Date.now() - startTime
+    timing.totalMs = duration
     console.error('[Transcribe] Unexpected error:', {
       runId: id,
       error,
       message: error?.message,
       stack: error?.stack,
       durationMs: duration,
+    })
+    console.log('[Transcribe] Timing breakdown ms (error):', {
+      runId: id,
+      download_ms: timing.downloadMs,
+      transcription_ms: timing.openAiMs,
+      db_write_ms: timing.dbWriteMs,
+      total_ms: timing.totalMs,
     })
 
     // Try to update status to error
@@ -497,10 +510,6 @@ export async function POST(
       console.error('[Transcribe] Failed to update error status:', updateErr)
     }
 
-    console.log('[Transcribe] Total duration ms:', {
-      runId: id,
-      durationMs: Date.now() - transcribeStart,
-    })
     return NextResponse.json(
       { 
         ok: false,
@@ -512,6 +521,5 @@ export async function POST(
       { status: 500 }
     )
   }
-
 }
 

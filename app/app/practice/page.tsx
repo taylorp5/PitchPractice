@@ -942,6 +942,11 @@ export default function PracticePage() {
     lastAudioBlobRef.current = { blob: audioBlob, fileName }
 
     try {
+      const uploadStart = Date.now()
+      let createRunMs = 0
+      let signMs = 0
+      let storageUploadMs = 0
+      let completeMs = 0
       const sessionId = getSessionId()
       if (!hasValidRubric) {
         setError('Please select a rubric')
@@ -1012,6 +1017,7 @@ export default function PracticePage() {
         createBody.rubric_json = JSON.stringify(rubricJson)
       }
 
+      const createStart = Date.now()
       const createResponse = await fetch('/api/runs/create', {
         method: 'POST',
         headers: {
@@ -1019,6 +1025,7 @@ export default function PracticePage() {
         },
         body: JSON.stringify(createBody),
       })
+      createRunMs = Date.now() - createStart
 
       if (!createResponse.ok) {
         const errorData = await createResponse.json().catch(() => ({}))
@@ -1047,6 +1054,7 @@ export default function PracticePage() {
         }
 
         // Upload full file first (main audio_path)
+        const signStart = Date.now()
         const signResponse = await fetch('/api/uploads/sign', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1055,6 +1063,7 @@ export default function PracticePage() {
             mimeType: audioBlob.type || 'audio/webm',
           }),
         })
+        signMs = Date.now() - signStart
 
         if (!signResponse.ok) {
           throw new Error('Failed to get upload path')
@@ -1068,18 +1077,21 @@ export default function PracticePage() {
         const mainStoragePath = signData.storagePath
 
         // Upload main file
+        const storageStart = Date.now()
         const { error: uploadError } = await supabase.storage
           .from(bucketName)
           .upload(mainStoragePath, audioBlob, {
             contentType: audioBlob.type || 'audio/webm',
             upsert: false,
           })
+        storageUploadMs = Date.now() - storageStart
 
         if (uploadError) {
           throw new Error(`Upload failed: ${uploadError.message}`)
         }
 
         // Notify main upload complete
+        const completeStart = Date.now()
         await fetch('/api/uploads/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1088,6 +1100,7 @@ export default function PracticePage() {
             storagePath: mainStoragePath,
           }),
         })
+        completeMs = Date.now() - completeStart
 
         // Create chunk records for each 30-minute segment
         // Note: For now, chunks reference the main file with time ranges
@@ -1114,6 +1127,18 @@ export default function PracticePage() {
             console.log(`[Practice] Chunk ${i} record created:`, { startMs, endMs, references: mainStoragePath })
           }
         }
+
+        if (DEBUG) {
+          console.log('[Practice] Upload timing (chunked):', {
+            runId,
+            upload_ms: storageUploadMs,
+            create_run_ms: createRunMs,
+            sign_ms: signMs,
+            complete_ms: completeMs,
+            total_ms: Date.now() - uploadStart,
+            numChunks,
+          })
+        }
       } else {
         // Single upload (Starter/Free or Coach < 30 min)
         const signResponse = await fetch('/api/uploads/sign', {
@@ -1137,18 +1162,21 @@ export default function PracticePage() {
         const { storagePath } = signData
 
         // Upload directly to Supabase Storage
+        const storageStart = Date.now()
         const { error: uploadError } = await supabase.storage
           .from(bucketName)
           .upload(storagePath, audioBlob, {
             contentType: audioBlob.type || 'audio/webm',
             upsert: false,
           })
+        storageUploadMs = Date.now() - storageStart
 
         if (uploadError) {
           throw new Error(`Upload failed: ${uploadError.message}`)
         }
 
         // Notify upload complete
+        const completeStart = Date.now()
         const completeResponse = await fetch('/api/uploads/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1157,9 +1185,21 @@ export default function PracticePage() {
             storagePath,
           }),
         })
+        completeMs = Date.now() - completeStart
 
         if (!completeResponse.ok) {
           console.warn('[Practice] Upload complete notification failed')
+        }
+
+        if (DEBUG) {
+          console.log('[Practice] Upload timing:', {
+            runId,
+            upload_ms: storageUploadMs,
+            create_run_ms: createRunMs,
+            sign_ms: signMs,
+            complete_ms: completeMs,
+            total_ms: Date.now() - uploadStart,
+          })
         }
       }
 

@@ -13,6 +13,8 @@ export const dynamic = 'force-dynamic'
  */
 export async function POST(request: NextRequest) {
   try {
+    const startTime = Date.now()
+    let dbWriteMs = 0
     // Get authenticated user (optional - try page doesn't require auth)
     let userId: string | null = null
     try {
@@ -67,6 +69,7 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      const writeStart = Date.now()
       const { data: chunk, error: chunkError } = await getSupabaseAdmin()
         .from('run_chunks')
         .upsert({
@@ -81,6 +84,7 @@ export async function POST(request: NextRequest) {
         })
         .select('*')
         .single()
+      dbWriteMs = Date.now() - writeStart
 
       if (chunkError) {
         console.error('[Upload Complete] Failed to create chunk record:', chunkError)
@@ -90,12 +94,18 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      console.log('[Upload Complete] Timing ms:', {
+        runId,
+        db_write_ms: dbWriteMs,
+        total_ms: Date.now() - startTime,
+      })
       return NextResponse.json({
         ok: true,
         chunk,
       })
     } else {
       // Single file upload - update pitch_runs.audio_path
+      const writeStart = Date.now()
       const { data: updatedRun, error: updateError } = await getSupabaseAdmin()
         .from('pitch_runs')
         .update({
@@ -105,6 +115,7 @@ export async function POST(request: NextRequest) {
         .eq('id', runId)
         .select('*')
         .single()
+      dbWriteMs = Date.now() - writeStart
 
       if (updateError) {
         console.error('[Upload Complete] Failed to update run:', updateError)
@@ -114,6 +125,11 @@ export async function POST(request: NextRequest) {
         )
       }
 
+      console.log('[Upload Complete] Timing ms:', {
+        runId,
+        db_write_ms: dbWriteMs,
+        total_ms: Date.now() - startTime,
+      })
       return NextResponse.json({
         ok: true,
         run: updatedRun,

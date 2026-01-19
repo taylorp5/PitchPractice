@@ -138,14 +138,22 @@ export async function POST(request: NextRequest) {
     }
     // Handle rubric_id (existing behavior)
     else if (finalRubricId) {
-      // Fetch rubric name for storing in title if needed
-      const { data: rubricData } = await getSupabaseAdmin()
+      // Validate rubric exists before using it
+      const { data: rubricData, error: rubricFetchError } = await getSupabaseAdmin()
         .from('rubrics')
-        .select('name, title')
+        .select('id, name, title')
         .eq('id', finalRubricId)
-        .single()
-      
-      if (rubricData) {
+        .maybeSingle()
+
+      if (rubricFetchError || !rubricData) {
+        if (DEBUG) {
+          console.warn('[Create Run] Invalid rubric_id provided, falling back:', {
+            rubricId: finalRubricId,
+            error: rubricFetchError?.message,
+          })
+        }
+        finalRubricId = null
+      } else {
         rubricName = rubricData.name || rubricData.title || null
       }
     }

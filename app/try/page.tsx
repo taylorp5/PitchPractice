@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client-auth'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { CheckCircle2, Clock, Scissors, Mic, Upload, Play, Pause, Square, ChevronDown, ChevronUp, AlertCircle, X, Download } from 'lucide-react'
+import { CheckCircle2, Clock, Scissors, Mic, Upload, Play, Pause, Square, AlertCircle, X, Download } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 const DEBUG = true
@@ -135,17 +135,12 @@ export default function TryPage() {
   const [selectedRubricId, setSelectedRubricId] = useState<string>('')
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([])
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('')
-  const [currentTrackInfo, setCurrentTrackInfo] = useState<any>(null)
-  const [chunkInfo, setChunkInfo] = useState<{ count: number; sizes: number[]; totalSize: number } | null>(null)
   const [isTestingMic, setIsTestingMic] = useState(false)
   const [isSilent, setIsSilent] = useState(false)
   const [hasMicPermission, setHasMicPermission] = useState(false)
   // Store last audio blob for retry
   const lastAudioBlobRef = useRef<{ blob: Blob; fileName: string } | null>(null)
-  const [lastError, setLastError] = useState<any>(null)
   const [feedback, setFeedback] = useState<Feedback | null>(null)
-  const [lastFeedbackResponse, setLastFeedbackResponse] = useState<any>(null)
-  const [isDebugExpanded, setIsDebugExpanded] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -423,8 +418,6 @@ export default function TryPage() {
         readyState: track.readyState,
         settings: track.getSettings(),
       }))
-      setCurrentTrackInfo(trackInfo[0] || null)
-      
       if (DEBUG) {
         console.log('[Try] Mic test stream tracks:', trackInfo)
       }
@@ -913,14 +906,9 @@ FEEDBACK SUMMARY
         readyState: track.readyState,
         settings: track.getSettings(),
       }))
-      setCurrentTrackInfo(trackInfo[0] || null)
-      
       if (DEBUG) {
         console.log('[Try] Recording stream tracks:', trackInfo)
       }
-      
-      // Store track info for debug display
-      ;(window as any).__currentTrackInfo = trackInfo
       
       // Setup mic level meter (await to ensure audioContext is resumed)
       await setupMicLevelMeter(stream)
@@ -980,12 +968,6 @@ FEEDBACK SUMMARY
           })
         }
 
-        setChunkInfo({
-          count: audioChunksRef.current.length,
-          sizes: chunkSizesRef.current,
-          totalSize,
-        })
-        
         // Validate recording is not empty (client-side check)
         if (totalSize < 5 * 1024) { // Less than 5KB
           setError('Recording was empty—check mic permissions.')
@@ -1521,14 +1503,6 @@ FEEDBACK SUMMARY
           console.warn('[Try] Could not parse feedback response as JSON:', responseText.substring(0, 200))
         }
       }
-
-      setLastFeedbackResponse({
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        data: responseData,
-        responseText: responseText.substring(0, 1000),
-      })
 
       if (!response.ok) {
         const errorData = responseData || {}
@@ -2392,203 +2366,6 @@ FEEDBACK SUMMARY
               </>
             )}
 
-            {/* Debug panel (collapsible) */}
-            {DEBUG && (
-              <Card className="p-3 bg-[rgba(255,255,255,0.03)] border-[rgba(255,255,255,0.08)] mt-6">
-                <button
-                  onClick={() => setIsDebugExpanded(!isDebugExpanded)}
-                  className="w-full flex items-center justify-between text-left"
-                >
-                  <h4 className="text-xs font-medium text-[#9AA4B2]">Advanced / Debug</h4>
-                  {isDebugExpanded ? (
-                    <ChevronUp className="h-4 w-4 text-[#9AA4B2]" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4 text-[#9AA4B2]" />
-                  )}
-                </button>
-                {isDebugExpanded && (
-                  <div className="space-y-2 text-xs text-[#9AA4B2] mt-4">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>Active Run ID:</div>
-                    <div className="font-mono">{run?.id || 'none'}</div>
-                    <div>Run Status:</div>
-                    <div>{run?.status || 'none'}</div>
-                    <div>Run ID:</div>
-                    <div className="font-mono">{run?.id || 'none'}</div>
-                    <div>UI Status:</div>
-                    <div>{isRecording ? 'recording' : isUploading ? 'uploading' : isTranscribing ? 'transcribing' : isGettingFeedback ? 'getting feedback' : run ? 'ready' : 'idle'}</div>
-                    <div>Is Recording:</div>
-                    <div>{isRecording ? 'yes' : 'no'}</div>
-                    <div>Is Uploading:</div>
-                    <div>{isUploading ? 'yes' : 'no'}</div>
-                    <div>Is Transcribing:</div>
-                    <div>{isTranscribing ? 'yes' : 'no'}</div>
-                    <div>Is Getting Feedback:</div>
-                    <div>{isGettingFeedback ? 'yes' : 'no'}</div>
-                    <div>Duration (ms) Local:</div>
-                    <div>{durationMs !== null ? `${durationMs}ms (${(durationMs / 1000).toFixed(2)}s)` : '—'}</div>
-                    <div>Duration (ms) DB:</div>
-                    <div>{(run && run.duration_ms !== null) ? `${run.duration_ms}ms (${(run.duration_ms / 1000).toFixed(2)}s)` : '—'}</div>
-                    <div>Words (computed):</div>
-                    <div>{run?.transcript ? run.transcript.trim().split(/\s+/).filter(w => w.length > 0).length : '—'}</div>
-                    <div>WPM (computed):</div>
-                    <div>{(() => {
-                      if (!run) return '—'
-                      const durationMsForWPM = run.duration_ms !== null ? run.duration_ms : (run.audio_seconds ? Math.round(run.audio_seconds * 1000) : null)
-                      const wpm = calculateWPM(run.transcript || null, durationMsForWPM)
-                      return wpm !== null ? `${wpm} (${getWPMInterpretation(wpm)})` : '—'
-                    })()}</div>
-                    <div>Feedback Status:</div>
-                    <div>{run?.analysis_json ? 'ready' : isGettingFeedback ? 'generating' : run?.transcript ? 'pending' : 'none'}</div>
-                    <div>Transcription Start:</div>
-                    <div>{isTranscribing ? 'in progress' : run?.transcript ? 'completed' : 'not started'}</div>
-                    <div>Transcription End:</div>
-                    <div>{run?.transcript ? 'completed' : 'not completed'}</div>
-                    <div>Has Stream:</div>
-                    <div>{streamRef.current ? 'yes' : 'no'}</div>
-                    <div>Meter Visible:</div>
-                    <div>{(isRecording || isTestingMic) ? 'yes' : 'no'}</div>
-                    <div>Has Mic Permission:</div>
-                    <div>{hasMicPermission ? 'yes' : 'no'}</div>
-                    <div>Selected Rubric:</div>
-                    <div>{selectedRubricId || 'none'}</div>
-                  </div>
-                  {lastError && (
-                    <div className="mt-2 pt-2 border-t border-[rgba(255,255,255,0.08)]">
-                      <div className="font-semibold text-[#E6E8EB] mb-1">Last Error:</div>
-                      <div className="text-xs space-y-1">
-                        <div>Status: {lastError.status} {lastError.statusText}</div>
-                        <div>Error: {lastError.error}</div>
-                        {lastError.details && <div>Details: {lastError.details}</div>}
-                        {lastError.fix && <div>Fix: {lastError.fix}</div>}
-                        {lastError.code && <div>Code: {lastError.code}</div>}
-                      </div>
-                      <pre className="mt-2 p-2 bg-[rgba(255,255,255,0.03)] rounded text-xs overflow-auto max-h-40 font-mono text-[#E6E8EB] border border-[rgba(255,255,255,0.08)]">
-                        {JSON.stringify(lastError.fullResponse || lastError, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                  {lastFeedbackResponse && (
-                    <div className="mt-2 pt-2 border-t border-[rgba(17,24,39,0.10)]">
-                      <div className="font-semibold text-[#E6E8EB] mb-1">Last Feedback Response:</div>
-                      <div className="text-xs space-y-1">
-                        <div>Status: {lastFeedbackResponse.status} {lastFeedbackResponse.statusText}</div>
-                        <div>OK: {lastFeedbackResponse.ok ? 'yes' : 'no'}</div>
-                        {lastFeedbackResponse.data && (
-                          <>
-                            <div>Has analysis: {lastFeedbackResponse.data.analysis ? 'yes' : 'no'}</div>
-                            <div>Has run.analysis_json: {lastFeedbackResponse.data.run?.analysis_json ? 'yes' : 'no'}</div>
-                            <div>Response keys: {Object.keys(lastFeedbackResponse.data || {}).join(', ')}</div>
-                          </>
-                        )}
-                      </div>
-                      <pre className="mt-2 p-2 bg-[rgba(255,255,255,0.03)] rounded text-xs overflow-auto max-h-40 font-mono text-[#E6E8EB] border border-[rgba(255,255,255,0.08)]">
-                        {JSON.stringify(lastFeedbackResponse.data || lastFeedbackResponse, null, 2)}
-                      </pre>
-                    </div>
-                  )}
-                  {currentTrackInfo && (
-                    <div className="mt-2 pt-2 border-t border-[rgba(17,24,39,0.10)]">
-                      <div className="font-semibold text-[#E6E8EB] mb-1">Current Track:</div>
-                      <div>Label: {currentTrackInfo.label || 'unknown'}</div>
-                      <div>ReadyState: {currentTrackInfo.readyState}</div>
-                      <div>Enabled: {currentTrackInfo.enabled ? 'yes' : 'no'}</div>
-                      <div>Device ID: {currentTrackInfo.settings?.deviceId?.substring(0, 20) || 'none'}</div>
-                    </div>
-                  )}
-                  {chunkInfo && (
-                    <div className="mt-2 pt-2 border-t border-[rgba(17,24,39,0.10)]">
-                      <div className="font-semibold text-[#111827] mb-1">Last Recording:</div>
-                      <div>Chunks: {chunkInfo.count}</div>
-                      <div>Total Size: {(chunkInfo.totalSize / 1024).toFixed(2)} KB</div>
-                      <div>Chunk Sizes: {chunkInfo.sizes.map(s => `${(s / 1024).toFixed(1)}KB`).join(', ')}</div>
-                    </div>
-                  )}
-                  <div className="mt-2 pt-2 border-t border-[rgba(17,24,39,0.10)]">
-                    <div className="font-semibold text-[#111827] mb-1">Available Devices:</div>
-                    {audioDevices.map((device, idx) => (
-                      <div key={device.deviceId} className="text-xs">
-                        {idx + 1}. {device.label || device.deviceId.substring(0, 20)}
-                      </div>
-                    ))}
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        setLastError(null)
-                        const sessionId = getSessionId()
-                        const formData = new FormData()
-                        // Create a dummy audio blob for testing (8KB minimum)
-                        const dummyData = new Uint8Array(8 * 1024).fill(0)
-                        const dummyBlob = new Blob([dummyData], { type: 'audio/webm' })
-                        formData.append('audio', dummyBlob, 'test.webm')
-                        formData.append('session_id', sessionId)
-                        if (selectedRubricId) {
-                          formData.append('rubric_id', selectedRubricId)
-                        }
-                        formData.append('title', 'Test Run')
-                        formData.append('duration_ms', '6000') // 6 seconds
-
-                        const response = await fetch('/api/runs/create', {
-                          method: 'POST',
-                          body: formData,
-                        })
-
-                        // Capture full response
-                        let responseText = ''
-                        let data: any = null
-                        
-                        try {
-                          responseText = await response.text()
-                          if (responseText) {
-                            data = JSON.parse(responseText)
-                          }
-                        } catch (e) {
-                          console.warn('[Try] Could not parse response as JSON:', responseText)
-                        }
-
-                        if (!response.ok) {
-                          const fullError = {
-                            status: response.status,
-                            statusText: response.statusText,
-                            error: data?.error || 'Unknown error',
-                            details: data?.details || null,
-                            fix: data?.fix || null,
-                            code: data?.code || null,
-                            fullResponse: data,
-                            responseText,
-                          }
-                          setLastError(fullError)
-                          console.error('[Try] Test run creation failed:', fullError)
-                          alert(`Test failed: ${data?.error || 'Unknown error'}\n\nSee debug panel for full error details.`)
-                        } else {
-                          console.log('[Try] Test run creation response:', data)
-                          alert(`Test succeeded!\n\nRun ID: ${data.runId || data.run?.id}\nStatus: ${data.run?.status}\n\nSee console for full response.`)
-                          if (data.runId) {
-                            setRun({ ...data.run, audio_url: null })
-                          }
-                        }
-                      } catch (err: any) {
-                        const fullError = {
-                          error: err.message || 'Unknown error',
-                          details: err.stack || null,
-                          fullResponse: err,
-                        }
-                        setLastError(fullError)
-                        console.error('[Try] Test run creation failed:', err)
-                        alert(`Error: ${err.message}\n\nSee debug panel for full error details.`)
-                      }
-                    }}
-                    className="mt-2"
-                  >
-                    Test run creation
-                  </Button>
-                  </div>
-                )}
-              </Card>
-            )}
           </div>
         </div>
       </div>

@@ -433,7 +433,7 @@ export default function PracticePage() {
       } else if (selectedRubricSource === 'custom' && customRubric) {
         if (customRubricId) {
           formData.append('rubric_id', customRubricId)
-        } else if (rubrics.length > 0) {
+        } else if (rubrics.length > 0 && rubrics[0]?.id) {
           formData.append('rubric_id', rubrics[0].id)
         }
         const contextToUse = customRubric.context || pitchContext
@@ -441,7 +441,9 @@ export default function PracticePage() {
           formData.append('pitch_context', contextToUse.trim())
         }
       } else if (rubricMode === 'default') {
-        formData.append('rubric_id', selectedRubricId)
+        if (selectedRubricId) {
+          formData.append('rubric_id', selectedRubricId)
+        }
         if (pitchContext.trim()) {
           formData.append('pitch_context', pitchContext.trim())
         }

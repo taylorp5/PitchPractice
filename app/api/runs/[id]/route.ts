@@ -10,11 +10,26 @@ export async function GET(
 ) {
   try {
     const { id } = params
+    const supabase = await createClient()
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json(
+        { ok: false, error: 'Unauthorized' },
+        {
+          status: 401,
+          headers: {
+            'Cache-Control': 'no-store',
+          },
+        }
+      )
+    }
 
     const { data: run, error } = await getSupabaseAdmin()
       .from('pitch_runs')
       .select('id, status, audio_path, transcript, analysis_json, error_message, created_at, session_id, title, audio_seconds, duration_ms, word_count, words_per_minute, rubric_id, rubric_snapshot_json, rubrics(*)')
       .eq('id', id)
+      .eq('user_id', user.id)
       .single()
 
     if (error) {

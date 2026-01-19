@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client-auth'
+import { getSessionId } from '@/lib/session'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 
@@ -71,25 +72,19 @@ export default function SignInPage() {
       const runIdMatch = redirect.match(/\/runs\/([^\/]+)/)
       const runId = runIdMatch ? runIdMatch[1] : null
       
-      // Claim run if redirect matches /runs/<runId>
-      if (runId) {
-        try {
-          const claimResponse = await fetch('/api/runs/claim', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ runId }),
+      // Claim any anonymous runs for this browser session
+      try {
+        const sessionId = getSessionId()
+        if (sessionId) {
+          const { error: claimError } = await supabase.rpc('claim_pitch_runs', {
+            p_session_id: sessionId,
           })
-
-          if (!claimResponse.ok) {
-            console.error('Failed to claim run')
-            // Don't block the flow if claim fails
+          if (claimError) {
+            console.error('Failed to claim runs:', claimError)
           }
-        } catch (err) {
-          console.error('Error claiming run:', err)
-          // Don't block the flow if claim fails
         }
+      } catch (err) {
+        console.error('Error claiming runs:', err)
       }
       
       // Use window.location for a full page reload to ensure middleware sees the session

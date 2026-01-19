@@ -1614,6 +1614,9 @@ FEEDBACK SUMMARY
       }
       return
     }
+    if (!isAuthenticated) {
+      return
+    }
 
     try {
       const response = await fetch(`/api/runs/${runId}`, {

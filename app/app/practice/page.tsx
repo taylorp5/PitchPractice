@@ -1153,10 +1153,13 @@ export default function PracticePage() {
         }
       }
 
-      // Fetch updated run
-      const runResponse = await fetch(`/api/runs/${runId}`, { cache: 'no-store' })
-      const runData = await runResponse.json()
-      const updatedRun = runData.run || createData.run
+      // Fetch updated run only when authenticated
+      let updatedRun = createData.run
+      if (isAuthenticated) {
+        const runResponse = await fetch(`/api/runs/${runId}`, { cache: 'no-store' })
+        const runData = await runResponse.json()
+        updatedRun = runData.run || createData.run
+      }
 
       if (uploadDurationMs !== null && uploadDurationMs > 0) {
         updatedRun.duration_ms = uploadDurationMs
@@ -1373,6 +1376,9 @@ export default function PracticePage() {
   const fetchRun = async (runId: string) => {
     // Guard: Never fetch if runId is falsy or the string "undefined"
     if (!runId || runId === 'undefined') {
+      return
+    }
+    if (!isAuthenticated) {
       return
     }
 

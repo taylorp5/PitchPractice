@@ -146,6 +146,13 @@ export default function HomePage() {
   const fetchRecentRuns = async () => {
     setIsLoadingRuns(true)
     try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setRecentRuns([])
+        return
+      }
+
       const response = await fetch('/api/runs', {
         cache: 'no-store',
       })

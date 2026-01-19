@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client-auth'
+import { getSessionId } from '@/lib/session'
 import { Button } from './ui/Button'
 import { X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -114,25 +115,19 @@ export function SignInModal({ isOpen, onClose, runId }: SignInModalProps) {
         return
       }
 
-      // Claim run if runId exists
-      if (runId) {
-        try {
-          const response = await fetch('/api/runs/claim', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ runId }),
+      // Claim any anonymous runs for this browser session
+      try {
+        const sessionId = getSessionId()
+        if (sessionId) {
+          const { error: claimError } = await supabase.rpc('claim_pitch_runs', {
+            p_session_id: sessionId,
           })
-
-          if (!response.ok) {
-            console.error('Failed to claim run')
-            // Don't block the flow if claim fails
+          if (claimError) {
+            console.error('Failed to claim runs:', claimError)
           }
-        } catch (err) {
-          console.error('Error claiming run:', err)
-          // Don't block the flow if claim fails
         }
+      } catch (err) {
+        console.error('Error claiming runs:', err)
       }
 
       // Close modal and redirect to run detail page

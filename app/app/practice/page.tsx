@@ -129,6 +129,7 @@ export default function PracticePage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [showSignInModal, setShowSignInModal] = useState(false)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
 
   // Check authentication status
   useEffect(() => {
@@ -137,9 +138,11 @@ export default function PracticePage() {
         const supabase = createClient()
         const { data: { session } } = await supabase.auth.getSession()
         setIsAuthenticated(!!session)
+        setUserEmail(session?.user?.email ?? null)
       } catch (err) {
         console.error('Failed to check auth:', err)
         setIsAuthenticated(false)
+        setUserEmail(null)
       } finally {
         setIsCheckingAuth(false)
       }
@@ -151,6 +154,7 @@ export default function PracticePage() {
     const supabase = createClient()
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session)
+      setUserEmail(session?.user?.email ?? null)
     })
 
     return () => {
@@ -1279,7 +1283,7 @@ export default function PracticePage() {
         requestBody.pitch_context = pitchContext.trim() || null
       }
 
-      const response = await fetch(`/api/runs/${runId}/analyze`, {
+      const response = await fetch(`/api/runs/${runId}/analyze?mode=summary`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1537,6 +1541,11 @@ export default function PracticePage() {
   const canEdit = canEditRubrics(userPlan);
   const canViewPremium = canViewPremiumInsights(userPlan);
   const isStarterOrAbove = userPlan !== 'free';
+  const devEmailList = (process.env.NEXT_PUBLIC_DEV_EMAILS || '')
+    .split(',')
+    .map(email => email.trim().toLowerCase())
+    .filter(Boolean)
+  const isDeveloper = userEmail ? devEmailList.includes(userEmail.toLowerCase()) : false;
   
   // Plan-based recording duration limits (in seconds)
   const getMaxRecordingSeconds = (): number => {
@@ -2374,7 +2383,7 @@ export default function PracticePage() {
             />
 
             {/* Helper text */}
-            {userPlan === 'coach' && (
+            {process.env.NODE_ENV === 'development' && userPlan === 'coach' && isDeveloper && (
               <p className="text-xs text-[#9CA3AF] italic mt-2">
                 Coach: Upload long recordings for testing (dev).
               </p>

@@ -1499,7 +1499,7 @@ FEEDBACK SUMMARY
         console.log('[Try] Starting feedback generation:', { runId, rubricId: selectedRubricId })
       }
 
-      const response = await fetch(`/api/runs/${runId}/analyze`, {
+      const response = await fetch(`/api/runs/${runId}/analyze?mode=summary`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

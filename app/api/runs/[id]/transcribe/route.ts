@@ -46,6 +46,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const startTime = Date.now()
+  const transcribeStart = Date.now()
   const { id } = params
 
   try {
@@ -100,9 +101,14 @@ export async function POST(
       bucket: 'pitchpractice-audio',
     })
 
+    const downloadStart = Date.now()
     const { data: audioData, error: downloadError } = await getSupabaseAdmin().storage
       .from('pitchpractice-audio')
       .download(run.audio_path)
+    console.log('[Transcribe] Storage download duration ms:', {
+      runId: id,
+      durationMs: Date.now() - downloadStart,
+    })
 
     if (downloadError || !audioData) {
       console.error('[Transcribe] Storage download failed:', {
@@ -219,10 +225,15 @@ export async function POST(
       })
 
       const openai = getOpenAIClient()
-    const transcription = await openai.audio.transcriptions.create({
+      const openAiStart = Date.now()
+      const transcription = await openai.audio.transcriptions.create({
         file: audioFile,
       model: 'gpt-4o-mini-transcribe',
         language: 'en',
+      })
+      console.log('[Transcribe] OpenAI duration ms:', {
+        runId: id,
+        durationMs: Date.now() - openAiStart,
       })
 
       transcript = transcription.text
@@ -447,6 +458,10 @@ export async function POST(
       savedTranscriptLen: updatedRun.transcript?.length,
     })
 
+    console.log('[Transcribe] Total duration ms:', {
+      runId: id,
+      durationMs: Date.now() - transcribeStart,
+    })
     return NextResponse.json({
       ok: true,
       run: updatedRun,
@@ -482,6 +497,10 @@ export async function POST(
       console.error('[Transcribe] Failed to update error status:', updateErr)
     }
 
+    console.log('[Transcribe] Total duration ms:', {
+      runId: id,
+      durationMs: Date.now() - transcribeStart,
+    })
     return NextResponse.json(
       { 
         ok: false,
@@ -493,5 +512,6 @@ export async function POST(
       { status: 500 }
     )
   }
+
 }
 

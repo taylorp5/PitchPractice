@@ -145,7 +145,6 @@ interface SummaryAnalysisOutput {
     top_improvements: string[]
   }
   rubric_scores: Array<{
-    criterion_label: string
     score: number
     notes: string
     evidence_quotes: string[]
@@ -1163,13 +1162,12 @@ RESPONSE FORMAT (JSON ONLY):
 {
   "summary": {
     "overall_score": <number 0-10>,
-    "overall_notes": "<2-4 sentences>",
+    "overall_notes": "<1-2 sentences>",
     "top_strengths": ["<max 2 items>"],
     "top_improvements": ["<max 2 items>"]
   },
   "rubric_scores": [
     {
-      "criterion_label": "<string>",
       "score": <number 0-10>,
       "notes": "<short notes>",
       "evidence_quotes": ["<max 1 verbatim quote <=120 chars>"]
@@ -1702,6 +1700,8 @@ export async function POST(
     const targetDurationSeconds = rubricJson?.target_duration_seconds ?? rubric.target_duration_seconds ?? null
     const maxDurationSeconds = rubricJson?.max_duration_seconds ?? rubric.max_duration_seconds ?? null
     
+    const analysisStartTime = Date.now()
+
     if (isSummaryMode) {
       const summaryPrompt = buildSummaryPrompt(
         run.transcript,
@@ -1713,13 +1713,20 @@ export async function POST(
       let summaryJson: SummaryAnalysisOutput
       try {
         const openai = getOpenAIClient()
+        const openAiStart = Date.now()
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
           messages: [
             { role: 'user', content: summaryPrompt },
           ],
           response_format: { type: 'json_object' },
-          temperature: 0.4,
+          temperature: 0.2,
+          max_tokens: 800,
+        })
+        const openAiDurationMs = Date.now() - openAiStart
+        console.log('[Analyze Summary] OpenAI duration ms:', {
+          runId: id,
+          durationMs: openAiDurationMs,
         })
 
         const responseText = completion.choices[0]?.message?.content
@@ -1742,7 +1749,6 @@ export async function POST(
           rubric_scores: (parsed.rubric_scores || [])
             .slice(0, 5)
             .map(item => ({
-              criterion_label: item.criterion_label,
               score: item.score,
               notes: item.notes,
               evidence_quotes: (item.evidence_quotes || []).slice(0, 1),
@@ -1774,12 +1780,17 @@ export async function POST(
         summaryUpdateData.plan_at_time = userPlan
       }
 
+      const updateStart = Date.now()
       const { data: summaryRun, error: summaryUpdateError } = await getSupabaseAdmin()
         .from('pitch_runs')
         .update(summaryUpdateData)
         .eq('id', id)
         .select('*')
         .single()
+      console.log('[Analyze Summary] DB update duration ms:', {
+        runId: id,
+        durationMs: Date.now() - updateStart,
+      })
 
       if (summaryUpdateError) {
         console.error('Database update error (summary):', summaryUpdateError)
@@ -1816,11 +1827,16 @@ export async function POST(
         )
       }
 
+      console.log('[Analyze Summary] Total duration ms:', {
+        runId: id,
+        durationMs: Date.now() - analysisStartTime,
+      })
       return NextResponse.json({
         ok: true,
         run: summaryRun,
         success: true,
         analysis: summaryJson,
+        summary_mode: true,
       })
     }
 
@@ -1842,6 +1858,7 @@ export async function POST(
     let analysisJson: AnalysisOutput
     try {
       const openai = getOpenAIClient()
+      const openAiStart = Date.now()
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [
@@ -1856,6 +1873,10 @@ export async function POST(
         ],
         response_format: { type: 'json_object' },
         temperature: 0.7,
+      })
+      console.log('[Analyze Full] OpenAI duration ms:', {
+        runId: id,
+        durationMs: Date.now() - openAiStart,
       })
 
       const responseText = completion.choices[0]?.message?.content
@@ -2010,12 +2031,17 @@ export async function POST(
       updateData.plan_at_time = userPlan
     }
 
+    const updateStart = Date.now()
     const { data: updatedRun, error: updateError } = await getSupabaseAdmin()
       .from('pitch_runs')
       .update(updateData)
       .eq('id', id)
       .select('*')
       .single()
+    console.log('[Analyze Full] DB update duration ms:', {
+      runId: id,
+      durationMs: Date.now() - updateStart,
+    })
 
     if (updateError) {
       console.error('Database update error:', updateError)
@@ -2059,11 +2085,16 @@ export async function POST(
       )
     }
 
+    console.log('[Analyze Full] Total duration ms:', {
+      runId: id,
+      durationMs: Date.now() - analysisStartTime,
+    })
     return NextResponse.json({
       ok: true,
       run: updatedRun,
       success: true,
       analysis: analysisJson,
+      summary_mode: false,
     })
   } catch (error: any) {
     console.error('Unexpected error:', error)

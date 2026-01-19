@@ -785,7 +785,7 @@ export default function RunPage() {
     setError(null)
     setLastAction(null)
 
-    const url = `/api/runs/${routeRunId}/analyze?mode=summary`
+    const url = `/api/runs/${routeRunId}/analyze?mode=full`
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -1284,7 +1284,7 @@ export default function RunPage() {
                           if (!routeRunId) return
                           setIsGettingFeedback(true)
                           setError(null)
-                          const url = `/api/runs/${routeRunId}/analyze`
+                          const url = `/api/runs/${routeRunId}/analyze?mode=full`
                           try {
                             const res = await fetch(url, {
                               method: 'POST',

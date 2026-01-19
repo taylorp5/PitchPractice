@@ -27,7 +27,7 @@ export async function GET(
 
     const { data: run, error } = await getSupabaseAdmin()
       .from('pitch_runs')
-      .select('id, status, audio_path, transcript, analysis_json, analysis_summary_json, error_message, created_at, session_id, title, audio_seconds, duration_ms, word_count, words_per_minute, rubric_id, rubric_snapshot_json, rubrics(*)')
+      .select('id, status, audio_path, transcript, analysis_json, full_feedback, initial_score, initial_summary, analysis_summary_json, error_message, created_at, session_id, title, audio_seconds, duration_ms, word_count, words_per_minute, rubric_id, rubric_snapshot_json, rubrics(*)')
       .eq('id', id)
       .eq('user_id', user.id)
       .single()

@@ -1387,6 +1387,8 @@ export async function POST(
     totalMs: 0,
   }
   const { id } = params
+  const mode = request.nextUrl.searchParams.get('mode')?.toLowerCase()
+  const isSummaryMode = mode === 'summary'
 
   try {
 
@@ -1961,6 +1963,16 @@ export async function POST(
       db_write_ms: timing.dbWriteMs,
       total_ms: timing.totalMs,
     })
+
+    if (isSummaryMode) {
+      return NextResponse.json({
+        ok: true,
+        status: 'fast_analyzed',
+        initial_score: fastResult.overall_score,
+        initial_summary: fastResult.summary,
+        has_full_feedback: false,
+      })
+    }
 
     return NextResponse.json({
       ok: true,

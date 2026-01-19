@@ -21,7 +21,10 @@ export interface PitchRun {
   transcript: string | null
   analysis_json: any
   analysis_summary_json?: any
-  status: 'uploaded' | 'transcribed' | 'analyzed' | 'error'
+  full_feedback?: any
+  initial_score?: number | null
+  initial_summary?: string | null
+  status: 'uploaded' | 'transcribed' | 'fast_analyzed' | 'analyzed' | 'error'
   error_message: string | null
   rubric_id: string
   rubrics?: Rubric | null

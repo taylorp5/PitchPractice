@@ -42,6 +42,9 @@ interface Run {
   status: string
   transcript: string | null
   analysis_json: any
+  full_feedback?: any
+  initial_score?: number | null
+  initial_summary?: string | null
   audio_url: string | null
   audio_seconds: number | null
   duration_ms: number | null
@@ -120,6 +123,7 @@ export default function TryPage() {
   const [run, setRun] = useState<Run | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isGettingFeedback, setIsGettingFeedback] = useState(false) // UI shows "Get feedback" / "Generating feedback..."
+  const [isFullFeedbackLoading, setIsFullFeedbackLoading] = useState(false)
   const [expandedChunks, setExpandedChunks] = useState<Set<number>>(new Set())
   const [pinnedSentenceIdx, setPinnedSentenceIdx] = useState<number | null>(null)
   const [highlightedCriterion, setHighlightedCriterion] = useState<string | null>(null)
@@ -1481,6 +1485,20 @@ FEEDBACK SUMMARY
     }
   }
 
+  const buildFastFeedback = (initialScore?: number | null, initialSummary?: string | null) => {
+    const score = typeof initialScore === 'number' ? initialScore / 10 : null
+    return {
+      summary: {
+        overall_score: score ?? 0,
+        overall_notes: initialSummary || '',
+        top_strengths: [],
+        top_improvements: [],
+      },
+      rubric_scores: [],
+      line_by_line: [],
+    }
+  }
+
   // Get feedback (analysis)
   const getFeedback = async (runId: string) => {
     if (!runId) {
@@ -1547,6 +1565,13 @@ FEEDBACK SUMMARY
         throw new Error(`${errorMsg}${details}${fieldsChecked}`)
       }
 
+      if (responseData?.status === 'fast_analyzed') {
+        setFeedback(buildFastFeedback(responseData.initial_score, responseData.initial_summary))
+        setIsFullFeedbackLoading(true)
+        setIsGettingFeedback(false)
+        return
+      }
+
       // Update run state immediately from response
       if (responseData?.ok && responseData?.run) {
         setRun({ ...responseData.run, audio_url: run?.audio_url || null })
@@ -1565,6 +1590,7 @@ FEEDBACK SUMMARY
       // Store feedback immediately from response
       if (normalizedAnalysis) {
         setFeedback(normalizedAnalysis)
+        setIsFullFeedbackLoading(false)
         if (DEBUG) {
           console.log('[Try] Feedback stored from normalized analysis:', {
             runId,
@@ -1597,9 +1623,11 @@ FEEDBACK SUMMARY
       }
 
       setIsGettingFeedback(false)
+      setIsFullFeedbackLoading(false)
     } catch (err: any) {
       setError(err.message || 'Feedback generation failed')
       setIsGettingFeedback(false)
+      setIsFullFeedbackLoading(false)
     }
   }
 
@@ -1630,10 +1658,14 @@ FEEDBACK SUMMARY
         setRun(data.run)
         setAudioUrl(data.run.audio_url)
         
-        // Normalize analysis shape: resp.analysis ?? resp.run?.analysis_json ?? null
-        const normalizedAnalysis = data.analysis ?? data.run?.analysis_json ?? null
-        if (normalizedAnalysis) {
-          setFeedback(normalizedAnalysis)
+        const fullFeedback = data.run?.full_feedback || data.run?.analysis_json || null
+        const hasFullFeedback = !!(fullFeedback?.line_by_line && fullFeedback.line_by_line.length > 0)
+        if (hasFullFeedback) {
+          setFeedback(fullFeedback)
+          setIsFullFeedbackLoading(false)
+        } else if (data.run?.initial_score !== null || data.run?.initial_summary) {
+          setFeedback(buildFastFeedback(data.run?.initial_score, data.run?.initial_summary))
+          setIsFullFeedbackLoading(true)
         } else {
           // Clear feedback if run doesn't have it
           setFeedback(null)
@@ -1647,7 +1679,7 @@ FEEDBACK SUMMARY
 
   // Poll for run updates during transcription/feedback generation
   useEffect(() => {
-    if (!run?.id || (!isTranscribing && !isGettingFeedback)) return
+    if (!run?.id || (!isTranscribing && !isGettingFeedback && !isFullFeedbackLoading)) return
 
     const runId = run.id // Capture run.id to avoid stale closure
     const interval = setInterval(() => {
@@ -1657,7 +1689,7 @@ FEEDBACK SUMMARY
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [run?.id, isTranscribing, isGettingFeedback])
+  }, [run?.id, isTranscribing, isGettingFeedback, isFullFeedbackLoading])
 
   // Handle drag and drop
   const handleDrop = (e: React.DragEvent) => {
@@ -2082,7 +2114,7 @@ FEEDBACK SUMMARY
                     )}
 
                     {/* Step-based Progress UI */}
-                    {(isUploading || isTranscribing || isGettingFeedback) && (
+                    {(isUploading || isTranscribing || isGettingFeedback || isFullFeedbackLoading) && (
                       <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
                         <div className="space-y-3">
                           <div className="flex items-center gap-2">
@@ -2117,10 +2149,12 @@ FEEDBACK SUMMARY
                             )}
                           </div>
                           <div className="flex items-center gap-2">
-                            {isGettingFeedback ? (
+                            {(isGettingFeedback || isFullFeedbackLoading) ? (
                               <>
                                 <LoadingSpinner className="h-4 w-4 text-[#F59E0B]" />
-                                <span className="text-sm font-medium text-[#E6E8EB]">Analyzing…</span>
+                                <span className="text-sm font-medium text-[#E6E8EB]">
+                                  {isFullFeedbackLoading ? 'Generating full feedback…' : 'Analyzing…'}
+                                </span>
                               </>
                             ) : (isUploading || isTranscribing) ? (
                               <>

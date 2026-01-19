@@ -32,6 +32,9 @@ interface Run {
   status: string
   transcript: string | null
   analysis_json: any
+  full_feedback?: any
+  initial_score?: number | null
+  initial_summary?: string | null
   audio_url: string | null
   audio_seconds: number | null
   duration_ms: number | null
@@ -65,6 +68,7 @@ export default function PracticePage() {
   const [run, setRun] = useState<Run | null>(null)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [isGettingFeedback, setIsGettingFeedback] = useState(false)
+  const [isFullFeedbackLoading, setIsFullFeedbackLoading] = useState(false)
   const [analysisStage, setAnalysisStage] = useState<AnalysisStage>('idle')
   const [analysisStartTime, setAnalysisStartTime] = useState<number | null>(null)
   const [showTimeoutMessage, setShowTimeoutMessage] = useState(false)
@@ -1266,6 +1270,20 @@ export default function PracticePage() {
     }
   }
 
+  const buildFastFeedback = (initialScore?: number | null, initialSummary?: string | null) => {
+    const score = typeof initialScore === 'number' ? initialScore / 10 : null
+    return {
+      summary: {
+        overall_score: score ?? 0,
+        overall_notes: initialSummary || '',
+        top_strengths: [],
+        top_improvements: [],
+      },
+      rubric_scores: [],
+      line_by_line: [],
+    }
+  }
+
   // Get feedback (analysis)
   const getFeedback = async (runId: string) => {
     if (!runId) {
@@ -1345,6 +1363,18 @@ export default function PracticePage() {
         throw new Error(errorData.error || errorData.message || 'Feedback generation failed')
       }
 
+      if (responseData?.status === 'fast_analyzed') {
+        setFeedback(buildFastFeedback(responseData.initial_score, responseData.initial_summary))
+        setIsFullFeedbackLoading(true)
+        setIsGettingFeedback(false)
+        setFeedbackTimer(0)
+        if (feedbackTimerRef.current) {
+          clearInterval(feedbackTimerRef.current)
+          feedbackTimerRef.current = null
+        }
+        return
+      }
+
       if (responseData?.ok && responseData?.run) {
         setRun({ ...responseData.run, audio_url: run?.audio_url || null })
       }
@@ -1358,6 +1388,7 @@ export default function PracticePage() {
       }
 
       setIsGettingFeedback(false)
+      setIsFullFeedbackLoading(false)
       setFeedbackTimer(0)
       if (feedbackTimerRef.current) {
         clearInterval(feedbackTimerRef.current)
@@ -1366,6 +1397,7 @@ export default function PracticePage() {
     } catch (err: any) {
       setError(err.message || 'Feedback generation failed')
       setIsGettingFeedback(false)
+      setIsFullFeedbackLoading(false)
       setFeedbackTimer(0)
       if (feedbackTimerRef.current) {
         clearInterval(feedbackTimerRef.current)
@@ -1402,16 +1434,17 @@ export default function PracticePage() {
     
     const status = runData.status
     const hasTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
-    const hasSummary = !!(runData.analysis_json?.summary)
+    const fullFeedback = runData.full_feedback || runData.analysis_json
+    const hasFullFeedback = !!(fullFeedback?.line_by_line && fullFeedback.line_by_line.length > 0)
     
     // Error state
     if (status === 'error') return 'error'
     
-    // Complete when we have transcript + summary (don't wait for premium insights)
-    if (hasTranscript && hasSummary) return 'complete'
+    // Complete when full feedback exists and status is analyzed
+    if (status === 'analyzed' && hasFullFeedback) return 'complete'
     
-    // Analyzing state
-    if (status === 'analyzing' || (hasTranscript && !hasSummary)) return 'analyzing'
+    // Analyzing state (includes fast analysis)
+    if (status === 'analyzing' || status === 'fast_analyzed' || (hasTranscript && !hasFullFeedback)) return 'analyzing'
     
     // Transcribing state
     if (status === 'transcribing' || status === 'transcribed') return 'transcribing'
@@ -1462,9 +1495,15 @@ export default function PracticePage() {
         
         setRun(runData)
         setAudioUrl(runData.audio_url)
-        
-        if (runData.analysis_json) {
-          setFeedback(runData.analysis_json)
+
+        const fullFeedback = runData.full_feedback || runData.analysis_json
+        const hasFullFeedback = !!(fullFeedback?.line_by_line && fullFeedback.line_by_line.length > 0)
+        if (hasFullFeedback) {
+          setFeedback(fullFeedback)
+          setIsFullFeedbackLoading(false)
+        } else if (runData.initial_score !== null || runData.initial_summary) {
+          setFeedback(buildFastFeedback(runData.initial_score, runData.initial_summary))
+          setIsFullFeedbackLoading(true)
         } else {
           setFeedback(null)
         }
@@ -1496,21 +1535,21 @@ export default function PracticePage() {
   const MAX_ANALYSIS_WAIT_MS = 60_000
   
   useEffect(() => {
-    if (!run?.id || (!isTranscribing && !isGettingFeedback)) return
+    if (!run?.id || (!isTranscribing && !isGettingFeedback && !isFullFeedbackLoading)) return
 
     const runId = run.id
-    const hasTranscript = !!(run.transcript && run.transcript.trim().length > 0)
-    const hasSummary = !!(run.analysis_json?.summary)
+    const fullFeedback = run.full_feedback || run.analysis_json
+    const hasFullFeedback = !!(fullFeedback?.line_by_line && fullFeedback.line_by_line.length > 0)
     
-    // Stop polling when we have transcript + summary (complete)
-    const hasCompleteData = hasTranscript && hasSummary
+    // Stop polling when full feedback is ready
+    const hasCompleteData = run.status === 'analyzed' && hasFullFeedback
     
     // Determine if we should poll based on stage
     const shouldPoll = analysisStage !== 'idle' && 
                        analysisStage !== 'complete' && 
                        analysisStage !== 'error' &&
                        !hasCompleteData &&
-                       (isTranscribing || isGettingFeedback)
+                       (isTranscribing || isGettingFeedback || isFullFeedbackLoading)
 
     if (!shouldPoll) {
       return
@@ -1529,7 +1568,7 @@ export default function PracticePage() {
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [run?.id, run?.transcript, run?.analysis_json, isTranscribing, isGettingFeedback, analysisStage, analysisStartTime])
+  }, [run?.id, run?.transcript, run?.analysis_json, run?.full_feedback, isTranscribing, isGettingFeedback, isFullFeedbackLoading, analysisStage, analysisStartTime])
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -2468,7 +2507,7 @@ export default function PracticePage() {
 
             {/* Status Messages */}
             {/* Step-based Progress UI */}
-            {(isUploading || isTranscribing || isGettingFeedback) && (
+            {(isUploading || isTranscribing || isGettingFeedback || isFullFeedbackLoading) && (
               <div className="p-4 bg-[#151A23] rounded-lg border border-[#22283A]">
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
@@ -2503,7 +2542,7 @@ export default function PracticePage() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {isGettingFeedback ? (
+                    {(isGettingFeedback || isFullFeedbackLoading) ? (
                       <>
                         <LoadingSpinner className="h-4 w-4 text-[#F59E0B]" />
                         <span className="text-sm font-medium text-[#E6E8EB]">
@@ -2513,12 +2552,12 @@ export default function PracticePage() {
                               if (analysisStage === 'transcribing') {
                                 return 'Transcribing your recording…'
                               } else if (analysisStage === 'analyzing') {
-                                return 'Analyzing clarity and structure…'
+                                return isFullFeedbackLoading ? 'Generating full feedback…' : 'Analyzing clarity and structure…'
                               } else if (run?.analysis_json?.summary && !run?.analysis_json?.premium_insights) {
                                 return 'Generating premium insights…'
                               }
                             }
-                            return 'Analyzing…'
+                            return isFullFeedbackLoading ? 'Generating full feedback…' : 'Analyzing…'
                           })()}
                         </span>
                       </>

@@ -201,7 +201,7 @@ export async function POST(
       }
     }
 
-    // Transcribe with OpenAI Whisper
+    // Transcribe with OpenAI
     let transcript: string
     try {
       // Create File object with correct name and type
@@ -210,18 +210,18 @@ export async function POST(
         type: mimeType 
       })
 
-      console.log('[Transcribe] Calling OpenAI Whisper:', {
+    console.log('[Transcribe] Calling OpenAI transcription:', {
         runId: id,
         fileName,
         fileSize: audioFile.size,
         fileType: audioFile.type,
-        model: 'whisper-1',
+      model: 'gpt-4o-mini-transcribe',
       })
 
       const openai = getOpenAIClient()
-      const transcription = await openai.audio.transcriptions.create({
+    const transcription = await openai.audio.transcriptions.create({
         file: audioFile,
-        model: 'whisper-1',
+      model: 'gpt-4o-mini-transcribe',
         language: 'en',
       })
 

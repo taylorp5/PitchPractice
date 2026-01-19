@@ -43,6 +43,7 @@ interface Run {
   duration_ms: number | null
   transcript: string | null
   analysis_json: any
+  analysis_summary_json?: any
   status: string
   error_message: string | null
   audio_url: string | null
@@ -332,7 +333,7 @@ export default function RunPage() {
     
     const status = runData.status
     const hasTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
-    const hasSummary = !!(runData.analysis_json?.summary)
+    const hasSummary = !!(runData.analysis_json?.summary || runData.analysis_summary_json?.summary)
     
     // Error state
     if (status === 'error') return 'error'
@@ -376,12 +377,15 @@ export default function RunPage() {
       // Normalize response shape: handle both { run, analysis } and { run } formats
       const normalizedRun = responseData.ok && responseData.run ? responseData.run : responseData
       const normalizedAnalysis = responseData.analysis ?? responseData.run?.analysis_json ?? normalizedRun?.analysis_json ?? null
+      const normalizedSummary = responseData.analysis_summary_json ?? responseData.run?.analysis_summary_json ?? normalizedRun?.analysis_summary_json ?? null
       const normalizedTranscript = responseData.transcript ?? responseData.run?.transcript ?? normalizedRun?.transcript ?? null
+      const resolvedAnalysis = normalizedAnalysis ?? normalizedSummary ?? null
       
       // Merge analysis into run if it's at top level
       const runData: Run | null = normalizedRun ? {
         ...normalizedRun,
-        analysis_json: normalizedAnalysis ?? normalizedRun.analysis_json ?? null,
+        analysis_json: resolvedAnalysis ?? normalizedRun.analysis_json ?? null,
+        analysis_summary_json: normalizedSummary ?? normalizedRun.analysis_summary_json ?? null,
         transcript: normalizedTranscript ?? normalizedRun.transcript ?? null,
       } : null
 
@@ -781,7 +785,7 @@ export default function RunPage() {
     setError(null)
     setLastAction(null)
 
-    const url = `/api/runs/${routeRunId}/analyze`
+    const url = `/api/runs/${routeRunId}/analyze?mode=summary`
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -808,11 +812,14 @@ export default function RunPage() {
       // Normalize response shape: handle both { run, analysis } and { run } formats
       const normalizedRun = responseData.ok && responseData.run ? responseData.run : responseData
       const normalizedAnalysis = responseData.analysis ?? responseData.run?.analysis_json ?? normalizedRun?.analysis_json ?? null
+      const normalizedSummary = responseData.analysis_summary_json ?? responseData.run?.analysis_summary_json ?? normalizedRun?.analysis_summary_json ?? null
+      const resolvedAnalysis = normalizedAnalysis ?? normalizedSummary ?? null
       
       if (normalizedRun) {
         const runData: Run = {
           ...normalizedRun,
-          analysis_json: normalizedAnalysis ?? normalizedRun.analysis_json ?? null,
+          analysis_json: resolvedAnalysis ?? normalizedRun.analysis_json ?? null,
+          analysis_summary_json: normalizedSummary ?? normalizedRun.analysis_summary_json ?? null,
         }
         
         // Use priority-based update
@@ -1299,10 +1306,13 @@ export default function RunPage() {
                             const responseData = await res.json()
                             const normalizedRun = responseData.ok && responseData.run ? responseData.run : responseData
                             const normalizedAnalysis = responseData.analysis ?? responseData.run?.analysis_json ?? normalizedRun?.analysis_json ?? null
+                            const normalizedSummary = responseData.analysis_summary_json ?? responseData.run?.analysis_summary_json ?? normalizedRun?.analysis_summary_json ?? null
+                            const resolvedAnalysis = normalizedAnalysis ?? normalizedSummary ?? null
                             if (normalizedRun) {
                               const runData: Run = {
                                 ...normalizedRun,
-                                analysis_json: normalizedAnalysis ?? normalizedRun.analysis_json ?? null,
+                                analysis_json: resolvedAnalysis ?? normalizedRun.analysis_json ?? null,
+                                analysis_summary_json: normalizedSummary ?? normalizedRun.analysis_summary_json ?? null,
                               }
                               const currentRun = runRef.current
                               const currentPriority = getStatusPriority(currentRun?.status)

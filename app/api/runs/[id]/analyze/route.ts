@@ -137,6 +137,21 @@ interface AnalysisOutput {
   } | null
 }
 
+interface SummaryAnalysisOutput {
+  summary: {
+    overall_score: number
+    overall_notes: string
+    top_strengths: string[]
+    top_improvements: string[]
+  }
+  rubric_scores: Array<{
+    criterion_label: string
+    score: number
+    notes: string
+    evidence_quotes: string[]
+  }>
+}
+
 interface PromptRubricItem {
   id: string
   label: string
@@ -1118,6 +1133,59 @@ function generatePremiumContent(
   }
 }
 
+function buildSummaryPrompt(
+  transcript: string,
+  criteria: RubricCriterion[],
+  promptRubric: PromptRubricItem[] | null,
+  rubricName: string | null = null
+): string {
+  const rubricItems: PromptRubricItem[] = promptRubric || criteria.map((c, i) => ({
+    id: `criterion_${i}`,
+    label: c.name,
+    weight: 1.0,
+    optional: false,
+  }))
+
+  const criteriaList = rubricItems
+    .map((item, i) => `${i + 1}. ${item.label}`)
+    .join('\n')
+
+  return `You are an expert pitch coach. Produce a concise JSON summary ONLY.
+
+RUBRIC: ${rubricName || 'General'}
+CRITERIA:
+${criteriaList}
+
+TRANSCRIPT:
+${transcript}
+
+RESPONSE FORMAT (JSON ONLY):
+{
+  "summary": {
+    "overall_score": <number 0-10>,
+    "overall_notes": "<2-4 sentences>",
+    "top_strengths": ["<max 2 items>"],
+    "top_improvements": ["<max 2 items>"]
+  },
+  "rubric_scores": [
+    {
+      "criterion_label": "<string>",
+      "score": <number 0-10>,
+      "notes": "<short notes>",
+      "evidence_quotes": ["<max 1 verbatim quote <=120 chars>"]
+    }
+    // max 5 items
+  ]
+}
+
+RULES:
+- Use ONLY the transcript as evidence; quotes must be exact substrings (<=120 chars).
+- If you cannot cite a quote, use evidence_quotes: [] and explain in notes.
+- Return at most 5 rubric_scores (pick the most important criteria).
+- top_strengths and top_improvements must have at most 2 items each.
+- Do NOT include any additional fields.`
+}
+
 function buildAnalysisPrompt(
   transcript: string,
   criteria: RubricCriterion[],
@@ -1359,6 +1427,8 @@ export async function POST(
 ) {
   try {
     const { id } = params
+    const mode = request.nextUrl.searchParams.get('mode')?.toLowerCase()
+    const isSummaryMode = mode === 'summary'
 
     // Parse request body for rubric_id (if provided)
     // Note: We'll use the run's rubric_id from the database, but this allows
@@ -1632,6 +1702,128 @@ export async function POST(
     const targetDurationSeconds = rubricJson?.target_duration_seconds ?? rubric.target_duration_seconds ?? null
     const maxDurationSeconds = rubricJson?.max_duration_seconds ?? rubric.max_duration_seconds ?? null
     
+    if (isSummaryMode) {
+      const summaryPrompt = buildSummaryPrompt(
+        run.transcript,
+        criteria,
+        promptRubric,
+        rubricName
+      )
+
+      let summaryJson: SummaryAnalysisOutput
+      try {
+        const openai = getOpenAIClient()
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'user', content: summaryPrompt },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.4,
+        })
+
+        const responseText = completion.choices[0]?.message?.content
+        if (!responseText) {
+          throw new Error('Empty response from OpenAI')
+        }
+
+        const parsed = JSON.parse(responseText) as SummaryAnalysisOutput
+        if (!parsed.summary || !parsed.rubric_scores) {
+          throw new Error('Invalid summary structure returned from OpenAI')
+        }
+
+        summaryJson = {
+          summary: {
+            overall_score: parsed.summary.overall_score,
+            overall_notes: parsed.summary.overall_notes,
+            top_strengths: (parsed.summary.top_strengths || []).slice(0, 2),
+            top_improvements: (parsed.summary.top_improvements || []).slice(0, 2),
+          },
+          rubric_scores: (parsed.rubric_scores || [])
+            .slice(0, 5)
+            .map(item => ({
+              criterion_label: item.criterion_label,
+              score: item.score,
+              notes: item.notes,
+              evidence_quotes: (item.evidence_quotes || []).slice(0, 1),
+            })),
+        }
+      } catch (error: any) {
+        console.error('OpenAI summary analysis error:', error)
+        await getSupabaseAdmin()
+          .from('pitch_runs')
+          .update({
+            status: 'error',
+            error_message: error.message || 'Summary analysis failed',
+          })
+          .eq('id', id)
+
+        return NextResponse.json(
+          { error: 'Analysis failed', details: error.message },
+          { status: 500 }
+        )
+      }
+
+      let summaryUpdateData: any = {
+        analysis_summary_json: summaryJson,
+        status: 'analyzed',
+        error_message: null,
+      }
+
+      if (userPlan && ['free', 'starter', 'coach', 'daypass'].includes(userPlan)) {
+        summaryUpdateData.plan_at_time = userPlan
+      }
+
+      const { data: summaryRun, error: summaryUpdateError } = await getSupabaseAdmin()
+        .from('pitch_runs')
+        .update(summaryUpdateData)
+        .eq('id', id)
+        .select('*')
+        .single()
+
+      if (summaryUpdateError) {
+        console.error('Database update error (summary):', summaryUpdateError)
+        if (summaryUpdateError.message?.includes('plan_at_time') || summaryUpdateError.code === '42703') {
+          const { data: retryRun, error: retryError } = await getSupabaseAdmin()
+            .from('pitch_runs')
+            .update({
+              analysis_summary_json: summaryJson,
+              status: 'analyzed',
+              error_message: null,
+            })
+            .eq('id', id)
+            .select('*')
+            .single()
+
+          if (retryError) {
+            return NextResponse.json(
+              { error: 'Failed to save analysis', details: retryError.message },
+              { status: 500 }
+            )
+          }
+
+          return NextResponse.json({
+            ok: true,
+            run: retryRun,
+            success: true,
+            analysis: summaryJson,
+          })
+        }
+
+        return NextResponse.json(
+          { error: 'Failed to save analysis', details: summaryUpdateError.message },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({
+        ok: true,
+        run: summaryRun,
+        success: true,
+        analysis: summaryJson,
+      })
+    }
+
     const prompt = buildAnalysisPrompt(
       run.transcript,
       criteria,

@@ -20,6 +20,7 @@ export interface PitchRun {
   audio_seconds: number | null
   transcript: string | null
   analysis_json: any
+  analysis_summary_json?: any
   status: 'uploaded' | 'transcribed' | 'analyzed' | 'error'
   error_message: string | null
   rubric_id: string

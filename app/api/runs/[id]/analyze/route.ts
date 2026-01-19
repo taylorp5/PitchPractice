@@ -24,6 +24,7 @@ interface AnalysisOutput {
   meta?: {
     plan_at_time?: 'free' | 'starter' | 'coach' | 'daypass'
     generated_at?: string
+    full_feedback_pending?: boolean
   }
   summary: {
     overall_score: number
@@ -1411,6 +1412,7 @@ async function persistFastAnalysisResult(
   run: any,
   fastResult: FastAnalysisOutput
 ): Promise<void> {
+  const existingMeta = run.analysis_json?.meta || {}
   const { error: fastUpdateError } = await getSupabaseAdmin()
     .from('pitch_runs')
     .update({
@@ -1418,6 +1420,14 @@ async function persistFastAnalysisResult(
       initial_summary: fastResult.summary,
       status: 'fast_analyzed',
       error_message: null,
+      analysis_json: {
+        ...(run.analysis_json || {}),
+        meta: {
+          ...existingMeta,
+          full_feedback_pending: true,
+          generated_at: new Date().toISOString(),
+        },
+      },
     })
     .eq('id', id)
 
@@ -1425,7 +1435,6 @@ async function persistFastAnalysisResult(
     const message = fastUpdateError.message || ''
     if (message.includes('initial_score') || message.includes('initial_summary') || fastUpdateError.code === '42703') {
       console.warn('[Analyze] initial_score/initial_summary columns missing, storing fast result in analysis_json meta')
-      const existingMeta = run.analysis_json?.meta || {}
       await getSupabaseAdmin()
         .from('pitch_runs')
         .update({
@@ -1518,6 +1527,7 @@ async function runFullAnalysis(
   analysisJson.meta = {
     plan_at_time: userPlan,
     generated_at: new Date().toISOString(),
+    full_feedback_pending: false,
   }
 
   if (userPlan === 'coach') {

@@ -332,17 +332,14 @@ export default function RunPage() {
     if (!runData) return 'idle'
     
     const status = runData.status
-    const hasTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
-    const hasSummary = !!(runData.analysis_json?.summary || runData.analysis_summary_json?.summary)
     
     // Error state
     if (status === 'error') return 'error'
     
-    // Complete when we have transcript + summary (don't wait for premium insights)
-    if (hasTranscript && hasSummary) return 'complete'
+    if (status === 'analyzed') return 'complete'
     
     // Analyzing state
-    if (status === 'analyzing' || (hasTranscript && !hasSummary)) return 'analyzing'
+    if (status === 'analyzing' || status === 'fast_analyzed') return 'analyzing'
     
     // Transcribing state
     if (status === 'transcribing' || status === 'transcribed') return 'transcribing'
@@ -467,15 +464,14 @@ export default function RunPage() {
 
       // Return true if we should continue polling
       // Stop polling when we have transcript + summary (don't wait for premium insights)
-      const hasTranscript = !!(runData.transcript && runData.transcript.trim().length > 0)
-      const hasSummary = !!(runData.analysis_json?.summary)
-      const hasCompleteData = runData.status === 'analyzed' || (hasTranscript && hasSummary)
+      const hasCompleteData = runData.status === 'analyzed'
       
       const shouldContinuePolling = 
         (runData.status === 'uploaded' || 
          runData.status === 'transcribing' || 
          runData.status === 'transcribed' ||
-         runData.status === 'analyzing') &&
+         runData.status === 'analyzing' ||
+         runData.status === 'fast_analyzed') &&
         !hasCompleteData
 
       return shouldContinuePolling
@@ -660,11 +656,8 @@ export default function RunPage() {
     if (!run) return
 
     const status = run.status
-    const hasTranscript = !!(run.transcript && run.transcript.trim().length > 0)
-    const hasSummary = !!(run.analysis_json?.summary)
-    
-    // Stop polling when we have transcript + summary (complete)
-    const hasCompleteData = run.status === 'analyzed' || (hasTranscript && hasSummary)
+    // Stop polling when fully analyzed
+    const hasCompleteData = run.status === 'analyzed'
     
     // Determine if we should poll based on stage
     const shouldPoll = analysisStage !== 'idle' && 

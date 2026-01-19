@@ -470,7 +470,7 @@ export default function PracticePage() {
       }
 
       const data = await response.json()
-      const runId = data.runId || data.run?.id || data.id
+      const runId = data.runId || data.run?.id
       return runId || null
     } catch (err) {
       console.error('[Checkpoint] Error creating run:', err)
@@ -1037,11 +1037,11 @@ export default function PracticePage() {
       }
 
       const createData = await createResponse.json()
-      if (!createData.ok || !createData.run?.id) {
+      const runId = createData.runId || createData.run?.id
+      if (!createData.ok || !runId) {
         throw new Error('Run creation failed: invalid response')
       }
 
-      const runId = createData.run.id
       if (DEBUG) {
         console.log('[Practice] Run created:', { runId, needsChunking })
       }
@@ -1372,6 +1372,15 @@ export default function PracticePage() {
           clearInterval(feedbackTimerRef.current)
           feedbackTimerRef.current = null
         }
+        void fetch(`/api/runs/${runId}/analyze?mode=full`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        }).catch(err => {
+          console.warn('[Practice] Background full analysis failed:', err)
+        })
         return
       }
 

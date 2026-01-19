@@ -602,11 +602,10 @@ export default function HomePage() {
       }
 
       const createData = await createResponse.json()
-      if (!createData.ok || !createData.run?.id) {
+      const runId = createData.runId || createData.run?.id
+      if (!createData.ok || !runId) {
         throw new Error('Run creation failed: invalid response')
       }
-
-      const runId = createData.run.id
 
       // Step 2: Upload audio directly to storage
       const supabase = createClient()

@@ -25,15 +25,32 @@ export async function GET(
       )
     }
 
+    const selectFields = 'id, status, audio_path, transcript, analysis_json, full_feedback, initial_score, initial_summary, analysis_summary_json, error_message, created_at, session_id, title, audio_seconds, duration_ms, word_count, words_per_minute, rubric_id, rubric_snapshot_json'
+
     const { data: run, error } = await getSupabaseAdmin()
       .from('pitch_runs')
-      .select('id, status, audio_path, transcript, analysis_json, full_feedback, initial_score, initial_summary, analysis_summary_json, error_message, created_at, session_id, title, audio_seconds, duration_ms, word_count, words_per_minute, rubric_id, rubric_snapshot_json, rubrics(*)')
+      .select(selectFields)
       .eq('id', id)
       .eq('user_id', user.id)
       .single()
 
     if (error) {
-      console.error('Database error:', error)
+      if (error.code !== 'PGRST116') {
+        console.error('Database error:', error)
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'Failed to fetch run',
+            ...(process.env.NODE_ENV !== 'production' ? { details: error.message } : {}),
+          },
+          { 
+            status: 500,
+            headers: {
+              'Cache-Control': 'no-store',
+            },
+          }
+        )
+      }
       return NextResponse.json(
         { ok: false, error: 'Run not found' },
         { 
@@ -43,6 +60,24 @@ export async function GET(
           },
         }
       )
+    }
+
+    let rubric: any = null
+    if (run.rubric_id) {
+      const { data: rubricData, error: rubricError } = await getSupabaseAdmin()
+        .from('rubrics')
+        .select('*')
+        .eq('id', run.rubric_id)
+        .single()
+      if (rubricError) {
+        console.warn('[Run GET] Failed to fetch rubric:', {
+          runId: run.id,
+          rubricId: run.rubric_id,
+          error: rubricError.message,
+        })
+      } else {
+        rubric = rubricData
+      }
     }
 
     // Generate signed URL for audio
@@ -71,6 +106,7 @@ export async function GET(
           ok: true,
           run: {
             ...run,
+            rubrics: rubric,
             audio_url: signedUrlData?.signedUrl || null,
           },
         },
@@ -85,7 +121,10 @@ export async function GET(
     return NextResponse.json(
       {
         ok: true,
-        run,
+        run: {
+          ...run,
+          rubrics: rubric,
+        },
       },
       {
         headers: {

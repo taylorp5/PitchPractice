@@ -412,6 +412,8 @@ export default function PracticePage() {
       formData.append('session_id', sessionId)
       
       // Handle rubric selection (same logic as uploadAudio)
+      const isRubricIdValid = (id: string | null) =>
+        !!id && rubrics.some(rubric => rubric.id === id)
       if ((rubricMode === 'upload' || rubricMode === 'paste') && parsedCustomRubric) {
         const rubricJson = {
           name: parsedCustomRubric.title || 'Custom Rubric',
@@ -431,8 +433,8 @@ export default function PracticePage() {
           formData.append('pitch_context', contextToUse.trim())
         }
       } else if (selectedRubricSource === 'custom' && customRubric) {
-        if (customRubricId) {
-          formData.append('rubric_id', customRubricId)
+        if (isRubricIdValid(customRubricId)) {
+          formData.append('rubric_id', customRubricId!)
         } else if (rubrics.length > 0 && rubrics[0]?.id) {
           formData.append('rubric_id', rubrics[0].id)
         }
@@ -441,7 +443,7 @@ export default function PracticePage() {
           formData.append('pitch_context', contextToUse.trim())
         }
       } else if (rubricMode === 'default') {
-        if (selectedRubricId) {
+        if (isRubricIdValid(selectedRubricId)) {
           formData.append('rubric_id', selectedRubricId)
         }
         if (pitchContext.trim()) {
